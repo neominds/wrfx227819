@@ -1,0 +1,120 @@
+From 5c2c17832b1eb007ba2970c35161510045292d18 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Mon, 12 Jan 2015 16:18:01 +0900
+Subject: [PATCH 1/1] PCIE adjust configuration
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/Kconfig                  |    1 +
+ arch/arm/boot/dts/waikiki-lm2.dts |   21 +++++++++++++++++++++
+ drivers/pci/pcie/Kconfig          |    5 +++++
+ drivers/pci/pcie/Makefile         |    2 ++
+ drivers/pci/pcie/synopsys_pcie.c  |    6 +++---
+ 5 files changed, 32 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index f2f4115..75d8f83 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -369,6 +369,7 @@ config ARCH_LM2
+         select HAVE_CLK
+ 	select CLKSRC_MMIO
+         select HAVE_PATA_PLATFORM
++	select MIGHT_HAVE_PCI
+         select ICST
+         select NO_IOPORT
+         select PLAT_WAIKIKI
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index 3c5593b..fbcd867 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -220,4 +220,25 @@
+ 		reg = <0x0 0x04440000 0x0 0x500>;
+ 		interrupts = <131 132>;
+ 	};
++        pcie@290000 {
++                compatible = "synopsys,exynos5440-pcie", "snps,dw-pcie";
++                reg = <0x290000 0x1000
++                        0x270000 0x1000
++                        0x271000 0x40>;
++                interrupts = <0 20 0>, <0 21 0>, <0 22 0>;
++/*                clocks = <&clock CLK_PR0_250_O>, <&clock CLK_PB0_250_O>; */
++/*                clock-names = "pcie", "pcie_bus"; */
++                #address-cells = <3>;
++                #size-cells = <2>;
++                device_type = "pci";
++                ranges = <0x00000800 0 0x40000000 0x40000000 0 0x00001000   /* configuration space */
++                          0x81000000 0 0          0x40001000 0 0x00010000   /* downstream I/O */
++                          0x82000000 0 0x40011000 0x40011000 0 0x1ffef000>; /* non-prefetchable memory */
++                #interrupt-cells = <1>;
++                interrupt-map-mask = <0 0 0 0>;
++                interrupt-map = <0x0 0 &gic 53>;
++                num-lanes = <4>;
++                status = "disabled";
++        };
++
+ };
+diff --git a/drivers/pci/pcie/Kconfig b/drivers/pci/pcie/Kconfig
+index 569f82f..dd6d6ef 100644
+--- a/drivers/pci/pcie/Kconfig
++++ b/drivers/pci/pcie/Kconfig
+@@ -30,6 +30,11 @@ source "drivers/pci/pcie/aer/Kconfig"
+ #
+ # PCI Express ASPM
+ #
++config PCIE_LM2
++	bool "PCI Express host contorl"
++	depends on ARCH_LM2
++	help
++
+ config PCIEASPM
+ 	bool "PCI Express ASPM control" if EXPERT
+ 	depends on PCI && PCIEPORTBUS
+diff --git a/drivers/pci/pcie/Makefile b/drivers/pci/pcie/Makefile
+index 00c62df..c177518 100644
+--- a/drivers/pci/pcie/Makefile
++++ b/drivers/pci/pcie/Makefile
+@@ -10,6 +10,8 @@ pcieportdrv-$(CONFIG_ACPI)	+= portdrv_acpi.o
+ 
+ obj-$(CONFIG_PCIEPORTBUS)	+= pcieportdrv.o
+ 
++obj-$(CONFIG_PCIE_LM2)		+= synopsys_pcie.o
++
+ # Build PCI Express AER if needed
+ obj-$(CONFIG_PCIEAER)		+= aer/
+ 
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 7fa50ce..e4f67bd 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -1200,7 +1200,7 @@ static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ {
+ 	struct pcie_port *pp;
+-#if 1
++#if 0
+ #else
+ 	struct device_node *np = pdev->dev.of_node;
+ 	struct of_pci_range range;
+@@ -1218,7 +1218,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 
+ 	pp->dev = &pdev->dev;
+ 
+-#if 1
++#if 0
+ 	pp->resetgen.name       = "resetgen";
+ 	pp->resetgen.start      = max_t(resource_size_t, PCIBIOS_MIN_IO, RSTGEN_BASE);
+ 	pp->resetgen.end        = min_t(resource_size_t, IO_SPACE_LIMIT, RSTGEN_BASE + 0x10000);
+@@ -1353,7 +1353,7 @@ static struct platform_driver synopsys_pcie_driver = {
+ 	.driver = {
+ 		.name	= "synopsys-pcie",
+ 		.owner	= THIS_MODULE,
+-//		.of_match_table = of_match_ptr(synopsys_pcie_of_match),
++		.of_match_table = of_match_ptr(synopsys_pcie_of_match),
+ 	},
+ };
+ 
+-- 
+1.7.1
+

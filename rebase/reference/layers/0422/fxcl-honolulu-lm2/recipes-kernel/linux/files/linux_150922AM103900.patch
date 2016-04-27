@@ -1,0 +1,32 @@
+diff -urN linux_org/arch/arm/mach-lm2/lm2.c linux/arch/arm/mach-lm2/lm2.c
+--- linux_org/arch/arm/mach-lm2/lm2.c	2015-09-21 15:24:23.187434532 +0900
++++ linux/arch/arm/mach-lm2/lm2.c	2015-09-21 16:12:48.004777154 +0900
+@@ -42,6 +42,7 @@
+ #include <mach/irqs.h>
+ #include <mach/eth.h>
+ #include <plat/sched_clock.h>
++#include <linux/phy.h>
+ 
+ #include "core.h"
+ 
+@@ -170,6 +171,7 @@
+ 	.has_gmac	= 1,
+ 	.clk_csr	= 0,
+ 	.enh_desc       = 1,	/* add */
++	.interface	= PHY_INTERFACE_MODE_MII,
+ };
+ 
+ static struct platform_device lm2_eth_device = {
+diff -urN linux_org/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c linux/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+--- linux_org/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c	2015-09-21 15:24:23.743434516 +0900
++++ linux/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c	2015-09-22 10:07:03.125794052 +0900
+@@ -321,7 +321,9 @@
+ 			priv->hw->mac->set_eee_pls(priv->ioaddr,
+ 						   priv->phydev->link);
+ 
++#if 0
+ 		pr_info("stmmac: Energy-Efficient Ethernet initialized\n");
++#endif
+ 
+ 		ret = true;
+ 	}

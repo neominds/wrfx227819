@@ -1,0 +1,22 @@
+From c5aff8491e6877c059e351464d963c08638f725a Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:23:59 +0900
+Subject: [PATCH 132/170] 0001-printer-gadget-issue
+
+
+diff --git a/drivers/usb/dwc3/gadget.c b/drivers/usb/dwc3/gadget.c
+index af0a326..ef68786 100644
+--- a/drivers/usb/dwc3/gadget.c
++++ b/drivers/usb/dwc3/gadget.c
+@@ -1153,7 +1153,7 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
+ 	list_for_each_entry_safe(req, n, &dep->request_list, list) {
+ 		unsigned	length;
+ 		dma_addr_t	dma;
+-#if	1	/*Original	<HN> 2015-03-05 */
++#if	0	/*Original	<HN> 2015-03-05 */
+ 		last_one = false;
+ #else	/* yamano 0219 added from refer source */
+ 		last_one = true;
+-- 
+1.7.1
+

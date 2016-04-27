@@ -1,0 +1,38 @@
+From 67ead91868115f1469b19cfa619663f6df9f50dc Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Wed, 6 Jan 2016 16:51:53 +0900
+Subject: [PATCH 1/1] fx_wrl6.0_standard
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ kernel/sched/core.c |    6 +++---
+ 1 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index b4308d7..3aefe45 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -7109,8 +7109,8 @@ void __might_sleep(const char *file, int line, int preempt_offset)
+ {
+ 	static unsigned long prev_jiffy;	/* ratelimiting */
+ 
+-	rcu_sleep_check(); /* WARN_ON_ONCE() by default, no rate limit reqd. */
+-	if ((preempt_count_equals(preempt_offset) && !irqs_disabled()) ||
++/*	rcu_sleep_check(); */ /* WARN_ON_ONCE() by default, no rate limit reqd. */
++/*	if ((preempt_count_equals(preempt_offset) && !irqs_disabled()) ||
+ 	    system_state != SYSTEM_RUNNING || oops_in_progress)
+ 		return;
+ 	if (time_before(jiffies, prev_jiffy + HZ) && prev_jiffy)
+@@ -7128,7 +7128,7 @@ void __might_sleep(const char *file, int line, int preempt_offset)
+ 	debug_show_held_locks(current);
+ 	if (irqs_disabled())
+ 		print_irqtrace_events(current);
+-	dump_stack();
++	dump_stack(); */
+ }
+ EXPORT_SYMBOL(__might_sleep);
+ #endif
+-- 
+1.7.1
+

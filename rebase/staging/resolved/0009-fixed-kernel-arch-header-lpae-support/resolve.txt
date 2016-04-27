@@ -1,0 +1,9 @@
+Merging in 0009-fixed-kernel-arch-header-lpae-support from br12_10 to br27_10 -new is br27_11
+CONFLICT (content): Merge conflict in arch/arm/include/asm/io.h
+
+arch/arm/include/asm/io.h
+=>
+
+Conflicts are because of #ifdef trying to replace unsigned long to phys_addr_t.Ln 133 -158
+
+/EOT

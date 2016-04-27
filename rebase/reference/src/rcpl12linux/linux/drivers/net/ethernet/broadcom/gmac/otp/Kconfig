@@ -1,0 +1,8 @@
+config IPROC_OTP
+	tristate "OTP support"
+	depends on ARCH_IPROC
+	default n
+	help
+	  OTP support 
+	
+	  If unsure, say N.

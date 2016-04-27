@@ -1,0 +1,96 @@
+From d796678ed302c403e658db1922649a55ec0139bf Mon Sep 17 00:00:00 2001
+From: Tomohiro Masubuchi <Tomohiro.Masubuchi@fujixerox.co.jp>
+Date: Wed, 21 Jan 2015 10:59:01 +0900
+Subject: [PATCH 1/2] * Fix wrong accessing about __pv_phys_offset and
+ __pv_offset
+
+This patch adjusts __pv_offset address to &__pv_phys_offset + 8.
+And, this patch aligns __pf_phys_offset to 8 byte boundary.
+
+The original kernel excepts __pf_offset at &__pf_phys_offset + 4.
+A size of __pf_phys_offset has been 8 byte, currently.
+It means __pf_offset is located at &__pf_phys_offset + 8.
+Any assembler code still used &__pf_phys_offset + 4 as __pf_offset.
+
+Conflicts:
+
+	init/main.c
+---
+ arch/arm/kernel/head.S |   19 +++++++++++++++++++
+ init/main.c            |    2 +-
+ 2 files changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/kernel/head.S b/arch/arm/kernel/head.S
+index 6771fa9..413ee1a 100644
+--- a/arch/arm/kernel/head.S
++++ b/arch/arm/kernel/head.S
+@@ -27,6 +27,8 @@
+ #include CONFIG_DEBUG_LL_INCLUDE
+ #endif
+ 
++#define FX_MOD
++
+ /*
+  * debug yamano 
+  */
+@@ -601,12 +603,21 @@ __fixup_pv_table:
+ 	add	r4, r4, r3	@ adjust table start address
+ 	add	r5, r5, r3	@ adjust table end address
+ 	add	r7, r7, r3	@ adjust __pv_phys_offset address
++#ifdef FX_MOD
++	mov	r9, #8		@ PHYS_OFFSET >> 32
++	strd	r8, r9, [r7]	@ save computed PHYS_OFFSET to __pv_phys_offset
++#else
+ 	str	r8, [r7]	@ save computed PHYS_OFFSET to __pv_phys_offset
++#endif
+ 	mov	r6, r3, lsr #24	@ constant for add/sub instructions
+ 	teq	r3, r6, lsl #24 @ must be 16MiB aligned
+ THUMB(	it	ne		@ cross section branch )
+ 	bne	__error
++#ifdef FX_MOD
++	str	r6, [r7, #8]	@ save to __pv_offset
++#else
+ 	str	r6, [r7, #4]	@ save to __pv_offset
++#endif
+ 	b	__fixup_a_pv_table
+ ENDPROC(__fixup_pv_table)
+ 
+@@ -658,7 +669,11 @@ ENTRY(fixup_pv_table)
+ 	mov	r3, #0			@ no offset
+ 	mov	r4, r0			@ r0 = table start
+ 	add	r5, r0, r1		@ r1 = table size
++#ifdef FX_MOD
++	ldr	r6, [r2, #8]		@ get __pv_offset
++#else
+ 	ldr	r6, [r2, #4]		@ get __pv_offset
++#endif
+ 	bl	__fixup_a_pv_table
+ 	ldmfd	sp!, {r4 - r7, pc}
+ ENDPROC(fixup_pv_table)
+@@ -669,6 +684,10 @@ ENDPROC(fixup_pv_table)
+ 	.data
+ 	.globl	__pv_phys_offset
+ 	.type	__pv_phys_offset, %object
++
++#ifdef FX_MOD
++	.align	3
++#endif
+ __pv_phys_offset:
+ 	.long	0
+ 	.long	0
+diff --git a/init/main.c b/init/main.c
+index 8577c13..f576bf3 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -517,7 +517,7 @@ asmlinkage void __init start_kernel(void)
+ #if 1	/* ohkuma to TLB Flush */
+ 	asm volatile("mcr p15,0,r0,c8,c6,0");
+ #endif
+-	PHYS_OFFSET = 0x0000000800000000ULL;	/* yamano debug */
++//	PHYS_OFFSET = 0x0000000800000000ULL;	/* yamano debug */
+ #if 1   /* ohkuma */
+ sprintf(buf, "__pv_phys_offset=0x%llx(%llx)\n", __pv_phys_offset, PHYS_OFFSET);
+ lm2_printk(UART_BASE,buf);
+-- 
+1.7.9.5
+

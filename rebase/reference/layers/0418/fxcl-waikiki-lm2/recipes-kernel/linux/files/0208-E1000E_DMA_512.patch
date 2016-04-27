@@ -1,0 +1,46 @@
+From 396c6b301c8bab14313f4a2222994c8a083a8b81 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Wed, 16 Mar 2016 13:07:25 +0900
+Subject: [PATCH 1/1] E1000E_DMA_512
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/net/ethernet/intel/e1000e/netdev.c |    7 ++++---
+ 1 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index e862727..1d02b6a 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -59,6 +59,7 @@ static unsigned int skip_xmit    = 0;
+ static unsigned int skip_xmit_cnt= 0;
+ #define	SKIP_XMIT_VAL		30
+ #endif
++#define	WR_E1000E_DMA_SIZE	512
+ 
+ #define DRV_VERSION "2.3.2" DRV_EXTRAVERSION
+ char e1000e_driver_name[] = "e1000e";
+@@ -5208,8 +5209,8 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
+ 	while (len) {
+ 		buffer_info = &tx_ring->buffer_info[i];
+ #ifdef WR_E1000E_WORKAROUND	/* Workaround */
+-		if ( max_per_txd > 256 )
+-			max_per_txd = 256;
++		if ( max_per_txd > WR_E1000E_DMA_SIZE )
++			max_per_txd = WR_E1000E_DMA_SIZE;
+ #endif	/* Workaround */
+ 		size = min(len, max_per_txd);
+ 
+@@ -5514,7 +5515,7 @@ static netdev_tx_t e1000_xmit_frame(struct sk_buff *skb,
+ 	count++;
+ 
+ #ifdef WR_E1000E_WORKAROUND
+-	count += DIV_ROUND_UP(len, 256);
++	count += DIV_ROUND_UP(len, WR_E1000E_DMA_SIZE);
+ #else
+ 	count += DIV_ROUND_UP(len, adapter->tx_fifo_limit);
+ #endif
+-- 
+1.7.1
+

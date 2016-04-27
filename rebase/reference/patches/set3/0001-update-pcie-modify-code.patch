@@ -1,0 +1,738 @@
+From af3ba3b59d1c363fd777bdaf5e0e278dca2be5ac Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Fri, 27 Feb 2015 17:39:12 +0900
+Subject: [PATCH 1/1] update pcie modify code
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/include/asm/mach/pci.h  |   22 +++++---
+ arch/arm/kernel/bios32.c         |   37 ++++++++-----
+ arch/arm/mach-lm2/usb.c          |    3 +-
+ drivers/pci/bus.c                |   18 ++++++-
+ drivers/pci/pci.c                |   10 ++++
+ drivers/pci/pcie/synopsys_pcie.c |   40 +++++++-------
+ drivers/pci/probe.c              |  110 +++++++++++++++++++++++++------------
+ drivers/pci/setup-bus.c          |    9 +--
+ include/linux/pci.h              |    3 +
+ 9 files changed, 166 insertions(+), 86 deletions(-)
+
+diff --git a/arch/arm/include/asm/mach/pci.h b/arch/arm/include/asm/mach/pci.h
+index bfc775b..d6b0293 100644
+--- a/arch/arm/include/asm/mach/pci.h
++++ b/arch/arm/include/asm/mach/pci.h
+@@ -16,6 +16,7 @@
+ struct pci_sys_data;
+ struct pci_ops;
+ struct pci_bus;
++struct device;
+ 
+ struct hw_pci {
+ #ifdef CONFIG_PCI_DOMAINS
+@@ -35,6 +36,8 @@ struct hw_pci {
+ 					  resource_size_t start,
+ 					  resource_size_t size,
+ 					  resource_size_t align);
++	void		(*add_bus)(struct pci_bus *bus);
++	void		(*remove_bus)(struct pci_bus *bus);
+ };
+ 
+ /*
+@@ -47,7 +50,6 @@ struct pci_sys_data {
+ 	struct list_head node;
+ 	int		busnr;		/* primary bus number			*/
+ 	u64		mem_offset;	/* bus->cpu memory mapping offset	*/
+-//	unsigned long	io_offset;	/* bus->cpu IO mapping offset		*/
+ 	phys_addr_t	io_offset;	/* bus->cpu IO mapping offset		*/
+ 	struct pci_bus	*bus;		/* PCI bus				*/
+ 	struct list_head resources;	/* root bus resources (apertures)       */
+@@ -63,13 +65,24 @@ struct pci_sys_data {
+ 					  resource_size_t start,
+ 					  resource_size_t size,
+ 					  resource_size_t align);
++	void		(*add_bus)(struct pci_bus *bus);
++	void		(*remove_bus)(struct pci_bus *bus);
+ 	void		*private_data;	/* platform controller private data	*/
+ };
+ 
+ /*
+  * Call this with your hw_pci struct to initialise the PCI system.
+  */
+-void pci_common_init(struct hw_pci *);
++void pci_common_init_dev(struct device *, struct hw_pci *);
++
++/*
++ * Compatibility wrapper for older platforms that do not care about
++ * passing the parent device.
++ */
++static inline void pci_common_init(struct hw_pci *hw)
++{
++	pci_common_init_dev(NULL, hw);
++}
+ 
+ /*
+  * Setup early fixed I/O mapping.
+@@ -97,9 +110,4 @@ extern struct pci_ops via82c505_ops;
+ extern int via82c505_setup(int nr, struct pci_sys_data *);
+ extern void via82c505_init(void *sysdata);
+ 
+-extern struct pci_ops pci_v3_ops;
+-extern int pci_v3_setup(int nr, struct pci_sys_data *);
+-extern void pci_v3_preinit(void);
+-extern void pci_v3_postinit(void);
+-
+ #endif /* __ASM_MACH_PCI_H */
+diff --git a/arch/arm/kernel/bios32.c b/arch/arm/kernel/bios32.c
+index 8e0fca2..317da88 100644
+--- a/arch/arm/kernel/bios32.c
++++ b/arch/arm/kernel/bios32.c
+@@ -363,6 +363,20 @@ void pcibios_fixup_bus(struct pci_bus *bus)
+ }
+ EXPORT_SYMBOL(pcibios_fixup_bus);
+ 
++void pcibios_add_bus(struct pci_bus *bus)
++{
++	struct pci_sys_data *sys = bus->sysdata;
++	if (sys->add_bus)
++		sys->add_bus(bus);
++}
++
++void pcibios_remove_bus(struct pci_bus *bus)
++{
++	struct pci_sys_data *sys = bus->sysdata;
++	if (sys->remove_bus)
++		sys->remove_bus(bus);
++}
++
+ /*
+  * Swizzle the device pin each time we cross a bridge.  If a platform does
+  * not provide a swizzle function, we perform the standard PCI swizzling.
+@@ -418,7 +432,6 @@ static int pcibios_init_resources(int busnr, struct pci_sys_data *sys)
+ 	int ret;
+ 	struct pci_host_bridge_window *window;
+ 
+-printk( KERN_ERR " $$$ %s : entry\n",__FUNCTION__);	/* yamano */
+ 	if (list_empty(&sys->resources)) {
+ 		pci_add_resource_offset(&sys->resources,
+ 			 &iomem_resource, sys->mem_offset);
+@@ -443,17 +456,16 @@ printk( KERN_ERR " $$$ %s : entry\n",__FUNCTION__);	/* yamano */
+ 	pci_add_resource_offset(&sys->resources, &sys->io_res,
+ 				sys->io_offset);
+ 
+-printk( KERN_ERR " $$$ %s : exit\n",__FUNCTION__);	/* yamano */
+ 	return 0;
+ }
+ 
+-static void pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
++static void pcibios_init_hw(struct device *parent, struct hw_pci *hw,
++			    struct list_head *head)
+ {
+ 	struct pci_sys_data *sys = NULL;
+ 	int ret;
+ 	int nr, busnr;
+ 
+-printk( KERN_ERR " $$$ %s : entry\n",__FUNCTION__);	/* yamano */
+ 	for (nr = busnr = 0; nr < hw->nr_controllers; nr++) {
+ 		sys = kzalloc(sizeof(struct pci_sys_data), GFP_KERNEL);
+ 		if (!sys)
+@@ -466,6 +478,8 @@ printk( KERN_ERR " $$$ %s : entry\n",__FUNCTION__);	/* yamano */
+ 		sys->swizzle = hw->swizzle;
+ 		sys->map_irq = hw->map_irq;
+ 		sys->align_resource = hw->align_resource;
++		sys->add_bus = hw->add_bus;
++		sys->remove_bus = hw->remove_bus;
+ 		INIT_LIST_HEAD(&sys->resources);
+ 
+ 		if (hw->private_data)
+@@ -483,7 +497,7 @@ printk( KERN_ERR " $$$ %s : entry\n",__FUNCTION__);	/* yamano */
+ 			if (hw->scan)
+ 				sys->bus = hw->scan(nr, sys);
+ 			else
+-				sys->bus = pci_scan_root_bus(NULL, sys->busnr,
++				sys->bus = pci_scan_root_bus(parent, sys->busnr,
+ 						hw->ops, sys, &sys->resources);
+ 
+ 			if (!sys->bus)
+@@ -498,18 +512,17 @@ printk( KERN_ERR " $$$ %s : entry\n",__FUNCTION__);	/* yamano */
+ 				break;
+ 		}
+ 	}
+-printk( KERN_ERR " $$$ %s : exit\n",__FUNCTION__);	/* yamano */
+ }
+ 
+-void pci_common_init(struct hw_pci *hw)
++void pci_common_init_dev(struct device *parent, struct hw_pci *hw)
+ {
+ 	struct pci_sys_data *sys;
+ 	LIST_HEAD(head);
+-printk( KERN_ERR " $$$ %s : entry\n",__FUNCTION__);	/* yamano */
++
+ 	pci_add_flags(PCI_REASSIGN_ALL_RSRC);
+ 	if (hw->preinit)
+ 		hw->preinit();
+-	pcibios_init_hw(hw, &head);
++	pcibios_init_hw(parent, hw, &head);
+ 	if (hw->postinit)
+ 		hw->postinit();
+ 
+@@ -528,11 +541,6 @@ printk( KERN_ERR " $$$ %s : entry\n",__FUNCTION__);	/* yamano */
+ 			 * Assign resources.
+ 			 */
+ 			pci_bus_assign_resources(bus);
+-
+-			/*
+-			 * Enable bridges
+-			 */
+-			pci_enable_bridges(bus);
+ 		}
+ 
+ 		/*
+@@ -540,7 +548,6 @@ printk( KERN_ERR " $$$ %s : entry\n",__FUNCTION__);	/* yamano */
+ 		 */
+ 		pci_bus_add_devices(bus);
+ 	}
+-printk( KERN_ERR " $$$ %s : exit\n",__FUNCTION__);	/* yamano */
+ }
+ 
+ #ifndef CONFIG_PCI_HOST_ITE8152
+diff --git a/arch/arm/mach-lm2/usb.c b/arch/arm/mach-lm2/usb.c
+index 12a4206..9781c48 100644
+--- a/arch/arm/mach-lm2/usb.c
++++ b/arch/arm/mach-lm2/usb.c
+@@ -109,7 +109,8 @@ struct dwc3_platform_data {
+ static	struct dwc3_platform_data	dwc3_plat_data = {
+ 	.maximum_speed	= USB_SPEED_SUPER,
+ 	.dr_mode	= USB_DR_MODE_PERIPHERAL,
+-	.tx_fifo_resize	= 1,
++//	.tx_fifo_resize	= 1,	/* original */
++	.tx_fifo_resize	= 0,	/* original */
+ };
+ 
+ static  u64     lm2_usbd_dmamask = DMA_BIT_MASK(64);
+diff --git a/drivers/pci/bus.c b/drivers/pci/bus.c
+index b3a0bd8..0924c36 100644
+--- a/drivers/pci/bus.c
++++ b/drivers/pci/bus.c
+@@ -56,7 +56,7 @@ void pci_bus_add_resource(struct pci_bus *bus, struct resource *res,
+ 			  unsigned int flags)
+ {
+ 	struct pci_bus_resource *bus_res;
+-dev_info(&bus->dev," $$$ %s Entry bus = %x res = %x\n",__FUNCTION__,bus,res);
++
+ 	bus_res = kzalloc(sizeof(struct pci_bus_resource), GFP_KERNEL);
+ 	if (!bus_res) {
+ 		dev_err(&bus->dev, "can't add %pR resource\n", res);
+@@ -66,7 +66,6 @@ dev_info(&bus->dev," $$$ %s Entry bus = %x res = %x\n",__FUNCTION__,bus,res);
+ 	bus_res->res = res;
+ 	bus_res->flags = flags;
+ 	list_add_tail(&bus_res->list, &bus->resources);
+-dev_info(&bus->dev," $$$ %s Exit\n",__FUNCTION__);
+ }
+ 
+ struct resource *pci_bus_resource_n(const struct pci_bus *bus, int n)
+@@ -286,6 +285,21 @@ void pci_walk_bus(struct pci_bus *top, int (*cb)(struct pci_dev *, void *),
+ }
+ EXPORT_SYMBOL_GPL(pci_walk_bus);
+ 
++struct pci_bus *pci_bus_get(struct pci_bus *bus)
++{
++	if (bus)
++		get_device(&bus->dev);
++	return bus;
++}
++EXPORT_SYMBOL(pci_bus_get);
++
++void pci_bus_put(struct pci_bus *bus)
++{
++	if (bus)
++		put_device(&bus->dev);
++}
++EXPORT_SYMBOL(pci_bus_put);
++
+ EXPORT_SYMBOL(pci_bus_alloc_resource);
+ EXPORT_SYMBOL_GPL(pci_bus_add_device);
+ EXPORT_SYMBOL(pci_bus_add_devices);
+diff --git a/drivers/pci/pci.c b/drivers/pci/pci.c
+index fcc6a5f..0667d2e 100644
+--- a/drivers/pci/pci.c
++++ b/drivers/pci/pci.c
+@@ -1348,6 +1348,16 @@ int __weak pcibios_add_device (struct pci_dev *dev)
+ }
+ 
+ /**
++ * pcibios_release_device - provide arch specific hooks when releasing device dev
++ * @dev: the PCI device being released
++ *
++ * Permits the platform to provide architecture specific functionality when
++ * devices are released. This is the default implementation. Architecture
++ * implementations can override this.
++ */
++void __weak pcibios_release_device(struct pci_dev *dev) {}
++
++/**
+  * pcibios_disable_device - disable arch specific PCI resources for device dev
+  * @dev: the PCI device to disable
+  *
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index e007faa..7c355e8 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -155,6 +155,7 @@ static int synopsys_pcie_setup(int nr, struct pci_sys_data *sys)
+ {
+ 	struct pcie_port *pp;
+ 
++printk(KERN_ERR "# %s entry \n",__FUNCTION__);
+ 	pp = sys_to_pcie(sys);
+ 
+ #ifdef	DEBUG_CALLBACK
+@@ -162,22 +163,23 @@ static int synopsys_pcie_setup(int nr, struct pci_sys_data *sys)
+ #endif
+ 
+ 	if (!pp) {
++		dev_err(pp->dev, "##### %s : Error End\n",__FUNCTION__);
+ #ifdef	DEBUG_CALLBACK
+ 		dev_err(pp->dev, "##### %s : Error End\n",__FUNCTION__);
+ #endif
+ 		return 0;
+ 	}
+ printk(KERN_ERR "sys->busnr :0x%x\n",sys->busnr);
+-printk(KERN_ERR "sys->mem_offset :0x%x\n",sys->mem_offset);
+-printk(KERN_ERR "sys->io_offset :0x%x\n",sys->io_offset);
++printk(KERN_ERR "sys->mem_offset :0x%llx\n",sys->mem_offset);
++printk(KERN_ERR "sys->io_offset :0x%llx\n",sys->io_offset);
+ /* yamano resource debug */
+ //	sys->mem_offset = pp->mem.start - pp->config.mem_bus_addr;
+ //	pci_add_resource_offset(&sys->resources, &pp->mem, sys->mem_offset);
+ //	pci_add_resource_offset(&sys->resources, &pp->config[1].mem, sys->mem_offset);
+ 	sys->mem_offset = 0x404000000ULL - 0x10000000ULL;
+-	sys->io_offset  = 0x411000000ULL - 0x10100000ULL;
+-printk(KERN_ERR "print offset mem = %llx\n",sys->mem_offset);
+-printk(KERN_ERR "print offset io = %llx\n",sys->io_offset);
++	sys->io_offset  = 0x410000000ULL - 0x10100000ULL;
++printk(KERN_ERR "print offset mem = 0x%llx\n",sys->mem_offset);
++printk(KERN_ERR "print offset io = 0x%llx\n",sys->io_offset);
+ 	pci_add_resource_offset(&sys->resources, &pp->config[0].mem, sys->mem_offset);
+ 	pci_add_resource_offset(&sys->resources, &pp->config[0].io, sys->io_offset);
+ 	
+@@ -1093,7 +1095,7 @@ out:
+ 	return	0;
+ }
+ 
+-static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
++static int synopsys_add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+ {
+ 	struct resource *tmp;
+ 	int ret;
+@@ -1155,11 +1157,11 @@ static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+ 		dev_err(pp->dev, "add_pcie_port: failed to get irq\n");
+ 		return -ENODEV;
+ 	}
+-//	ret = devm_request_irq(&pdev->dev, pp->irq, exynos_pcie_irq_handler, IRQF_SHARED, "synopsys-pcie", pp);
+-//	if (ret) {
+-//		dev_err(pp->dev, "add_pcie_port: failed to request irq\n");
+-//		return ret;
+-//	}
++	ret = devm_request_irq(&pdev->dev, pp->irq, exynos_pcie_irq_handler, IRQF_SHARED, "synopsys-pcie", pp);
++	if (ret) {
++		dev_err(pp->dev, "add_pcie_port: failed to request irq\n");
++		return ret;
++	}
+ 	
+ 	
+ 	pp->root_bus_nr = 0;
+@@ -1235,25 +1237,25 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ #endif
+ 	/* Configureation resource */
+ 	pp->io.name	= "Multiport";
+-	pp->io.start	= 0x411000000ULL;
+-	pp->io.end	= 0x41100ffffULL;
++	pp->io.start	= 0x410000000ULL;
++	pp->io.end	= 0x41000ffffULL;
+ 	pp->io.flags	= IORESOURCE_IO;
+ 	pp->va_io = ioremap(0x410000000ULL,SZ_64K);
+ 	pp->config[0].io.name = "Port 0 IO space";
+-	pp->config[0].io.start = 0x411000000ULL;
+-	pp->config[0].io.end   = 0x41100FFFFULL;
++	pp->config[0].io.start = 0x410000000ULL;
++	pp->config[0].io.end   = 0x41000FFFFULL;
+ 	pp->config[0].io.flags = IORESOURCE_IO;
+ 	pp->config[0].io_size = resource_size(&pp->config[0].io);
+ //	pp->config[0].io_bus_addr	= 0x410000000ULL;
+ 	pp->mem.name	= "Memory";
+ 	pp->mem.start	= 0x404000000ULL;
+-	pp->mem.end	= 0x40fffffffULL;
++	pp->mem.end	= 0x4040fffffULL;
+ 	pp->mem.flags	= IORESOURCE_MEM;
+ 	pp->va_cfg = ioremap(0x400000000ULL,SZ_64M);
+-	pp->va_mem = ioremap(0x404000000ULL,SZ_128+SZ_64);
++	pp->va_mem = ioremap(0x404000000ULL,SZ_128M+SZ_64K);
+ 	pp->config[0].mem.name = "Port 0 Memory";
+ 	pp->config[0].mem.start = 0x404000000ULL;
+-	pp->config[0].mem.end  	= 0x40fffffffULL;
++	pp->config[0].mem.end  	= 0x4040fffffULL;
+ 	pp->config[0].mem.flags = IORESOURCE_MEM;
+ 	pp->config[0].mem_size = resource_size(&pp->config[0].mem);
+ //	pp->config[0].mem_bus_addr	= 0x400000000ULL;
+@@ -1279,7 +1281,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto fail_clk;
+ */
+-	ret = add_pcie_port(pp, pdev);
++	ret = synopsys_add_pcie_port(pp, pdev);
+ 	if (ret < 0)
+ 		goto fail_bus_clk;
+ 
+diff --git a/drivers/pci/probe.c b/drivers/pci/probe.c
+index 50b9665..b73a230 100644
+--- a/drivers/pci/probe.c
++++ b/drivers/pci/probe.c
+@@ -155,6 +155,8 @@ static inline unsigned long decode_bar(struct pci_dev *dev, u32 bar)
+ 	}
+ 	return flags;
+ }
++/* yamano debug */
++#define PCI_COMMAND_DECODE_ENABLE	(PCI_COMMAND_MEMORY | PCI_COMMAND_IO)
+ 
+ /**
+  * pci_read_base - read a PCI BAR
+@@ -170,7 +172,7 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
+ {
+ 	u32 l, sz, mask;
+ 	u16 orig_cmd;
+-	struct pci_bus_region region;
++	struct pci_bus_region region, inverted_region;
+ 	bool bar_too_big = false, bar_disabled = false;
+ 
+ 	mask = type ? PCI_ROM_ADDRESS_MASK : ~0;
+@@ -178,8 +180,10 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
+ 	/* No printks while decoding is disabled! */
+ 	if (!dev->mmio_always_on) {
+ 		pci_read_config_word(dev, PCI_COMMAND, &orig_cmd);
++		if (orig_cmd & PCI_COMMAND_DECODE_ENABLE) {	/* yamano debug */
+ 		pci_write_config_word(dev, PCI_COMMAND,
+-			orig_cmd & ~(PCI_COMMAND_MEMORY | PCI_COMMAND_IO));
++				orig_cmd & ~PCI_COMMAND_DECODE_ENABLE);
++		}
+ 	}
+ 
+ 	res->name = pci_name(dev);
+@@ -210,14 +214,17 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
+ 		res->flags |= IORESOURCE_SIZEALIGN;
+ 		if (res->flags & IORESOURCE_IO) {
+ 			l &= PCI_BASE_ADDRESS_IO_MASK;
++			sz &= PCI_BASE_ADDRESS_IO_MASK;	/* yamano debug */
+ 			mask = PCI_BASE_ADDRESS_IO_MASK & (u32) IO_SPACE_LIMIT;
+ 		} else {
+ 			l &= PCI_BASE_ADDRESS_MEM_MASK;
++			sz &= PCI_BASE_ADDRESS_MEM_MASK;	/* yamano debug */
+ 			mask = (u32)PCI_BASE_ADDRESS_MEM_MASK;
+ 		}
+ 	} else {
+ 		res->flags |= (l & IORESOURCE_ROM_ENABLE);
+ 		l &= PCI_ROM_ADDRESS_MASK;
++		sz &= PCI_ROM_ADDRESS_MASK;	/* yamano debug */
+ 		mask = (u32)PCI_ROM_ADDRESS_MASK;
+ 	}
+ 
+@@ -250,12 +257,12 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
+ 			pci_write_config_dword(dev, pos + 4, 0);
+ 			region.start = 0;
+ 			region.end = sz64;
+-			pcibios_bus_to_resource(dev, res, &region);
++	/*		pcibios_bus_to_resource(dev, res, &region);	yamano debug */
+ 			bar_disabled = true;
+ 		} else {
+ 			region.start = l64;
+ 			region.end = l64 + sz64;
+-			pcibios_bus_to_resource(dev, res, &region);
++	/*		pcibios_bus_to_resource(dev, res, &region);	yamano debug */
+ 		}
+ 	} else {
+ 		sz = pci_size(l, sz, mask);
+@@ -265,16 +272,38 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
+ 
+ 		region.start = l;
+ 		region.end = l + sz;
++	}	/* yamano debug */
++
+ 		pcibios_bus_to_resource(dev, res, &region);
++	pcibios_resource_to_bus(dev, &inverted_region, res);
++/* yamano debug */
++	/*
++	 * If "A" is a BAR value (a bus address), "bus_to_resource(A)" is
++	 * the corresponding resource address (the physical address used by
++	 * the CPU.  Converting that resource address back to a bus address
++	 * should yield the original BAR value:
++	 *
++	 *     resource_to_bus(bus_to_resource(A)) == A
++	 *
++	 * If it doesn't, CPU accesses to "bus_to_resource(A)" will not
++	 * be claimed by the device.
++	 */
++	if (inverted_region.start != region.start) {
++		dev_info(&dev->dev, "reg 0x%x: initial BAR value %pa invalid; forcing reassignment\n",
++			 pos, &region.start);
++		res->flags |= IORESOURCE_UNSET;
++		res->end -= res->start;
++		res->start = 0;
+ 	}
+-
++/* yamano debug end */
+ 	goto out;
+ 
+ 
+ fail:
+ 	res->flags = 0;
+ out:
+-	if (!dev->mmio_always_on)
++	if (!dev->mmio_always_on &&
++	    (orig_cmd & PCI_COMMAND_DECODE_ENABLE))	/* yamano debug */
+ 		pci_write_config_word(dev, PCI_COMMAND, orig_cmd);
+ 
+ 	if (bar_too_big)
+@@ -456,7 +485,9 @@ static struct pci_bus * pci_alloc_bus(void)
+ 	struct pci_bus *b;
+ 
+ 	b = kzalloc(sizeof(*b), GFP_KERNEL);
+-	if (b) {
++	if (!b)
++		return NULL;
++
+ 		INIT_LIST_HEAD(&b->node);
+ 		INIT_LIST_HEAD(&b->children);
+ 		INIT_LIST_HEAD(&b->devices);
+@@ -464,20 +495,31 @@ static struct pci_bus * pci_alloc_bus(void)
+ 		INIT_LIST_HEAD(&b->resources);
+ 		b->max_bus_speed = PCI_SPEED_UNKNOWN;
+ 		b->cur_bus_speed = PCI_SPEED_UNKNOWN;
+-	}
+ 	return b;
+ }
+ 
++static void pci_release_host_bridge_dev(struct device *dev)
++{
++	struct pci_host_bridge *bridge = to_pci_host_bridge(dev);
++
++	if (bridge->release_fn)
++		bridge->release_fn(bridge);
++
++	pci_free_resource_list(&bridge->windows);
++
++	kfree(bridge);
++}
++
+ static struct pci_host_bridge *pci_alloc_host_bridge(struct pci_bus *b)
+ {
+ 	struct pci_host_bridge *bridge;
+ 
+ 	bridge = kzalloc(sizeof(*bridge), GFP_KERNEL);
+-	if (bridge) {
++	if (!bridge)
++		return NULL;
++
+ 		INIT_LIST_HEAD(&bridge->windows);
+ 		bridge->bus = b;
+-	}
+-
+ 	return bridge;
+ }
+ 
+@@ -1133,6 +1175,8 @@ static void pci_release_dev(struct device *dev)
+ 	pci_dev = to_pci_dev(dev);
+ 	pci_release_capabilities(pci_dev);
+ 	pci_release_of_node(pci_dev);
++	pcibios_release_device(pci_dev);	/* yamano debug */
++	pci_bus_put(pci_dev->bus);		/* yamano debug */
+ 	kfree(pci_dev);
+ }
+ 
+@@ -1189,19 +1233,7 @@ int pci_cfg_space_size(struct pci_dev *dev)
+ 	return PCI_CFG_SPACE_SIZE;
+ }
+ 
+-static void pci_release_bus_bridge_dev(struct device *dev)
+-{
+-	struct pci_host_bridge *bridge = to_pci_host_bridge(dev);
+-
+-	if (bridge->release_fn)
+-		bridge->release_fn(bridge);
+-
+-	pci_free_resource_list(&bridge->windows);
+-
+-	kfree(bridge);
+-}
+-
+-struct pci_dev *alloc_pci_dev(void)
++struct pci_dev *pci_alloc_dev(struct pci_bus *bus)
+ {
+ 	struct pci_dev *dev;
+ 
+@@ -1211,9 +1243,16 @@ struct pci_dev *alloc_pci_dev(void)
+ 
+ 	INIT_LIST_HEAD(&dev->bus_list);
+ 	dev->dev.type = &pci_dev_type;
++	dev->bus = pci_bus_get(bus);
+ 
+ 	return dev;
+ }
++EXPORT_SYMBOL(pci_alloc_dev);
++
++struct pci_dev *alloc_pci_dev(void)
++{
++	return pci_alloc_dev(NULL);
++}
+ EXPORT_SYMBOL(alloc_pci_dev);
+ 
+ bool pci_bus_read_dev_vendor_id(struct pci_bus *bus, int devfn, u32 *l,
+@@ -1264,11 +1303,10 @@ static struct pci_dev *pci_scan_device(struct pci_bus *bus, int devfn)
+ 	if (!pci_bus_read_dev_vendor_id(bus, devfn, &l, 60*1000))
+ 		return NULL;
+ 
+-	dev = alloc_pci_dev();
++	dev = pci_alloc_dev(bus);
+ 	if (!dev)
+ 		return NULL;
+ 
+-	dev->bus = bus;
+ 	dev->devfn = devfn;
+ 	dev->vendor = l & 0xffff;
+ 	dev->device = (l >> 16) & 0xffff;
+@@ -1276,6 +1314,7 @@ static struct pci_dev *pci_scan_device(struct pci_bus *bus, int devfn)
+ 	pci_set_of_node(dev);
+ 
+ 	if (pci_setup_device(dev)) {
++		pci_bus_put(dev->bus);	/* yamano debug */
+ 		kfree(dev);
+ 		return NULL;
+ 	}
+@@ -1688,7 +1727,7 @@ struct pci_bus *pci_create_root_bus(struct device *parent, int bus,
+ 	char bus_addr[64];
+ 	char *fmt;
+ 
+-printk(KERN_ERR "%s entry\n",__FUNCTION__);
++dev_dbg(&b2->dev, "%s entry\n",__FUNCTION__);
+ 	b = pci_alloc_bus();
+ 	if (!b)
+ 		return NULL;
+@@ -1708,7 +1747,7 @@ printk(KERN_ERR "%s entry\n",__FUNCTION__);
+ 		goto err_out;
+ 
+ 	bridge->dev.parent = parent;
+-	bridge->dev.release = pci_release_bus_bridge_dev;
++	bridge->dev.release = pci_release_host_bridge_dev;	/* yamanode bug */
+ 	dev_set_name(&bridge->dev, "pci%04x:%02x", pci_domain_nr(b), bus);
+ 	error = pcibios_root_bridge_prepare(bridge);
+ 	if (error) {
+@@ -1771,7 +1810,7 @@ printk(KERN_ERR "%s entry\n",__FUNCTION__);
+ 	list_add_tail(&b->node, &pci_root_buses);
+ 	up_write(&pci_bus_sem);
+ 
+-printk(KERN_ERR "%s exit\n",__FUNCTION__);
++dev_dbg(&b2->dev, "%s exit\n",__FUNCTION__);
+ 	return b;
+ 
+ class_dev_reg_err:
+@@ -1786,7 +1825,7 @@ int pci_bus_insert_busn_res(struct pci_bus *b, int bus, int bus_max)
+ {
+ 	struct resource *res = &b->busn_res;
+ 	struct resource *parent_res, *conflict;
+-printk(KERN_ERR " # %s : Entry bus = %x bus_max = %x\n",__FUNCTION__,bus,bus_max);
++
+ 	res->start = bus;
+ 	res->end = bus_max;
+ 	res->flags = IORESOURCE_BUS;
+@@ -1805,7 +1844,7 @@ printk(KERN_ERR " # %s : Entry bus = %x bus_max = %x\n",__FUNCTION__,bus,bus_max
+ 			   "busn_res: can not insert %pR under %s%pR (conflicts with %s %pR)\n",
+ 			    res, pci_is_root_bus(b) ? "domain " : "",
+ 			    parent_res, conflict->name, conflict);
+-printk(KERN_ERR " # %s : Exit conflict = %x\n",__FUNCTION__,conflict);
++
+ 	return conflict == NULL;
+ }
+ 
+@@ -1822,9 +1861,9 @@ printk(KERN_ERR " ## %s : Entry bus=%x bus_max= %x\n",__FUNCTION__,b,bus_max);
+ printk(KERN_ERR " ## %s : start %d > bus_max %d \n",__FUNCTION__,res->start,bus_max);
+ 		return -EINVAL;
+ 	}	/* yamano debug */
+-dev_info(&b->dev,"res->start =%llx\n",res->start);
+-printk(KERN_ERR "res->end =%llx\n",res->end);
+-printk(KERN_ERR "res->flags =%x\n",res->flags);
++printk( KERN_ERR "res->start =%llx\n",res->start);
++printk( KERN_ERR "res->end =%llx\n",res->end);
++printk( KERN_ERR "res->flags =%x\n",res->flags);
+ 
+ 	size = bus_max - res->start + 1;
+ 	ret = adjust_resource(res, res->start, size);
+@@ -1869,7 +1908,6 @@ struct pci_bus *pci_scan_root_bus(struct device *parent, int bus,
+ 
+ 	list_for_each_entry(window, resources, list)
+ 		if (window->res->flags & IORESOURCE_BUS) {
+-printk(KERN_ERR "## %s : IORESOURCE_BUS\n",__FUNCTION__);
+ 			found = true;
+ 			break;
+ 		}
+@@ -1877,7 +1915,7 @@ printk(KERN_ERR "## %s : IORESOURCE_BUS\n",__FUNCTION__);
+ 	b = pci_create_root_bus(parent, bus, ops, sysdata, resources);
+ 	if (!b)
+ 		return NULL;
+-printk(KERN_ERR " ## %s : root bus = %x found = %d\n",__FUNCTION__,b,found);
++printk(KERN_ERR " ## %s : root bus = %x\n",__FUNCTION__,b);
+ 	if (!found) {
+ 		dev_info(&b->dev,
+ 		 "No busn resource found for root bus, will use [bus %02x-ff]\n",
+diff --git a/drivers/pci/setup-bus.c b/drivers/pci/setup-bus.c
+index 4e2c3dc..e6a9dc4 100644
+--- a/drivers/pci/setup-bus.c
++++ b/drivers/pci/setup-bus.c
+@@ -815,14 +815,14 @@ static void pbus_size_io(struct pci_bus *bus, resource_size_t min_size,
+ {
+ 	struct pci_dev *dev;
+ 	struct resource *b_res = find_free_bus_resource(bus, IORESOURCE_IO);
+-	unsigned long size = 0, size0 = 0, size1 = 0;
++	resource_size_t size = 0, size0 = 0, size1 = 0;
+ 	resource_size_t children_add_size = 0;
+-	resource_size_t min_align, io_align, align;
++	resource_size_t min_align, align;
+ 
+ 	if (!b_res)
+  		return;
+ 
+-	io_align = min_align = window_alignment(bus, IORESOURCE_IO);
++	min_align = window_alignment(bus, IORESOURCE_IO);
+ 	list_for_each_entry(dev, &bus->devices, bus_list) {
+ 		int i;
+ 
+@@ -849,9 +849,6 @@ static void pbus_size_io(struct pci_bus *bus, resource_size_t min_size,
+ 		}
+ 	}
+ 
+-	if (min_align > io_align)
+-		min_align = io_align;
+-
+ 	size0 = calculate_iosize(size, min_size, size1,
+ 			resource_size(b_res), min_align);
+ 	if (children_add_size > add_size)
+diff --git a/include/linux/pci.h b/include/linux/pci.h
+index 8b915cf..255533b 100644
+--- a/include/linux/pci.h
++++ b/include/linux/pci.h
+@@ -1019,6 +1019,8 @@ int pci_request_selected_regions_exclusive(struct pci_dev *, int, const char *);
+ void pci_release_selected_regions(struct pci_dev *, int);
+ 
+ /* drivers/pci/bus.c */
++struct pci_bus *pci_bus_get(struct pci_bus *bus);
++void pci_bus_put(struct pci_bus *bus);
+ void pci_add_resource(struct list_head *resources, struct resource *res);
+ void pci_add_resource_offset(struct list_head *resources, struct resource *res,
+ 			     resource_size_t offset);
+@@ -1657,6 +1659,7 @@ void pcibios_set_master(struct pci_dev *dev);
+ int pcibios_set_pcie_reset_state(struct pci_dev *dev,
+ 				 enum pcie_reset_state state);
+ int pcibios_add_device(struct pci_dev *dev);
++void pcibios_release_device(struct pci_dev *dev);
+ 
+ #ifdef CONFIG_PCI_MMCONFIG
+ void __init pci_mmcfg_early_init(void);
+-- 
+1.7.1
+

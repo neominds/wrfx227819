@@ -1,0 +1,27 @@
+From 78fb84f3f4742d9ee2dcc7dd0baf226d6ba96f8a Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:10 +0900
+Subject: [PATCH 113/169] 0001-correct-prototype-parameter-for-MTD
+
+
+diff --git a/drivers/mtd/devices/Kconfig b/drivers/mtd/devices/Kconfig
+index b44654e..e1d42ad 100644
+--- a/drivers/mtd/devices/Kconfig
++++ b/drivers/mtd/devices/Kconfig
+@@ -2,9 +2,13 @@ menu "Self-contained MTD device drivers"
+ 	depends on MTD!=n
+ 	depends on HAS_IOMEM
+ 
++config SOC_QUATRO5500
++	bool
++
+ config MTD_LM2_FCSPI
+ 	bool	"LM2 FCSPI Flash Driver"
+ 	depends on ARCH_LM2
++	select	SOC_QUATRO5500
+ 	help
+ 
+ config MTD_PMC551
+-- 
+1.7.1
+

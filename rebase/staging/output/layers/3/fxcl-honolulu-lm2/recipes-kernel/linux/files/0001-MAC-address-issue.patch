@@ -1,0 +1,569 @@
+From 7109a613c62cba769ee7450b343b7de9c4c4b29d Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:24:16 +0900
+Subject: [PATCH 145/170] 0001-MAC-address-issue
+
+
+diff --git a/arch/arm/boot/compressed/atags_to_fdt.c b/arch/arm/boot/compressed/atags_to_fdt.c
+index 5dd2f25..14de13d 100644
+--- a/arch/arm/boot/compressed/atags_to_fdt.c
++++ b/arch/arm/boot/compressed/atags_to_fdt.c
+@@ -8,7 +8,7 @@
+  * 0x7fff_f000 start virtual address
+  */
+ #define	PARAM_ADDR	0x7ffff000
+-#define	ATAGS_ADDR	0x80000100
++#define	ATAGS_ADDR	0x05000100
+ 
+ struct	lm2_param {
+ 	unsigned int	magic;
+@@ -21,41 +21,6 @@ struct	lm2_param {
+ 	unsigned long	firm_size;
+ };
+ 
+-static	void	prepare_atag_list(void)
+-{
+-	struct	lm2_param	*p_ptr = PARAM_ADDR;
+-	struct	tag		*t_ptr = ATAGS_ADDR;
+-
+-	t_ptr->hdr.size = sizeof(struct tag_header) + sizeof(struct tag_core);
+-	t_ptr->hdr.tag = ATAG_CORE;
+-	t_ptr->u.core.flags= 0x1;
+-	t_ptr->u.core.pagesize = PAGE_SIZE;
+-	t_ptr->u.core.rootdev = 0xff;
+-
+-	t_ptr = t_ptr + t_ptr->hdr.size;
+-
+-	t_ptr->hdr.size = sizeof(struct tag_header) + sizeof(struct tag_mem32);
+-	t_ptr->hdr.tag = ATAG_MEM;
+-	t_ptr->u.mem.size = (unsigned long)p_ptr->ramsize;
+-	t_ptr->u.mem.start = 0x80000000;
+-
+-	t_ptr = t_ptr + t_ptr->hdr.size;
+-
+-	t_ptr->hdr.size = sizeof(struct tag_header) + sizeof(struct tag_initrd);
+-	t_ptr->hdr.tag = ATAG_INITRD;
+-	t_ptr->u.initrd.start = p_ptr->initrd_addr;
+-	t_ptr->u.initrd.size = p_ptr->initrd_size;
+-
+-	t_ptr = t_ptr + t_ptr->hdr.size;
+-
+-	t_ptr->hdr.size = sizeof(struct tag_header) + 512;
+-	t_ptr->hdr.tag = ATAG_CMDLINE;
+-	memcpy(t_ptr->u.cmdline.cmdline, p_ptr->bootparam, 512);
+-
+-	return;
+-	
+-}
+-
+ #endif	/* CONFIG_ARCH_LM2 */
+ 
+ #if defined(CONFIG_ARM_ATAG_DTB_COMPAT_CMDLINE_EXTEND)
+@@ -72,6 +37,15 @@ static int node_offset(void *fdt, const char *node_path)
+ 	return offset;
+ }
+ 
++static int setprop_inplace(void *fdt, const char *node_path, const char *property,
++		const void *val, int size)
++{
++	int offset = node_offset(fdt,node_path);
++	if(offset < 0)
++		return	offset;
++	return	fdt_setprop_inplace(fdt, offset, property, val, size);
++}
++
+ static int setprop(void *fdt, const char *node_path, const char *property,
+ 		   uint32_t *val_array, int size)
+ {
+@@ -152,6 +126,14 @@ static void merge_fdt_bootargs(void *fdt, const char *fdt_cmdline)
+ 	setprop_string(fdt, "/chosen", "bootargs", cmdline);
+ }
+ 
++static	int	replace_mac_addr(void *fdt, int total_space)
++{
++	struct	lm2_param	*p_ptr = (struct lm2_param *)PARAM_ADDR;
++
++	setprop_inplace(fdt, "/mac_addr", "mac-address", p_ptr->macaddr, 6);
++	return	1;
++}
++
+ /*
+  * Convert and fold provided ATAGs into the provided FDT.
+  *
+@@ -168,9 +150,10 @@ int atags_to_fdt(void *atag_list, void *fdt, int total_space)
+ 	uint32_t mem_reg_property[2 * 2 * NR_BANKS];
+ 	int memcount = 0;
+ 	int ret, memsize;
+-
++	int len;
+ #ifdef	CONFIG_ARCH_LM2
+-	prepare_atag_list();
++	if(replace_mac_addr(fdt,total_space))
++		return	1;
+ #endif	/* CONFIG_ARCH_LM2 */
+ 
+ 	/* make sure we've got an aligned pointer */
+diff --git a/arch/arm/boot/compressed/head.S b/arch/arm/boot/compressed/head.S
+index b5d4f6e..e0f4273 100644
+--- a/arch/arm/boot/compressed/head.S
++++ b/arch/arm/boot/compressed/head.S
+@@ -136,7 +136,7 @@ start:
+ 
+  THUMB(		.thumb			)
+ 1:
+-/*		b	1b	* yamano ICE debug */
++/*		b	1b	/ yamano ICE debug */
+ 		mrs	r9, cpsr
+ #ifdef CONFIG_ARM_VIRT_EXT
+ /*		bl	__hyp_stub_install */	@ get into SVC mode, reversibly
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index 25bd345..0247b81 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -19,6 +19,9 @@
+ 	chosen {
+ 		bootargs = "root=/dev/sda1 ip=dhcp console=ttyS0,38400 mem=2992M";
+ 	};
++	mac_addr {
++		mac-address = [ 11 22 33 44 55 66 ];
++	};
+ /*
+ 	aliases {
+ 		serial0 = &lm2_serial0;
+@@ -224,15 +227,16 @@
+ 			reg = <0x04a30000 0x200>;
+ 			interrupts = <85>;
+ 		};
+-
++*/
+ 		ethernet@04410000 {
+ 			compatible = "snps,dwmac";
+ 			reg = <0x04410000 0x10000>;
+ 			interrupts = <94 93>;
+ 			phy-mode = "mii";
+ 			reg-io-width = <4>;
++			mac-address = [ 00 00 00 00 00 00 ];
+ 		};
+-
++/*
+ 		sdio@04440000 {
+ 			compatible = "sdhci";
+ 			reg = <0x0 0x04440000 0x0 0x500>;
+diff --git a/arch/arm/kernel/atags_parse.c b/arch/arm/kernel/atags_parse.c
+index f660f0b..fb2d54c 100644
+--- a/arch/arm/kernel/atags_parse.c
++++ b/arch/arm/kernel/atags_parse.c
+@@ -30,25 +30,6 @@
+ 
+ #include "atags.h"
+ static char default_command_line[COMMAND_LINE_SIZE] __initdata = CONFIG_CMDLINE;
+-#if 0	/* yamano */
+-#ifndef MEM_SIZE
+-#define MEM_SIZE	(16*1024*1024)
+-#endif
+-
+-static struct {
+-	struct tag_header hdr1;
+-	struct tag_core   core;
+-	struct tag_header hdr2;
+-	struct tag_mem32  mem;
+-	struct tag_header hdr3;
+-} default_tags __initdata = {
+-	{ tag_size(tag_core), ATAG_CORE },
+-	{ 1, PAGE_SIZE, 0xff },
+-	{ tag_size(tag_mem32), ATAG_MEM },
+-	{ MEM_SIZE },
+-	{ 0, ATAG_NONE }
+-};
+-#else
+ #ifndef	MEM_SIZE
+ #define	MEM_SIZE	(760*1024*1024)		/* 2G */
+ #endif	/* MEM_SIZE */
+@@ -65,39 +46,6 @@ static	struct {
+ 	{ MEM_SIZE},
+ 	{ 0, ATAG_NONE}
+ };
+-#endif	/* yamano debug */
+-#if 0 /* yamano */
+-#define UART_BASE       0xfc160000
+-#define UART_DATA(base) (*(volatile unsigned char *)((base) + 0x10))
+-#define UART_STAT(base) (*(volatile unsigned char *)((base) + 0x15))
+-static  void    putchar(int c)
+-{
+-        while((UART_STAT(UART_BASE) & 0x40) == 0)
+-                barrier();
+-        UART_DATA(UART_BASE) = c;
+-        return;
+-}
+-
+-static  void    flush(void)
+-{
+-        while((UART_STAT(UART_BASE) & 0x40) == 0)
+-                barrier();
+-}
+-
+-static  void    putstr(const char *ptr)
+-{
+-        char    c;
+-
+-        while((c = *ptr++) != '\0'){
+-                if(c == '\n')
+-                        putchar('\r');
+-                putchar(c);
+-        }
+-        flush();
+-}
+-#else
+-#define	putstr(x)	
+-#endif  /* yamano */
+ 
+ static int __init parse_tag_core(const struct tag *tag)
+ {
+@@ -233,12 +181,8 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 	struct tag *tags = (struct tag *)&default_tags;
+ 	struct machine_desc *mdesc = NULL, *p;
+ 	char *from = default_command_line;
+-//	char	buf[256];	/* yamano debug */
+ 
+ 	default_tags.mem.start = PHYS_OFFSET;
+-//	default_tags.mem.start = 0x0000000890000000ULL;
+-//	sprintf(buf,"machine_nr:%x\n",machine_nr);
+-//	putstr(buf);
+ 	machine_nr = 0x157c;	/* yamano debug */
+ 	/*
+ 	 * locate machine in the list of supported machines.
+@@ -246,13 +190,8 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 	for_each_machine_desc(p)
+ 		if (machine_nr == p->nr) {
+ 			printk("Machine: %s\n", p->name);
+-//			putstr(p->name);	/* yamano debug */
+ 			mdesc = p;
+ 			break;
+-		}else{	/* yamano debug */
+-//			putstr(p->name);
+-//			sprintf(buf,"==%x==",p->nr);
+-//			putstr(buf);
+ 		}
+ 
+ 	if (!mdesc) {
+@@ -262,10 +201,8 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 	}
+ #if 1
+ 	if (__atags_pointer){
+-//	putstr("atags point vaild\n");
+ 		tags = phys_to_virt(__atags_pointer);
+ 	}else if (mdesc->atag_offset){
+-//	putstr("atag offset valid\n");
+ 		tags = (void *)(PAGE_OFFSET + mdesc->atag_offset);
+ 	}
+ #if defined(CONFIG_DEPRECATED_PARAM_STRUCT)
+diff --git a/arch/arm/kernel/devtree.c b/arch/arm/kernel/devtree.c
+index 1f9f3c4..1b7b3b1 100644
+--- a/arch/arm/kernel/devtree.c
++++ b/arch/arm/kernel/devtree.c
+@@ -194,7 +194,6 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
+ 
+ 	mdesc_best = (struct machine_desc *)&__mach_desc_GENERIC_DT;
+ #endif
+-
+ 	if (!dt_phys)
+ 		return NULL;
+ #if 1	/* LM2 */
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index cf47723..a2fcdaf 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -59,59 +59,11 @@ extern void    lm2_cipui_tim_init(void);
+ #ifdef	CONFIG_LM2_GPDMA
+ extern	lm2_dma_register(void);
+ #endif	/* CONFIG_LM2_GPDMA */
+-#if 0
+-static	void	lm2_putchar(unsigned long base, char c)
+-{
+-#if 0
+-        while((UART_STAT(base) & 0x40) == 0)
+-                barrier();
+-        UART_DATA(base) = c;
+-#endif
+-        return;
+-}
+-
+-static  void	lm2_flush(unsigned long base)
+-{
+-#if 0
+-        while((UART_STAT(base) & 0x40) == 0)
+-                barrier();
+-#endif
+-}
+-
+-void	lm2_printk(unsigned long base, const char *ptr)
+-{
+-#if 0
+-        char    c;
+-
+-        while((c = *ptr++) != '\0'){
+-                if(c == '\n')
+-                        lm2_putchar(base,'\r');
+-                lm2_putchar(base,c);
+-        }
+-	lm2_flush(base);
+-#endif
+-}
+-#endif
+ /*
+  * Static I/O map
+  * serial ,GIC, timer, ethernet, SPI etc.
+  */
+ static struct map_desc lm2_io_desc[] __initdata = {
+-#if 0
+-	{
+-		.virtual	= 0xffc00000,
+-		.pfn		= __phys_to_pfn(0x0000000410000000ULL),
+-		.length		= SZ_64K,
+-		.type		= MT_DEVICE,
+-	},
+-	{
+-/*		.virtual	= LM2_DEBUG_SERIAL_VIRT,	*/
+-		.virtual	= 0xffc10000,
+-		.pfn		= __phys_to_pfn(0x04160000ULL),
+-		.length		= SZ_4K,
+-		.type		= MT_DEVICE,
+-	},
+-#endif
+ };
+ 
+ /*
+@@ -148,11 +100,9 @@ const unsigned int lm2_use_irq_size = sizeof(lm2_use_irq);
+  */
+ static void __init lm2_timer_init(void)
+ {
+-//	char	buf[128];
+ 	void	__iomem	*clksrc_timer;
+ 	void	__iomem	*clkevt_timer;
+ 
+-/*	clksrc_timer = ioremap(LM2_TIMER_BASE + 0x38, 0x0c);	*/
+ 	clksrc_timer = ioremap(LM2_TIMER_BASE + 0x10, 0x10);
+ 	clkevt_timer = ioremap(LM2_TIMER_BASE + 0x5c, 0x0c);
+ 	lm2_clocksource_init(clksrc_timer);
+@@ -164,7 +114,6 @@ static void __init lm2_timer_init(void)
+  */
+ static	struct	plat_serial8250_port	lm2_serial_resource[]={
+ 	{
+-//		.membase	= LM2_UART_1_BASE,
+ 		.mapbase	= LM2_UART_1_BASE,
+ 		.irq		= LM2_IRQ_UART_1,
+ 		.uartclk	= LM2_UART1_CLK,
+@@ -172,17 +121,6 @@ static	struct	plat_serial8250_port	lm2_serial_resource[]={
+ 		.iotype		= UPIO_MEM,
+ 		.flags		= UPF_SKIP_TEST,
+ 	},
+-#if 0
+-	{
+-//		.membase	= LM2_UART_0_BASE,
+-		.mapbase	= LM2_UART_0_BASE,
+-		.irq		= LM2_IRQ_UART_0,	/* change. 0->1 */
+-		.uartclk	= LM2_UART0_CLK,	/* change. 0->1 */
+-		.regshift	= 0,
+-		.iotype		= UPIO_MEM,
+-		.flags		= UPF_SKIP_TEST,
+-	},
+-#endif	/* yamano serial remove for AMP vxWorks used */
+ 	{},
+ };
+ static struct platform_device lm2_serial_device = {
+@@ -193,18 +131,6 @@ static struct platform_device lm2_serial_device = {
+ 	},
+ };
+ 
+-#ifdef	CONFIG_SERIAL_8250_CONSOLE
+-#if 0
+-static int	__init lm2_console_init(void)
+-{
+-#if 0
+-	return add_preferred_console("ttyS",0,"38400");
+-#endif
+-	return	0;
+-}
+-#endif
+-#endif	/* CONFIG_SERIAL_8250_CONSOLE */
+-
+ /*
+  * I2C
+  */
+@@ -234,7 +160,6 @@ static struct resource lm2_eth_resources[] = {
+ 
+ static	struct stmmac_mdio_bus_data phy_private_data = {
+ 	.phy_mask	= 1,
+-//	.irqs		= 15,
+ 	.irqs		= 0,	/* poll */
+ };
+ 
+@@ -357,21 +282,7 @@ static struct resource lm2_pcie_resource[]={
+                .end    = 0x04a40fff,
+                .flags  = IORESOURCE_MEM,
+        },
+-#if 0
+-       {	/* port 2 */
+-               .start  = 0x04a50000,
+-               .end    = 0x04a50fff,
+-               .flags  = IORESOURCE_MEM,
+-       },
+-       {	/* port 3 */
+-               .start  = 0x04a60000,
+-               .end    = 0x04a60fff,
+-               .flags  = IORESOURCE_MEM,
+-       },
+-#endif
+        {	/* host bridge interrput */
+-//               .start  = LM2_IRQ_PCIE_BUS,
+-//               .end    = LM2_IRQ_PCIE_BUS,
+                .flags  = IORESOURCE_IRQ,
+                .start  = LM2_IRQ_PCIE1,
+                .end    = LM2_IRQ_PCIE1,
+@@ -387,14 +298,7 @@ static	struct platform_device lm2_pcie_device = {
+ 
+ static void __init lm2_init_early(void)
+ {
+-//	lm2_printk(0xfc000000,"lm2_init_early\n");
+-}
+-#if 0
+-static void lm2_power_off(void)
+-{
+-	printk(KERN_EMERG "Unable to shutdown\n");
+ }
+-#endif
+ static void lm2_restart(char str, const char *cmd)
+ {
+ 	printk(KERN_EMERG "Unable to reboot\n");
+@@ -403,9 +307,6 @@ static void lm2_restart(char str, const char *cmd)
+ static void __init lm2_map_io(void)
+ {
+ 	iotable_init(lm2_io_desc, ARRAY_SIZE(lm2_io_desc));
+-#ifdef CONFIG_SERIAL_8250_CONSOLE
+-//	lm2_early_serial_setup();
+-#endif /* CONFIG_SERIAL_8250_CONSOLE */
+ }
+ 
+ /*
+@@ -413,16 +314,13 @@ static void __init lm2_map_io(void)
+  */
+ static void __init lm2_init_irq(void)
+ {
+-//	char	buf[128];
+ 	void __iomem	*virt_dist;
+ 	void __iomem	*virt_cpui;
+ 
+ 	virt_dist = ioremap(LM2_GIC_DIST,SZ_4K);
+ 	virt_cpui = ioremap(LM2_GIC_CPU,SZ_4K);
+ 
+-//	lm2_printk(0xfc000000,"lm2_init_irq\n");
+ 	gic_init_bases(0,29,ioremap(LM2_GIC_DIST,SZ_4K),ioremap(LM2_GIC_CPU,SZ_4K),0,NULL);
+-//	lm2_printk(0xfc000000,"lm2_init_irq end\n");
+ }
+ 
+ /*
+@@ -518,49 +416,6 @@ void __init lm2_dt_init_early(void)
+ 	return;
+ }
+ /*
+- * GIC find data 
+- */
+-#if 0
+-static  struct of_device_id lm2_irq_match[] __initdata = {
+-	{ .compatible = "arm,cortex-a15-gic", .data = gic_of_init, },
+-	{}
+-};
+-
+-/*
+- * General Interrupt Controller Initialize by DTB
+- */
+-static void __init lm2_dt_init_irq(void)
+-{
+-	of_irq_init(lm2_irq_match);
+-}
+-#endif
+-
+-/*
+- * Kernel timer initialize routine by DTB
+- */
+-#if 0
+-static void __init lm2_dt_timer_init(void)
+-{
+-	struct device_node *node;
+-	const char *path;
+-	int err;
+-
+-	/* aliase check to unique node */ 
+-	err = of_property_read_string(of_aliases, "arm,lm2_timer", &path);
+-	if (WARN_ON(err))
+-		return;
+-
+-	/* get DTB node */
+-	node = of_find_node_by_path(path);
+-
+-	/* timer device add device node */
+-//	regbase = of_iomap(node,0);
+-//	timer_irq = irq_of_parse_and_map(node,0);
+-//	clocksource_register_hz(&clocksource,LM2_TIMER_HZ);
+-//	clocksource_register_hz(&clocksource,LM2_TIM32_CLK);
+-}
+-#endif
+-/*
+  * init_machine by DTB
+  */
+ static const struct of_device_id lm2_dt_bus_match[] __initconst = {
+@@ -576,6 +431,12 @@ static const struct of_device_id lm2_pcie_match[] = {
+         },
+ };
+ 
++static const struct of_device_id lm2_eth_match[] = {
++        {
++                .compatible = "snps,dwmac",
++        },
++};
++
+ static void __init lm2_dt_init(void)
+ {
+         void __iomem *virt_addr;
+@@ -608,9 +469,7 @@ static void __init lm2_dt_init(void)
+ #ifdef	CONFIG_SPI_XSPI
+ 	lm2_xspi_register();
+ #endif	/* CONFIG_SPI_XSPI */
+-//	platform_device_register(&lm2_pcie_device);
+ 
+-//	l2x0_of_init(0x00400000, 0xfe0fffff);
+ 	of_platform_populate(NULL, lm2_dt_bus_match, NULL, NULL);
+ 	node = of_find_matching_node(NULL,lm2_pcie_match);
+ 	if(node){
+@@ -619,7 +478,6 @@ static void __init lm2_dt_init(void)
+ 			platform_device_register(&lm2_pcie_device);
+ 		of_node_put(node);
+ 	}
+-		
+ 	lm2_cipui_tim_init();
+ }
+ 
+@@ -639,7 +497,6 @@ DT_MACHINE_START(LM2_DT, "FujiXerox Waikiki")
+ 	.map_io		= lm2_dt_map_io,
+ 	.init_early	= lm2_dt_init_early,
+ 	.init_irq	= lm2_init_irq,
+-//	.init_irq	= irqchip_init,
+ 	.init_time	= lm2_timer_init,
+ 	.init_machine	= lm2_dt_init,
+ MACHINE_END
+diff --git a/arch/arm/mach-lm2/lm2_pm.c b/arch/arm/mach-lm2/lm2_pm.c
+index 3f0b7c1..d54a97f 100644
+--- a/arch/arm/mach-lm2/lm2_pm.c
++++ b/arch/arm/mach-lm2/lm2_pm.c
+@@ -28,7 +28,7 @@
+ 
+ #include "core.h"
+ 
+-#define LM2_PM_DEBUG
++//#define LM2_PM_DEBUG
+ //#define PM_TEST
+ 
+ /* Suspend End flag -> memory write */
+-- 
+1.7.1
+

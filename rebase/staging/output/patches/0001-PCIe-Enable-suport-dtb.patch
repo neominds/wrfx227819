@@ -1,0 +1,132 @@
+From d2db0c4779a03414f5cb4e88d1b9ebe919a4bd38 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:24:04 +0900
+Subject: [PATCH 136/170] 0001-PCIe-Enable-suport-dtb
+
+
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index 5810d93..25bd345 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -17,7 +17,7 @@
+ 	#address-cells = <1>;
+ 	#size-cells = <1>;
+ 	chosen {
+-		bootargs = "root=/dev/nfs rw nfsroot=192.168.1.250:/exports/fxcl12490 ip=dhcp console=ttyS0,38400 mem=2992M";
++		bootargs = "root=/dev/sda1 ip=dhcp console=ttyS0,38400 mem=2992M";
+ 	};
+ /*
+ 	aliases {
+@@ -238,28 +238,31 @@
+ 			reg = <0x0 0x04440000 0x0 0x500>;
+ 			interrupts = <131 132>;
+ 		};
+-
+-		pcie@290000 {
+-                compatible = "synopsys,exynos5440-pcie", "snps,dw-pcie";
+-                reg = <0x290000 0x1000
+-                        0x270000 0x1000
+-                        0x271000 0x40>;
+-                interrupts = <0 20 0>, <0 21 0>, <0 22 0>;
+-                clocks = <&clock CLK_PR0_250_O>, <&clock CLK_PB0_250_O>;
+-                clock-names = "pcie", "pcie_bus";
+-                #address-cells = <2>;
+-                #size-cells = <1>;
+-                device_type = "pci";
+-                ranges = <0x00000004 0x00000000  0x00001000
+-                          0x00000004 0x40001000  0x00010000
+-                          0x00000004 0x40011000  0x1ffef000>;
+-                #interrupt-cells = <1>;
+-                interrupt-map-mask = <0 0 0 0>;
+-                interrupt-map = <0x0 0 &gic 53>;
+-                num-lanes = <4>;
+-                status = "disabled";
+-		};
+ */
++		pcie@04a00000 {
++			compatible = "synopsys-pcie", "snps,dw-pcie";
++			reg = < 0x04a00000 0x100
++				0x04a40000 0x1000
++				0x04a70000 0x140 >;
++
++			interrupts = <0 20 0>, <0 21 0>, <0 22 0>;
++/*              clocks = <&clock CLK_PR0_250_O>, <&clock CLK_PB0_250_O>;
++                clock-names = "pcie", "pcie_bus";	*/
++			#address-cells = <3>;
++			#size-cells = <2>;
++                	device_type = "pci";
++			/* outbound pci resource */
++                	ranges = <0x4 0x00000000  0x4 0x00001000 0x0 0x00001000
++                          	  0x4 0x40001000  0x4 0x00010000 0x0 0x00010000
++                          	  0x4 0x40011000  0x4 0x00020000 0x0 0x00010000>;
++			/* inbound pci resource */
++			dma-ranges = < 0x0 0x05000000 0x4 0x80000000 0x0 0x02000000 >;
++                	#interrupt-cells = <1>;
++                	interrupt-map-mask = <0 0 0 0>;
++                	interrupt-map = <0x0 0 &gic 53>;
++/*              num-lanes = <4>;
++                status = "disabled";	*/
++		};
+ 	};
+ 
+ };
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 9e6bfcf..2ac3fed 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -566,10 +566,17 @@ static const struct of_device_id lm2_dt_bus_match[] __initconst = {
+         {}
+ };
+ 
++static const struct of_device_id lm2_pcie_match[] = {
++        {
++                .compatible = "synopsys-pcie",
++        },
++};
++
+ static void __init lm2_dt_init(void)
+ {
+         void __iomem *virt_addr;
+-
++	struct device_node	*node;
++	const struct	of_device_id *of_id;
+ 	lm2_init_clock();
+ 	/* Serial DTB ok */
+ 	virt_addr = ioremap(LM2_UART_1_BASE,0x32);
+@@ -597,10 +604,18 @@ static void __init lm2_dt_init(void)
+ #ifdef	CONFIG_SPI_XSPI
+ 	lm2_xspi_register();
+ #endif	/* CONFIG_SPI_XSPI */
+-	platform_device_register(&lm2_pcie_device);
++//	platform_device_register(&lm2_pcie_device);
+ 
+ //	l2x0_of_init(0x00400000, 0xfe0fffff);
+ 	of_platform_populate(NULL, lm2_dt_bus_match, NULL, NULL);
++	node = of_find_matching_node(NULL,lm2_pcie_match);
++	if(node){
++		of_id = of_match_node(lm2_pcie_match,node);
++		if(of_id)
++			platform_device_register(&lm2_pcie_device);
++		of_node_put(node);
++	}
++		
+ 	lm2_cipui_tim_init();
+ }
+ 
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index e3e6483..a6cf3e9 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -1294,6 +1294,9 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	struct of_pci_range_parser parser;
+ #endif
+ 	int ret;
++	struct device_node *np;
++
++
+ 	pp = devm_kzalloc(&pdev->dev, sizeof(*pp), GFP_KERNEL);
+ 	if (!pp) {
+ 		dev_err(pp->dev, "synopsys_pcie_probe: no memory for pcie port\n");
+-- 
+1.7.1
+

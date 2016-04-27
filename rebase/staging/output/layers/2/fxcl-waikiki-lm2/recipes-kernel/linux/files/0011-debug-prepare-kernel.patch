@@ -1,0 +1,227 @@
+From 0fdc7cd0e74da010ae423a3786926ef45d2c2f07 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:46:01 +0900
+Subject: [PATCH 012/169] 0011-debug-prepare-kernel
+
+
+diff --git a/arch/arm/boot/compressed/head.S b/arch/arm/boot/compressed/head.S
+index 9fa8306..c9a25bd 100644
+--- a/arch/arm/boot/compressed/head.S
++++ b/arch/arm/boot/compressed/head.S
+@@ -133,11 +133,13 @@ start:
+ 		.word	0x016f2818		@ Magic numbers to help the loader
+ 		.word	start			@ absolute load/run zImage address
+ 		.word	_edata			@ zImage end address
++
+  THUMB(		.thumb			)
+ 1:
++/*		b	1b	* yamano ICE debug */
+ 		mrs	r9, cpsr
+ #ifdef CONFIG_ARM_VIRT_EXT
+-		bl	__hyp_stub_install	@ get into SVC mode, reversibly
++/*		bl	__hyp_stub_install */	@ get into SVC mode, reversibly
+ #endif
+ 		mov	r7, r1			@ save architecture ID
+ 		mov	r8, r2			@ save atags pointer
+@@ -182,7 +184,6 @@ not_angel:
+ #else
+ 		ldr	r4, =zreladdr
+ #endif
+-
+ 		/*
+ 		 * Set up a page table only if it won't overwrite ourself.
+ 		 * That means r4 < pc && r4 - 16k page directory > &_end.
+@@ -195,7 +196,7 @@ not_angel:
+ 		addcc	r0, r0, pc
+ 		cmpcc	r4, r0
+ 		orrcc	r4, r4, #1		@ remember we skipped cache_on
+-		blcs	cache_on
++/*		blcs	cache_on */	/* yamano debug */
+ 
+ restart:	adr	r0, LC0
+ 		ldmia	r0, {r1, r2, r3, r6, r10, r11, r12}
+@@ -297,7 +298,7 @@ restart:	adr	r0, LC0
+ 
+ 		ldmfd	sp!, {r0-r3, ip, lr}
+ 		sub	sp, sp, #0x10000
+-#endif
++#endif	/* CONFIG_ARM_ATAG_DTB_COMPAT */
+ 
+ 		mov	r8, r6			@ use the appended device tree
+ 
+@@ -332,7 +333,7 @@ restart:	adr	r0, LC0
+ 		add	r10, r10, r5
+ 		add	sp, sp, r5
+ dtb_check_done:
+-#endif
++#endif	/* CONFIG_ARM_APPENDED_DTB */
+ 
+ /*
+  * Check to see if we will overwrite ourselves.
+@@ -344,6 +345,7 @@ dtb_check_done:
+  *   r4 + image length <= address of wont_overwrite -> OK
+  * Note: the possible LSB in r4 is harmless here.
+  */
++1:/*		b	1b	* yamano debug */
+ 		add	r10, r10, #16384
+ 		cmp	r4, r10
+ 		bhs	wont_overwrite
+@@ -405,8 +407,9 @@ dtb_check_done:
+ #endif
+ 
+ 		tst	r4, #1
++/*
+ 		bleq	cache_clean_flush
+-
++*/	/* yamano */
+ 		adr	r0, BSYM(restart)
+ 		add	r0, r0, r6
+ 		mov	pc, r0
+@@ -470,7 +473,7 @@ wont_overwrite:
+ 		str	r1, [r11], #4		@ C references.
+ 		cmp	r11, r12
+ 		blo	1b
+-#endif
++#endif	/* CONFIG_ZBOOT_ROM */
+ 
+ not_relocated:	mov	r0, #0
+ 1:		str	r0, [r2], #4		@ clear bss
+@@ -487,7 +490,7 @@ not_relocated:	mov	r0, #0
+ 		 */
+ 		tst	r4, #1
+ 		bic	r4, r4, #1
+-		blne	cache_on
++/*		blne	cache_on	*/	/* yamano */
+ 
+ /*
+  * The C runtime environment should now be setup sufficiently.
+@@ -501,8 +504,8 @@ not_relocated:	mov	r0, #0
+ 		add	r2, sp, #0x10000	@ 64k max
+ 		mov	r3, r7
+ 		bl	decompress_kernel
+-		bl	cache_clean_flush
+-		bl	cache_off
++/*		bl	cache_clean_flush	*/	/* yamano */
++/*		bl	cache_off		*/	/* yamano */
+ 		mov	r1, r7			@ restore architecture number
+ 		mov	r2, r8			@ restore atags pointer
+ 
+@@ -743,6 +746,7 @@ __armv7_mmu_cache_on:
+ #ifdef CONFIG_CPU_ICACHE_DISABLE
+ 		bic	r0, r0, #1 << 12
+ #endif
++#if 0	/* yamano */
+ 		orrne	r0, r0, #1		@ MMU enabled
+ 		movne	r1, #0xfffffffd		@ domain 0 = client
+ 		bic     r6, r6, #1 << 31        @ 32-bit translation system
+@@ -750,10 +754,13 @@ __armv7_mmu_cache_on:
+ 		mcrne	p15, 0, r3, c2, c0, 0	@ load page table pointer
+ 		mcrne	p15, 0, r1, c3, c0, 0	@ load domain access control
+ 		mcrne   p15, 0, r6, c2, c0, 2   @ load ttb control
++#endif	/* yamano */
+ #endif
++#if 0	/* yamano */
+ 		mcr	p15, 0, r0, c7, c5, 4	@ ISB
+ 		mcr	p15, 0, r0, c1, c0, 0	@ load control register
+ 		mrc	p15, 0, r0, c1, c0, 0	@ and read it back
++#endif /* yamano */
+ 		mov	r0, #0
+ 		mcr	p15, 0, r0, c7, c5, 4	@ ISB
+ 		mov	pc, r12
+@@ -1298,7 +1305,6 @@ __enter_kernel:
+  THUMB(		bx	r4	)		@ entry point is always ARM
+ 
+ reloc_code_end:
+-
+ 		.align
+ 		.section ".stack", "aw", %nobits
+ .L_user_stack:	.space	4096
+diff --git a/arch/arm/boot/compressed/misc.c b/arch/arm/boot/compressed/misc.c
+index 31bd43b..a85b884 100644
+--- a/arch/arm/boot/compressed/misc.c
++++ b/arch/arm/boot/compressed/misc.c
+@@ -23,7 +23,7 @@ unsigned int __machine_arch_type;
+ #include <linux/linkage.h>
+ 
+ static void putstr(const char *ptr);
+-extern void error(char *x);
++/*extern void error(char *x);*/
+ 
+ #include CONFIG_UNCOMPRESS_INCLUDE
+ 
+@@ -103,7 +103,6 @@ extern char input_data[];
+ extern char input_data_end[];
+ 
+ unsigned char *output_data;
+-
+ unsigned long free_mem_ptr;
+ unsigned long free_mem_end_ptr;
+ 
+@@ -111,6 +110,21 @@ unsigned long free_mem_end_ptr;
+ #define arch_error(x)
+ #endif
+ 
++static void	num_to_string(unsigned int data)
++{
++	int i,j;
++	char	num;
++
++	for(i=7,j=0; i>=0 ; i--,j++){
++		num = (data >> (i * 4)) & 0x0000000f;
++		if((num - 9) > 0)
++			putc((num-10) + 0x41);
++		else
++			putc(num + 0x30);
++	}
++	flush();
++}
++
+ void error(char *x)
+ {
+ 	arch_error(x);
+@@ -136,17 +150,41 @@ decompress_kernel(unsigned long output_start, unsigned long free_mem_ptr_p,
+ 		int arch_id)
+ {
+ 	int ret;
+-
+ 	output_data		= (unsigned char *)output_start;
+ 	free_mem_ptr		= free_mem_ptr_p;
+ 	free_mem_end_ptr	= free_mem_ptr_end_p;
+ 	__machine_arch_type	= arch_id;
+ 
+ 	arch_decomp_setup();
++#if 0
++	putstr("Debug mode enter\n");
++
++
++	num_to_string((unsigned int)input_data);
++	putstr("\n");
++	num_to_string((unsigned int)input_data_end);
++	putstr("\n");
++	num_to_string((unsigned int)in_dat);
++	putstr("\n");
++	num_to_string((unsigned int)in_dat_end);
++	putstr("\n");
++	num_to_string((unsigned int)output_data);
++	putstr("\n");
+ 
++
++	ret = getc();
++	putc(ret);
++#endif	/* yamano debug */
+ 	putstr("Uncompressing Linux...");
+ 	ret = do_decompress(input_data, input_data_end - input_data,
+ 			    output_data, error);
++#if 0
++	if (ret == -6)	putstr("retunr -6");
++	if (ret == -5)	putstr("retunr -5");
++	if (ret == -4)	putstr("retunr -4");
++	if (ret == -3)	putstr("retunr -3");
++	if (ret == -2)	putstr("retunr -2");
++#endif
+ 	if (ret)
+ 		error("decompressor returned an error");
+ 	else
+-- 
+1.7.1
+

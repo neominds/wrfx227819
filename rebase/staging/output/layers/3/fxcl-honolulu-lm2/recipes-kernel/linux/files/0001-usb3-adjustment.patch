@@ -1,0 +1,117 @@
+From 6e3133d00c78070f5eec0a82d7a3d54a75b21a44 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:23:14 +0900
+Subject: [PATCH 097/170] 0001-usb3-adjustment
+
+
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index 2a4965d..5a594e6 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -115,7 +115,7 @@ dev_err(dwc->dev, "phy_init on USB3\n");
+ 		phy_exit(dwc->usb2_generic_phy);
+ 		return ret;
+ 	}
+-	mdelay(100);
++	mdelay(100*3);	/* yamano debug */
+ 
+ dev_err(dwc->dev, "clear PHY reset ALL\n");
+ 	/* Clear USB3 PHY reset */
+@@ -412,7 +412,7 @@ dev_err(dwc->dev, "dwc3_core_init entry\n");
+ 
+ dev_err(dwc->dev, "prepare soft reset\n");
+ 	/* issue device SoftReset too */
+-	timeout = jiffies + msecs_to_jiffies(500);
++	timeout = jiffies + msecs_to_jiffies(500*3);
+ 	dwc3_writel(dwc->regs, DWC3_DCTL, DWC3_DCTL_CSFTRST);
+ 	do {
+ 		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+@@ -660,7 +660,8 @@ static void usbd_hw_reset(void)
+ 	reg |= (RSTGENSWRSTSTATIC3__SYS_USSD_VCC__MASK |
+ 		RSTGENSWRSTSTATIC3__SYS_USSD__MASK);
+ 	writel(reg, rstgenswrststatic3);
+-	udelay(10);
++	udelay(100);	/* yamano debug */
++//	udelay(10);
+ 	reg &= ~(RSTGENSWRSTSTATIC3__SYS_USSD_VCC__MASK |
+ 		RSTGENSWRSTSTATIC3__SYS_USSD__MASK);
+ 	writel(reg, rstgenswrststatic3);
+diff --git a/drivers/usb/dwc3/gadget.c b/drivers/usb/dwc3/gadget.c
+index 0534b36..3b9554c 100644
+--- a/drivers/usb/dwc3/gadget.c
++++ b/drivers/usb/dwc3/gadget.c
+@@ -1000,6 +1000,7 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
+ 		 * This is only possible with faulty memory because we
+ 		 * checked it already :)
+ 		 */
++		dev_err(dwc->dev, "!!! BUG  !!! HN\n");
+ 		BUG();
+ 	}
+ 
+@@ -1176,6 +1177,11 @@ static int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep, u16 cmd_param,
+ 		 */
+ 		req = next_request(&dep->req_queued);
+ 	}
++#if	0	/* HN NG*/
++	if (dwc->gadget.speed == USB_SPEED_SUPER) {
++		dwc3_gadget_suspend(dwc);
++	}	
++#endif
+ 	if (!req) {
+ 		dep->flags |= DWC3_EP_PENDING_REQUEST;
+ 		return 0;
+@@ -1597,7 +1603,8 @@ static int dwc3_gadget_wakeup(struct usb_gadget *g)
+ 	}
+ 
+ 	/* poll until Link State changes to ON */
+-	timeout = jiffies + msecs_to_jiffies(100);
++/*	timeout = jiffies + msecs_to_jiffies(100);*/
++	timeout = jiffies + msecs_to_jiffies(100)*5;/* HN added *5*/
+ 
+ 	while (!time_after(jiffies, timeout)) {
+ 		reg = dwc3_readl(dwc->regs, DWC3_DSTS);
+@@ -2271,7 +2278,10 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
+ 	case DWC3_DEPEVT_EPCMDCMPLT:
+ 		
+ //		printk(KERN_ERR "*** %s Endpoint Command Complete\n",__FUNCTION__);
+-		dev_vdbg(dwc->dev, "Endpoint Command Complete\n");
++		dev_dbg(dwc->dev, "Endpoint Command Complete\n");
++		break;
++	default:
++		dev_dbg(dwc->dev, "Unknown Endpoint Command %xH HN\n",event->endpoint_event);
+ 		break;
+ 	}
+ }
+@@ -2563,6 +2573,9 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
+ 		dwc->gadget.ep0->maxpacket = 8;
+ 		dwc->gadget.speed = USB_SPEED_LOW;
+ 		break;
++	default:
++		dev_vdbg(dwc->dev, "??? SPEED UNKNOW ???HN\n");
++		break;
+ 	}
+ 
+ 	/* Enable USB2 LPM Capability */
+@@ -2737,7 +2750,8 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
+ 
+ 	switch (next) {
+ 	case DWC3_LINK_STATE_U1:
+-		if (dwc->speed == USB_SPEED_SUPER)
++/*		if (dwc->speed == USB_SPEED_SUPER)*/
++		if (dwc->speed == USB_SPEED_UNKNOWN && dwc->gadget.speed == USB_SPEED_SUPER)
+ 			dwc3_suspend_gadget(dwc);
+ 		break;
+ 	case DWC3_LINK_STATE_U2:
+@@ -2747,6 +2761,9 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
+ 	case DWC3_LINK_STATE_RESUME:
+ 		dwc3_resume_gadget(dwc);
+ 		break;
++	case DWC3_LINK_STATE_U0:
++		if (dwc->link_state == DWC3_LINK_STATE_POLL && dwc->speed == USB_SPEED_UNKNOWN && dwc->gadget.speed == USB_SPEED_SUPER)
++			dwc3_suspend_gadget(dwc);
+ 	default:
+ 		/* do nothing */
+ 		break;
+-- 
+1.7.1
+

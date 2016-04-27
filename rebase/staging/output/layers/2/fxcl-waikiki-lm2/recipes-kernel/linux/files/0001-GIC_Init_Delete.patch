@@ -1,0 +1,70 @@
+From 55306b06da0ab8e2c5ad23ae61c0b708c53dcb51 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:47:56 +0900
+Subject: [PATCH 102/169] 0001-GIC_Init_Delete
+
+
+diff --git a/drivers/irqchip/irq-gic.c b/drivers/irqchip/irq-gic.c
+index 07ce350..cfdb695 100644
+--- a/drivers/irqchip/irq-gic.c
++++ b/drivers/irqchip/irq-gic.c
+@@ -259,12 +259,15 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
+ 	if (cpu >= NR_GIC_CPU_IF || cpu >= nr_cpu_ids)
+ 		return -EINVAL;
+ 
++#ifdef	CONFIG_ARCH_LM2
++#else	/* CONFIG_ARCH_LM2 */
+ 	raw_spin_lock(&irq_controller_lock);
+ 	mask = 0xff << shift;
+ 	bit = gic_cpu_map[cpu] << shift;
+ 	val = readl_relaxed(reg) & ~mask;
+ 	writel_relaxed(val | bit, reg);
+ 	raw_spin_unlock(&irq_controller_lock);
++#endif	/* CONFIG_ARCH_LM2 */
+ 
+ 	return IRQ_SET_MASK_OK;
+ }
+@@ -388,12 +391,15 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
+ 
+ 	writel_relaxed(0, base + GIC_DIST_CTRL);
+ 
++#ifndef	CONFIG_ARCH_LM2
+ 	/*
+ 	 * Set all global interrupts to be level triggered, active low.
+ 	 */
+ 	for (i = 32; i < gic_irqs; i += 16)
+ 		writel_relaxed(0, base + GIC_DIST_CONFIG + i * 4 / 16);
++#endif	/* CONFIG_ARCH_LM2 */
+ 
++#ifndef	CONFIG_ARCH_LM2
+ 	/*
+ 	 * Set all global interrupts to this CPU only.
+ 	 */
+@@ -402,19 +408,24 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
+ 	cpumask |= cpumask << 16;
+ 	for (i = 32; i < gic_irqs; i += 4)
+ 		writel_relaxed(cpumask, base + GIC_DIST_TARGET + i * 4 / 4);
++#endif	/* CONFIG_ARCH_LM2 */
+ 
++#ifndef	CONFIG_ARCH_LM2
+ 	/*
+ 	 * Set priority on all global interrupts.
+ 	 */
+ 	for (i = 32; i < gic_irqs; i += 4)
+ 		writel_relaxed(0xa0a0a0a0, base + GIC_DIST_PRI + i * 4 / 4);
++#endif	/* CONFIG_ARCH_LM2 */
+ 
++#ifndef	CONFIG_ARCH_LM2
+ 	/*
+ 	 * Disable all interrupts.  Leave the PPI and SGIs alone
+ 	 * as these enables are banked registers.
+ 	 */
+ 	for (i = 32; i < gic_irqs; i += 32)
+ 		writel_relaxed(0xffffffff, base + GIC_DIST_ENABLE_CLEAR + i * 4 / 32);
++#endif	/* CONFIG_ARCH_LM2 */
+ 
+ 	writel_relaxed(1, base + GIC_DIST_CTRL);
+ }
+-- 
+1.7.1
+

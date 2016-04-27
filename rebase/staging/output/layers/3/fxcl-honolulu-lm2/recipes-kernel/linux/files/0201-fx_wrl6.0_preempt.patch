@@ -1,0 +1,33 @@
+From a08cc0f1b6732222e91b7b50f9d331d5ba7b3a42 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:24:30 +0900
+Subject: [PATCH 156/170] 0201-fx_wrl6.0_preempt
+
+
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 3dccac2..79874f0 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -7456,8 +7456,8 @@ void __might_sleep(const char *file, int line, int preempt_offset)
+ {
+ 	static unsigned long prev_jiffy;	/* ratelimiting */
+ 
+-	rcu_sleep_check(); /* WARN_ON_ONCE() by default, no rate limit reqd. */
+-	if ((preempt_count_equals(preempt_offset) && !irqs_disabled() &&
++/*	rcu_sleep_check(); */ /* WARN_ON_ONCE() by default, no rate limit reqd. */
++/*	if ((preempt_count_equals(preempt_offset) && !irqs_disabled() &&
+ 	     !is_idle_task(current)) ||
+ 	    system_state != SYSTEM_RUNNING || oops_in_progress)
+ 		return;
+@@ -7483,7 +7483,7 @@ void __might_sleep(const char *file, int line, int preempt_offset)
+ 		pr_cont("\n");
+ 	}
+ #endif
+-	dump_stack();
++	dump_stack(); */
+ }
+ EXPORT_SYMBOL(__might_sleep);
+ #endif
+-- 
+1.7.1
+

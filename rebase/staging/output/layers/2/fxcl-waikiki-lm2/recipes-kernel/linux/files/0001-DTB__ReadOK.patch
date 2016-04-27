@@ -1,0 +1,180 @@
+From 4f0b755c07e769630f034a1b8402b85d6b71c306 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:47:10 +0900
+Subject: [PATCH 066/169] 0001-DTB__ReadOK
+
+
+diff --git a/arch/arm/boot/compressed/Makefile b/arch/arm/boot/compressed/Makefile
+index e60f192..725abfa 100644
+--- a/arch/arm/boot/compressed/Makefile
++++ b/arch/arm/boot/compressed/Makefile
+@@ -133,7 +133,7 @@ KBSS_SZ = $(shell $(CROSS_COMPILE)size $(obj)/../../../../vmlinux | \
+ LDFLAGS_vmlinux = --defsym _kernel_bss_size=$(KBSS_SZ)
+ # Supply ZRELADDR to the decompressor via a linker symbol.
+ ifneq ($(CONFIG_AUTO_ZRELADDR),y)
+-LDFLAGS_vmlinux += --defsym zreladdr=$(ZRELADDR)
++LDFLAGS_vmlinux += --defsym zreladdr=$(ZRELADDR) --defsym initrd_phys=$(INITRD_PHYS)
+ endif
+ ifeq ($(CONFIG_CPU_ENDIAN_BE8),y)
+ LDFLAGS_vmlinux += --be8
+diff --git a/arch/arm/boot/compressed/head.S b/arch/arm/boot/compressed/head.S
+index b348794..de6e72d 100644
+--- a/arch/arm/boot/compressed/head.S
++++ b/arch/arm/boot/compressed/head.S
+@@ -142,7 +142,12 @@ start:
+ /*		bl	__hyp_stub_install */	@ get into SVC mode, reversibly
+ #endif
+ 		mov	r7, r1			@ save architecture ID
++#if 1	/* r8=atag pointer*/
++		ldr     r8, =initrd_phys
++		add     r8, r8, #0x100
++#else
+ 		mov	r8, r2			@ save atags pointer
++#endif
+ 
+ #ifndef __ARM_ARCH_2__
+ 		/*
+@@ -299,8 +304,24 @@ restart:	adr	r0, LC0
+ 		ldmfd	sp!, {r0-r3, ip, lr}
+ 		sub	sp, sp, #0x10000
+ #endif	/* CONFIG_ARM_ATAG_DTB_COMPAT */
+-
++#if 1	/* memcopy */
++		add	sp, sp, #0x10000
++		stmfd	sp!, {r0-r3, ip, lr}
++		ldr	r2, [r6, #4]
++#ifndef __ARMEB__
++		eor     r1, r2, r2, ror #16
++		bic     r1, r1, #0x00ff0000
++		mov     r2, r2, ror #8
++		eor     r2, r2, r1, lsr #8
++#endif
++		mov     r1, r6
++		mov     r0, r8
++		bl	memcpy
++		ldmfd	sp!, {r0-r3, ip, lr}
++		sub	sp, sp, #0x10000
++#else
+ 		mov	r8, r6			@ use the appended device tree
++#endif
+ 
+ 		/*
+ 		 * Make sure that the DTB doesn't end up in the final
+diff --git a/arch/arm/kernel/devtree.c b/arch/arm/kernel/devtree.c
+index 2ee8a17..0db44e6 100644
+--- a/arch/arm/kernel/devtree.c
++++ b/arch/arm/kernel/devtree.c
+@@ -198,8 +198,11 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
+ 
+ 	if (!dt_phys)
+ 		return NULL;
+-
++#if 1	/* LM2 */
++	devtree = phys_to_virt((unsigned long long)dt_phys | 0x800000000);
++#else
+ 	devtree = phys_to_virt(dt_phys);
++#endif
+ 
+ 	/* check device tree validity */
+ 	if (be32_to_cpu(devtree->magic) != OF_DT_HEADER)
+diff --git a/arch/arm/mach-lm2/Kconfig b/arch/arm/mach-lm2/Kconfig
+index b7d53bf..25fcc8c 100644
+--- a/arch/arm/mach-lm2/Kconfig
++++ b/arch/arm/mach-lm2/Kconfig
+@@ -17,7 +17,6 @@ config ARCH_LM2_DT
+ 	select ARCH_VEXPRESS_CORTEX_A5_A9_ERRATA
+ 	select ARM_GIC
+ 	select ARM_PATCH_PHYS_VIRT
+-	select AUTO_ZRELADDR
+ 	select CPU_V7
+ 	select HAVE_SMP
+ 	select MIGHT_HAVE_CACHE_L2X0
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index cb82e17..8ea9b07 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -415,7 +415,7 @@ void __init lm2_dt_map_io(void)
+ 
+ }
+ 
+-static u32 osc;
++//static u32 osc;
+ 
+ /*
+  * Device Tree Brob Initializer
+@@ -427,6 +427,7 @@ void __init lm2_dt_init_early(void)
+ /*
+  * GIC find data 
+  */
++#if 0
+ static  struct of_device_id lm2_irq_match[] __initdata = {
+ 	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init, },
+ 	{}
+@@ -439,6 +440,7 @@ static void __init lm2_dt_init_irq(void)
+ {
+ 	of_irq_init(lm2_irq_match);
+ }
++#endif
+ 
+ /*
+  * Kernel timer initialize routine by DTB
+@@ -458,24 +460,41 @@ static void __init lm2_dt_timer_init(void)
+ 	node = of_find_node_by_path(path);
+ 
+ 	/* timer device add device node */
+-	regbase = of_iomap(node,0)
+-	timer_irq = irq_of_parse_and_map(node,0);
+-	clocksource_register_hz(&clocksource,LM2_TIMER_HZ);
++//	regbase = of_iomap(node,0);
++//	timer_irq = irq_of_parse_and_map(node,0);
++//	clocksource_register_hz(&clocksource,LM2_TIMER_HZ);
++//	clocksource_register_hz(&clocksource,LM2_TIM32_CLK);
+ }
+ 
+ /*
+  * init_machine by DTB
+  */
++static const struct of_device_id lm2_dt_bus_match[] __initconst = {
++        { .compatible = "simple-bus", },
++        { .compatible = "arm,amba-bus", },
++        { .compatible = "arm,vexpress,config-bus", },
++        {}
++};
++
+ static void __init lm2_dt_init(void)
+ {
++        void __iomem *virt_addr;
++
++	/* Serial DTB ok */
++	virt_addr = ioremap(LM2_UART_1_BASE,0x32);
++	lm2_serial_resource[0].membase = virt_addr;
++	virt_addr = ioremap(LM2_UART_0_BASE,0x32);
++	lm2_serial_resource[1].membase = virt_addr;
++	platform_device_register(&lm2_serial_device);
+ 
+ //	l2x0_of_init(0x00400000, 0xfe0fffff);
++	of_platform_populate(NULL, lm2_dt_bus_match, NULL, NULL);
+ }
+ 
+ /*
+  * match string for dtb
+  */
+-const static char *lm2_dt_match[] __initconst = {
++static const char * const lm2_dt_match[] __initconst = {
+ 	"FujiXerox,waikiki",
+ 	NULL,
+ };
+@@ -487,8 +506,8 @@ DT_MACHINE_START(LM2_DT, "FujiXerox Waikiki")
+ #endif
+ 	.map_io		= lm2_dt_map_io,
+ 	.init_early	= lm2_dt_init_early,
+-	.init_irq	= lm2_dt_init_irq,
+-	.init_time	= &lm2_dt_timer,
++	.init_irq	= lm2_init_irq,
++	.init_time	= &lm2_timer_init,
+ 	.init_machine	= lm2_dt_init,
+ MACHINE_END
+ 
+-- 
+1.7.1
+

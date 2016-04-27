@@ -1,0 +1,58 @@
+From f8219b31a18e532d0b86ed17388085b3f79c4f80 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:47:23 +0900
+Subject: [PATCH 076/169] 0001-change-IRQ-shared-for-i2c
+
+
+diff --git a/drivers/i2c/busses/i2c-lm2.c b/drivers/i2c/busses/i2c-lm2.c
+index 2b5df93..89a7f35 100644
+--- a/drivers/i2c/busses/i2c-lm2.c
++++ b/drivers/i2c/busses/i2c-lm2.c
+@@ -74,20 +74,24 @@ static irqreturn_t lm2_i2c_irq(int irq, void *ptr)
+ 	unsigned long msr, fsr, fier, len, stat;
+ 
+ 	stat = readl(id->miscbase + MISC_INT_STS);
+-	if(stat & E2P_TRANS_COMP){
+-		/* complete */
+-		id->status = E2P_TRANS_DONE;
+-	}
+-	if(stat & E2P_ACK_ERR){
+-		id->status = 0;
+-	}
++	if((stat & E2P_TRANS_COMP) || (stat & E2P_ACK_ERR)){
++		if(stat & E2P_TRANS_COMP){
++			/* complete */
++			id->status = E2P_TRANS_DONE;
++		}
++		if(stat & E2P_ACK_ERR){
++			id->status = 0;
++		}
+ finish:
+-	stat |= E2P_TRANS_COMP;
+-	writel(stat, id->miscbase + MISC_INT_CLEAR);
++		stat |= E2P_TRANS_COMP;
++		writel(stat, id->miscbase + MISC_INT_CLEAR);
+ 
+-	complete(&id->xfer_done);
++		complete(&id->xfer_done);
+ 
+-	return IRQ_HANDLED;
++		return IRQ_HANDLED;
++	}
++node:
++	return	IRQ_NONE;
+ }
+ 
+ 
+@@ -291,7 +295,7 @@ static int lm2_i2c_probe(struct platform_device *pdev)
+ 	snprintf(id->adap.name, sizeof(id->adap.name),
+ 		"LM2 I2C at %08lx", (unsigned long)res->start);
+ 
+-	if (request_irq(id->irq, lm2_i2c_irq, 0,
++	if (request_irq(id->irq, lm2_i2c_irq, IRQF_SHARED,
+ 			"lm2-i2c", id)) {
+ 		dev_err(&pdev->dev, "cannot get irq %d\n", id->irq);
+ 		ret = -EBUSY;
+-- 
+1.7.1
+

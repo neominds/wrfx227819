@@ -1,0 +1,872 @@
+From 7334e20c74ce9a16ce3ae97031137618ae693c7b Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Thu, 24 Mar 2016 16:11:30 +0900
+Subject: [PATCH 1/1] XSPI_patch
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mach-lm2/lm2.c              |   25 ++
+ arch/arm/mach-lm2/xspi.c             |   14 +-
+ drivers/spi/xspi.c                   |  565 ++++++++++++++++++++++------------
+ include/linux/spi/tpm_stm_st33_spi.h |   46 +++
+ 4 files changed, 443 insertions(+), 207 deletions(-)
+ create mode 100644 include/linux/spi/tpm_stm_st33_spi.h
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index a921646..dbf3866 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -46,6 +46,11 @@
+ 
+ #include "core.h"
+ 
++/* #ifdef CONFIG_TCG_ST33_SPI_OPTION */ 
++#include <linux/spi/tpm_stm_st33_spi.h> 
++#include <linux/spi/spi.h> 
++/* #endif */ /* CONFIG_TCG_ST33_SPI_OPTION */ 
++
+ #if 1	/* WR Change */
+ #define OS_PRODUCT_ID_BOMBORA    0x33
+ #define OS_PRODUCT_ID_KAIMANA    0x34
+@@ -359,6 +364,22 @@ static	struct platform_device lm2_pcie_device = {
+ 	.num_resources	= ARRAY_SIZE(lm2_pcie_resource),
+ };
+ 
++/* #ifdef CONFIG_TCG_ST33_SPI_OPTION */ 
++static struct st33zp24_platform_data tpm_data = {
++    .io_serirq = 52,
++};
++
++static struct spi_board_info tpm_st33_spi_board_info[] = {
++        {
++                .modalias = TPM_ST33_SPI,
++                .max_speed_hz = 10000000,
++                .bus_num = 0,
++                .chip_select = 2,
++                .mode = SPI_MODE_0,
++                .platform_data = &tpm_data,
++        },
++};
++/* #endif*/ /* CONFIG_TCG_ST33_SPI_OPTION */
+ 
+ static void __init lm2_init_early(void)
+ {
+@@ -574,6 +595,10 @@ static void __init lm2_dt_init(void)
+ #ifdef	CONFIG_SPI_XSPI
+ 	lm2_xspi_register();
+ #endif	/* CONFIG_SPI_XSPI */
++	
++/* #ifdef CONFIG_TCG_ST33_SPI_OPTION */
++        spi_register_board_info(tpm_st33_spi_board_info, ARRAY_SIZE(tpm_st33_spi_board_info));
++/* #endif */ /* CONFIG_TCG_ST33_SPI_OPTION */
+ 
+ 	of_platform_populate(NULL, lm2_dt_bus_match, NULL, NULL);
+ 	node = of_find_matching_node(NULL,lm2_pcie_match);
+diff --git a/arch/arm/mach-lm2/xspi.c b/arch/arm/mach-lm2/xspi.c
+index 800bbee..32b6c86 100644
+--- a/arch/arm/mach-lm2/xspi.c
++++ b/arch/arm/mach-lm2/xspi.c
+@@ -69,13 +69,13 @@ static	struct spi_board_info	lm2_spi_devices[] __initdata = {
+ 		.max_speed_hz	= 580000,
+ 		.mode		= SPI_MODE_0,
+ 	},
+-	{
+-		.modalias	= "spidev",
+-		.bus_num	= 0,
+-		.chip_select	= 2,
+-		.max_speed_hz	= 580000,
+-		.mode		= SPI_MODE_0,
+-	},
++//	{
++//		.modalias	= "spidev",
++//		.bus_num	= 0,
++//		.chip_select	= 2,
++//		.max_speed_hz	= 580000,
++//		.mode		= SPI_MODE_0,
++//	},
+ };
+ 
+ static	struct resource	lm2_xspi_resource[] = {
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index 8dbc5db..faee890 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -1,28 +1,28 @@
+ /*
+- * xspi.c - lm2 xspi driver
+- *
+- * Copyright (C) Wind River Systems, Inc.
+- *
+- * base on sram.c driver
+- *
+- * Generic on-chip SRAM allocation driver
+- *
+- * Copyright (C) 2012 Philipp Zabel, Pengutronix
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License
+- * as published by the Free Software Foundation; either version 2
+- * of the License, or (at your option) any later version.
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, write to the Free Software
+- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+- * MA 02110-1301, USA.
+- */
++* xspi.c - lm2 xspi driver
++*
++* Copyright (C) Wind River Systems, Inc.
++*
++* base on sram.c driver
++*
++* Generic on-chip SRAM allocation driver
++*
++* Copyright (C) 2012 Philipp Zabel, Pengutronix
++*
++* This program is free software; you can redistribute it and/or
++* modify it under the terms of the GNU General Public License
++* as published by the Free Software Foundation; either version 2
++* of the License, or (at your option) any later version.
++* This program is distributed in the hope that it will be useful,
++* but WITHOUT ANY WARRANTY; without even the implied warranty of
++* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++* GNU General Public License for more details.
++*
++* You should have received a copy of the GNU General Public License
++* along with this program; if not, write to the Free Software
++* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
++* MA 02110-1301, USA.
++*/
+ 
+ #include <linux/kernel.h>
+ #include <linux/clk.h>
+@@ -100,271 +100,277 @@
+ #define	TYPE_FRAM	1
+ #define	TYPE_MRAM	2
+ 
++/* offset */
++#define PIOSETB		0x000000C4 // 2016.01.20
++#define PIORESB		0x000000E4 // 2016.01.20
++
+ struct xspi_dev {
+-	struct mutex		lock;
+-	struct completion	done;
+-	volatile void __iomem	*reg_base;
+-	int			irq;
+-
+-	int			mem_type;
+-	int			len;
+-	u8			*tx_buf;
+-	u8			*rx_buf;
+-	int			stat;
+-	struct clk		*clk;
++struct mutex		lock;
++struct completion	done;
++volatile void __iomem	*reg_base;
++int			irq;
++
++int			mem_type;
++int			len;
++u8			*tx_buf;
++u8			*rx_buf;
++int			stat;
++struct clk		*clk;
+ };
+ 
++volatile void __iomem   *treg_base; // 2016.01.20
++
+ static struct xspi_dev	*xspi_api_lib = NULL;
+ 
+ static	inline	u32 xspi_rd(struct xspi_dev *dev, unsigned int reg)
+ {
+ #ifdef	XSPI_DEBUG_REG
+-	u32	data;
++u32	data;
+ 
+-	data = readl(dev->reg_base + reg);
++data = readl(dev->reg_base + reg);
+ 
+-	printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, dev->reg_base + reg, data);
++printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, dev->reg_base + reg, data);
+ 
+-	return	data;
++return	data;
+ #else
+-	return	readl(dev->reg_base + reg);
++return	readl(dev->reg_base + reg);
+ #endif
+ }
+ 
+ static	inline	void	xspi_wr(struct xspi_dev *dev, unsigned int reg, u32 val)
+ {
+ #ifdef	XSPI_DEBUG_REG
+-	printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, dev->reg_base + reg, val);
++printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, dev->reg_base + reg, val);
+ 
+-	writel(val, dev->reg_base + reg);
++writel(val, dev->reg_base + reg);
+ #else
+ //	*((unsigned int *)(dev->reg_base + reg)) = val;
+ //	writel(val, dev->reg_base + reg);
+-	__raw_writel(val, dev->reg_base + reg);
++__raw_writel(val, dev->reg_base + reg);
+ #endif
+-	barrier();
++barrier();
+ }
+ 
+ static	void	xspi_write_disable(struct xspi_dev *dev, int cs)
+ {
+-	u32	reg;
++u32	reg;
+ 
+-	reg = xspi_rd(dev, (SPI_CFG + cs ));
+-	reg = reg & 0xfffffff0;
+-	reg = reg | 0x00000007;
+-	xspi_wr(dev, (SPI_CFG + cs), reg);
++reg = xspi_rd(dev, (SPI_CFG + cs ));
++reg = reg & 0xfffffff0;
++reg = reg | 0x00000007;
++xspi_wr(dev, (SPI_CFG + cs), reg);
+ 
+ //	init_completion(&dev->done);
+ 
+-	reg = SPI_CMD_START | (SPI_WRDI_CMD << 16);	/* 0x80040000 */
+-	xspi_wr(dev, (SPI_LIT + cs), reg);	
++reg = SPI_CMD_START | (SPI_WRDI_CMD << 16);	/* 0x80040000 */
++xspi_wr(dev, (SPI_LIT + cs), reg);	
+ 
+-	while(xspi_rd(dev , SPI_CST) & 0xc000){};
++while(xspi_rd(dev , SPI_CST) & 0xc000){};
+ //	wait_for_completion(&dev->done);
+-	
+-	return;
++
++return;
+ }
+ 
+ static	void	xspi_write_enable(struct xspi_dev *dev, int cs)
+ {
+-	u32	reg;
++u32	reg;
+ 
+-	reg = xspi_rd(dev, (SPI_CFG + cs));
+-	reg = reg & 0xfffffff0;
+-	reg = reg | 0x00000007;
+-	xspi_wr(dev, (SPI_CFG + cs), reg);
++reg = xspi_rd(dev, (SPI_CFG + cs));
++reg = reg & 0xfffffff0;
++reg = reg | 0x00000007;
++xspi_wr(dev, (SPI_CFG + cs), reg);
+ 
+ //	init_completion(&dev->done);
+ 
+-	reg = SPI_CMD_START | (SPI_WREN_CMD << 16);	/* 0x80060000 */
+-	xspi_wr(dev, (SPI_LIT + cs), reg);	
+-	
+-	while(xspi_rd(dev , SPI_CST) & 0xc000){};
++reg = SPI_CMD_START | (SPI_WREN_CMD << 16);	/* 0x80060000 */
++xspi_wr(dev, (SPI_LIT + cs), reg);
++while(xspi_rd(dev , SPI_CST) & 0xc000){};
+ //	wait_for_completion(&dev->done);
+ 
+-	return;
++return;
+ }
+ 
+ static	void	xspi_clear_fifo(struct xspi_dev *dev)
+ {
+-	int	cnt;
++int	cnt;
+ 
+-	for(cnt = 0 ; cnt < 0x20 ; cnt++ ){
+-		xspi_wr(dev, SPI_FIFO, 0x00000000);
+-	}
+-	xspi_wr(dev, SPI_DCTL, 0x00000180);
++for(cnt = 0 ; cnt < 0x20 ; cnt++ ){
++	xspi_wr(dev, SPI_FIFO, 0x00000000);
++}
++xspi_wr(dev, SPI_DCTL, 0x00000180);
+ }
+ #if 0
+ static	irqreturn_t	xspi_interrupt(int irq, void *dev_id)
+ {
+-	struct spi_master	*master = dev_id;
+-	struct xspi_dev		*dev = spi_master_get_devdata(master);
+-	u32	stat;
++struct spi_master	*master = dev_id;
++struct xspi_dev		*dev = spi_master_get_devdata(master);
++u32	stat;
+ 
+ #ifdef	CONFIG_ARCH_LM2 
+-	stat = 0xffffffff;
++stat = 0xffffffff;
+ #else	/* CONFIG_ARCH_LM2 */
+-	stat = xspi_rd(dev, SPI_SPIINT);
++stat = xspi_rd(dev, SPI_SPIINT);
+ #endif	/* CONFIG_ARCH_LM2 */
+-	if(stat & SPI_SPIINT_DONE){
+-		dev->stat = 0;
+-	}else{
+-		dev->stat = stat;
+-	}
+-	xspi_wr(dev, SPI_SPIINT, stat);
+-	complete(&dev->done);
+-	return	IRQ_HANDLED;
++if(stat & SPI_SPIINT_DONE){
++	dev->stat = 0;
++}else{
++	dev->stat = stat;
++}
++xspi_wr(dev, SPI_SPIINT, stat);
++complete(&dev->done);
++return	IRQ_HANDLED;
+ }
+ #endif
+ static	int	xspi_read_trans(struct xspi_dev *xspi, int adr, int offset)
+ {
+-	unsigned int	reg;
+-	unsigned int	cmd;
++unsigned int	reg;
++unsigned int	cmd;
+ 
+-	xspi_clear_fifo(xspi);  /* fifo clear */
+-	/* err */
+-	xspi_wr(xspi, SPI_ERR, 0x00);
++xspi_clear_fifo(xspi);  /* fifo clear */
++/* err */
++xspi_wr(xspi, SPI_ERR, 0x00);
+ 
+-	/* Endian */
+-	reg = xspi_rd(xspi, SPI_CFG + offset);
++/* Endian */
++reg = xspi_rd(xspi, SPI_CFG + offset);
+ //	reg |= 0xca000007;
+-	reg |= 0x08000000;
+-	xspi_wr(xspi, SPI_CFG + offset, reg);
++reg |= 0x08000000;
++xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+-	/* DCTL */
+-	reg = 0x100;
+-	xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
++/* DCTL */
++reg = 0x100;
++xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
+ 
+-	/* DCTL */
+-	reg = xspi_rd(xspi, SPI_DCTL);
+-	reg |= 0x80;
+-	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
++/* DCTL */
++reg = xspi_rd(xspi, SPI_DCTL);
++reg |= 0x80;
++xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
+ 
+-	/* SPI Command */
+-	cmd = (SPI_RD_CMD << 24) | (adr << 16);
+-	xspi_wr(xspi, SPI_FIFO, cmd);
++/* SPI Command */
++cmd = (SPI_RD_CMD << 24) | (adr << 16);
++xspi_wr(xspi, SPI_FIFO, cmd);
+ 
+-	/* Operation */
+-	cmd = 0xe00fc007;
+-	xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
++/* Operation */
++cmd = 0xe00fc007;
++xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
+ 
+-	while(xspi_rd(xspi, SPI_CST) & 0xc000){};
++while(xspi_rd(xspi, SPI_CST) & 0xc000){};
+ 
+-	return	(xspi_rd(xspi, SPI_FIFO) >> 24);
++return	(xspi_rd(xspi, SPI_FIFO) >> 24);
+ }
+ 
+ static	int	xspi_read_trans24(struct xspi_dev *xspi, int adr, int offset)
+ {
+-	unsigned int	reg;
+-	unsigned int	cmd;
++unsigned int	reg;
++unsigned int	cmd;
+ 
+-	xspi_clear_fifo(xspi);  /* fifo clear */
+-	/* err */
+-	xspi_wr(xspi, SPI_ERR, 0x00);
++xspi_clear_fifo(xspi);  /* fifo clear */
++/* err */
++xspi_wr(xspi, SPI_ERR, 0x00);
+ 
+-	/* Endian */
+-	reg = xspi_rd(xspi, SPI_CFG + offset);
++/* Endian */
++reg = xspi_rd(xspi, SPI_CFG + offset);
+ //	reg |= 0xca000007;
+-	reg |= 0x08000000;
+-	xspi_wr(xspi, SPI_CFG + offset, reg);
++reg |= 0x08000000;
++xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+-	/* DCTL */
+-	reg = 0x100;
+-	xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
++/* DCTL */
++reg = 0x100;
++xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
+ 
+-	/* DCTL */
+-	reg = xspi_rd(xspi, SPI_DCTL);
+-	reg |= 0x80;
+-	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
++/* DCTL */
++reg = xspi_rd(xspi, SPI_DCTL);
++reg |= 0x80;
++xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
+ 
+-	/* SPI Command */
+-	cmd = (SPI_RD_CMD << 24) | (adr & 0x00ffffff);
+-	xspi_wr(xspi, SPI_FIFO, cmd);
++/* SPI Command */
++cmd = (SPI_RD_CMD << 24) | (adr & 0x00ffffff);
++xspi_wr(xspi, SPI_FIFO, cmd);
+ 
+-	/* Operation */
+-	cmd = 0xe01fc007;
+-	xspi_wr(xspi, SPI_CMD + offset, cmd);	/* operation start */
++/* Operation */
++cmd = 0xe01fc007;
++xspi_wr(xspi, SPI_CMD + offset, cmd);	/* operation start */
+ 
+-	while(xspi_rd(xspi, SPI_CST) & 0xc000){};
++while(xspi_rd(xspi, SPI_CST) & 0xc000){};
+ 
+-	return	(xspi_rd(xspi, SPI_FIFO) >> 24);
++return	(xspi_rd(xspi, SPI_FIFO) >> 24);
+ }
+ 
++
+ static	void	xspi_write_trans(struct xspi_dev *xspi, int adr, char dat, int offset)
+ {
+-	unsigned int	reg;
+-	unsigned int	cmd;
++unsigned int	reg;
++unsigned int	cmd;
+ 
+-	xspi_clear_fifo(xspi);  /* fifo clear */
+-	/* err */
+-	xspi_wr(xspi, SPI_ERR, 0x00);
++xspi_clear_fifo(xspi);  /* fifo clear */
++/* err */
++xspi_wr(xspi, SPI_ERR, 0x00);
+ 
+-	/* Endian */
+-	reg = xspi_rd(xspi, SPI_CFG + offset);
++/* Endian */
++reg = xspi_rd(xspi, SPI_CFG + offset);
+ //	reg |= 0xca000007;
+-	reg |= 0x08000000;
+-	xspi_wr(xspi, SPI_CFG + offset, reg);
++reg |= 0x08000000;
++xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+-	/* DCTL */
+-	reg = 0x100;
+-	xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
++/* DCTL */
++reg = 0x100;
++xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
+ 
+-	/* DCTL */
+-	reg = xspi_rd(xspi, SPI_DCTL);
+-	reg |= 0x80;
+-	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
++/* DCTL */
++reg = xspi_rd(xspi, SPI_DCTL);
++reg |= 0x80;
++xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
+ 
+-	/* SPI Command */
+-	cmd = (SPI_WR_CMD << 24) | (adr << 16) | dat << 8;
++/* SPI Command */
++cmd = (SPI_WR_CMD << 24) | (adr << 16) | dat << 8;
+ //	dev_info(&spi->dev, "command = %x %x\n", cmd,adr);
+-	xspi_wr(xspi, SPI_FIFO, cmd);
++xspi_wr(xspi, SPI_FIFO, cmd);
+ 
+-	/* Operation */
+-	cmd = 0xa017c000;	/* 3byte cmd adr dat no read */
+-	xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
++/* Operation */
++cmd = 0xa017c000;	/* 3byte cmd adr dat no read */
++xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
+ 
+-	while(xspi_rd(xspi, SPI_CST) & 0xc000){};
++while(xspi_rd(xspi, SPI_CST) & 0xc000){};
+ 
+-	return;
++return;
+ }
+ 
+ static	void	xspi_write_trans24(struct xspi_dev *xspi, int adr, char dat, int offset)
+ {
+-	unsigned int	reg;
+-	unsigned int	cmd;
++unsigned int	reg;
++unsigned int	cmd;
+ 
+-	xspi_clear_fifo(xspi);  /* fifo clear */
+-	/* err */
+-	xspi_wr(xspi, SPI_ERR, 0x00);
++xspi_clear_fifo(xspi);  /* fifo clear */
++/* err */
++xspi_wr(xspi, SPI_ERR, 0x00);
+ 
+-	/* Endian */
+-	reg = xspi_rd(xspi, SPI_CFG + offset);
++/* Endian */
++reg = xspi_rd(xspi, SPI_CFG + offset);
+ //	reg |= 0xca000007;
+-	reg |= 0x08000000;
+-	xspi_wr(xspi, SPI_CFG + offset, reg);
++reg |= 0x08000000;
++xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+-	/* DCTL */
+-	reg = 0x100;
+-	xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
++/* DCTL */
++reg = 0x100;
++xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
+ 
+-	/* DCTL */
+-	reg = xspi_rd(xspi, SPI_DCTL);
+-	reg |= 0x80;
+-	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
++/* DCTL */
++reg = xspi_rd(xspi, SPI_DCTL);
++reg |= 0x80;
++xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
+ 
+-	/* SPI Command */
+-	cmd = (SPI_WR_CMD << 24) | (adr & 0x00ffffff);
+-	xspi_wr(xspi, SPI_FIFO, cmd);
+-	cmd = dat << 24;
+-	xspi_wr(xspi, SPI_FIFO, cmd);
++/* SPI Command */
++cmd = (SPI_WR_CMD << 24) | (adr & 0x00ffffff);
++xspi_wr(xspi, SPI_FIFO, cmd);
++cmd = dat << 24;
++xspi_wr(xspi, SPI_FIFO, cmd);
+ 
+-	/* Operation */
+-	cmd = 0xa027c000;	/* 5byte cmd adr dat no read */
+-	xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
++/* Operation */
++cmd = 0xa027c000;	/* 5byte cmd adr dat no read */
++xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
+ 
+-	while(xspi_rd(xspi, SPI_CST) & 0xc000){};
++while(xspi_rd(xspi, SPI_CST) & 0xc000){};
+ 
+-	return;
++return;
+ }
+ 
+ #define	DIR_BUSY	0x00000000
+@@ -374,24 +380,24 @@ static	void	xspi_write_trans24(struct xspi_dev *xspi, int adr, char dat, int off
+ 
+ static  int     xspi_read_prim(struct xspi_dev *xspi,int cs,int width,unsigned int offset,unsigned int length,char *buf);
+ static  int     xspi_write_prim(struct xspi_dev *xspi,int cs,int width,unsigned int offset,unsigned int length,char *buf);
+- 
++
+ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr, int addr)
+ {
+-	struct xspi_dev	*xspi = spi_master_get_devdata(spi->master);
++struct xspi_dev	*xspi = spi_master_get_devdata(spi->master);
+ //	char	*buf;
+-	int	cnt;
++int	cnt;
+ //	u32	reg;
+ 
+ #ifdef	XSPI_DEBUG_FUNC
+-	dev_info(&spi->dev, "xspi_start_transfer\n");
+-	dev_info(&spi->dev, "tfr->len %d\n",tfr->len);
+-	dev_info(&spi->dev, "tfr->cs_change %d\n",tfr->cs_change);
+-	dev_info(&spi->dev, "tfr->bit_per_word %d\n",tfr->bits_per_word);
+-	dev_info(&spi->dev, "tfr->delay_usec %d\n",tfr->delay_usecs);
+-	dev_info(&spi->dev, "tfr->speed_hz %d\n",tfr->speed_hz);
++dev_info(&spi->dev, "xspi_start_transfer\n");
++dev_info(&spi->dev, "tfr->len %d\n",tfr->len);
++dev_info(&spi->dev, "tfr->cs_change %d\n",tfr->cs_change);
++dev_info(&spi->dev, "tfr->bit_per_word %d\n",tfr->bits_per_word);
++dev_info(&spi->dev, "tfr->delay_usec %d\n",tfr->delay_usecs);
++dev_info(&spi->dev, "tfr->speed_hz %d\n",tfr->speed_hz);
+ #endif	/* XSPI_DEBUG */
+ 
+-	mutex_lock(&xspi->lock);
++mutex_lock(&xspi->lock);
+ 
+ //	xspi_wr(xspi, SPI_ERR, 0x00000000);	/* error clear */
+ //	xspi_clear_fifo(xspi);
+@@ -400,16 +406,164 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ if(spi->chip_select == 0)	tfr->bits_per_word = 24;
+ else				tfr->bits_per_word = 8;
+ #endif
+-	if(tfr->tx_buf == NULL){	/* read only */
+-		cnt = xspi_read_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->rx_buf);
+-	}else{
+-		/* read */
+-		if(tfr->rx_buf != NULL)
+-			xspi_read_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->rx_buf);
+-		xspi_write_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->tx_buf);
++if(tfr->tx_buf == NULL){	/* read only */
++	cnt = xspi_read_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->rx_buf);
++}else{
++	/* read */
++	if(tfr->rx_buf != NULL)
++		xspi_read_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->rx_buf);
++	xspi_write_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->tx_buf);
++}
++mutex_unlock(&xspi->lock);
++return	0;
++}
++
++static  int     xspi_start_transfer_tpm(struct spi_device *spi,struct spi_transfer *tfr, int addr)
++{
++struct xspi_dev *xspi = spi_master_get_devdata(spi->master);
++int     cnt;
++u32     reg;
++unsigned int cmd;
++char    wf;
++int	i,j,k;	     // 2016.01.20
++int	total_wcnt;  // 2016.01.20
++int	total_rcnt;  // 2016.01.20
++unsigned int data;   // 2016.01.20
++const char *tbuf;    // 2016.01.20
++char *rbuf;          // 2016.01.20
++j=0;                 // 2016.01.20
++k=0;                 // 2016.01.20
++tbuf = tfr->tx_buf;  // 2016.01.20
++rbuf = tfr->rx_buf;  // 2016.01.20
++
++/*
++dev_info(&spi->dev, "xspi_start_transfer(TPM)\n");
++dev_info(&spi->dev, "tfr->len %d\n",tfr->len);
++dev_info(&spi->dev, "tfr->cs_change %d\n",tfr->cs_change);
++dev_info(&spi->dev, "tfr->bit_per_word %d\n",tfr->bits_per_word);
++dev_info(&spi->dev, "tfr->delay_usec %d\n",tfr->delay_usecs);
++dev_info(&spi->dev, "tfr->speed_hz %d\n",tfr->speed_hz);
++*/
++
++	reg = 1<<(42-32);                                  // 2016.01.20
++	writel(reg, treg_base + PIOSETB);                  // 2016.01.20
++
++        xspi_clear_fifo(xspi);  /* fifo clear */
++        /* err */
++        xspi_wr(xspi, SPI_ERR, 0x00);
++        /* Endian */
++        reg = xspi_rd(xspi, SPI_CFG + 8);
++        reg |= 0xca000007;
++        xspi_wr(xspi, SPI_CFG + 8, reg);
++
++        /* DCTL */
++        reg = 0x100;
++        xspi_wr(xspi, SPI_DCTL, reg);   /* DMA Off */
++        /* DCTL */
++        reg = xspi_rd(xspi, SPI_DCTL);
++        reg |= 0x80;
++        xspi_wr(xspi, SPI_DCTL, reg);   /* FIFO Clear */
++
++	memcpy(&wf, tfr->tx_buf, 1);
++
++	/* Total count */ // 2016.01.20
++	if(wf & 0x80) {	
++	   total_wcnt = (tfr->len -1);
++	   total_rcnt = 1;
++	} else {
++	   total_wcnt = 4;
++	   total_rcnt = (tfr->len -4);
+ 	}
+-	mutex_unlock(&xspi->lock);
+-	return	0;
++
++	reg = 1<<(42-32);                 // 2016.01.20
++	writel(reg, treg_base + PIORESB); // 2016.01.20
++
++continue_fifo_ope:
++ 
++        /* write */
++	xspi_wr(xspi, SPI_DCTL, 0x00000180);
++
++	if(total_wcnt < 65)
++	   cnt = total_wcnt;
++	else
++	   cnt = 64;
++
++	if(total_wcnt !=  0) {
++	   for(i = 0;i < cnt; i++) {
++		if((i % 4) == 0)
++		   data = 0;
++		data |= (tbuf[j] << (8 * (3 - (i % 4))));
++		if((i % 4) == 3 || j == ((tfr->len) - 2)) {
++//		   dev_info(&spi->dev, "### WRITE TPM ### %08x\n",data);
++		   xspi_wr(xspi, SPI_FIFO, data);
++		}
++		j++;
++	  }
++	} 
++
++        /* Create Start CMD */
++	if(wf & 0x80) {
++	   if(total_wcnt < 65)
++	      cmd = 0xe000c000 | (((total_wcnt * 8)-1) << 16) | ((total_rcnt * 8) - 1); // Write + Status
++	   else
++	      cmd = 0xa1ffc000; // Write Only
++	} else {
++	   if(total_wcnt == 0)
++	      cmd = 0xc000c000;
++	   else if(total_wcnt < 65)
++	      cmd = 0xe000c000 | (((total_wcnt*8)-1)<<16);
++	   if(total_rcnt < 65)
++	      cmd = cmd | ((total_rcnt*8)-1);
++	   else
++	      cmd = cmd | 0x1ff;
++	}
++	
++	/* Operation start */
++        xspi_wr(xspi,SPI_CMD + 8,cmd); 
++	while(xspi_rd(xspi, SPI_STAT + 8) & 0x80000000){};	// Y.M
++
++        /* read */
++	if(total_rcnt < 65)
++	   cnt = total_rcnt;
++	else
++	   cnt = 64;
++
++	if(wf & 0x80) {
++	   if(total_wcnt < 65) {
++	      for(i = 0;i < cnt ;i++) {
++		 if((i % 4) == 0) {
++		   data = xspi_rd(xspi, SPI_FIFO);
++//		   dev_info(&spi->dev, "### READ TPM ### %08x\n",data);
++		 }
++		 rbuf[k] = (data >> ((8 * (3 - (i % 4)))) & 0xff);
++		 k++;
++	      }
++	      total_wcnt = 0;
++	      total_rcnt = 0;
++	   } else {
++	      total_wcnt = total_wcnt - 64;
++	   }
++	} else {
++	   for(i = 0;i < cnt ;i++) {
++	      if((i % 4) == 0) {
++		 data = xspi_rd(xspi, SPI_FIFO);
++//		 dev_info(&spi->dev, "### READ TPM ### %08x\n",data);
++	      }	
++	      rbuf[k] = (data >> ((8 * (3 - (i % 4)))) & 0xff);
++	      k++;
++	   }
++	   total_wcnt = 0;
++	   total_rcnt = total_rcnt - cnt;
++	}
++
++	if((total_wcnt + total_rcnt) != 0)
++	   goto continue_fifo_ope;
++
++	reg = 1<<(42-32);                                                 // 2016.01.20
++	writel(reg, treg_base + PIOSETB);                                 // 2016.01.20
++
++        xspi->len = tfr->len;
++        return  0;
+ }
+ 
+ static	int	xspi_transfer_one(struct spi_master *master, struct spi_message *msg)
+@@ -429,7 +583,11 @@ static	int	xspi_transfer_one(struct spi_master *master, struct spi_message *msg)
+ //	dev_info(&spi->dev,"bus_num=%d\n",spi->master->bus_num);
+ 
+ 	list_for_each_entry(tfr, &msg->transfers, transfer_list){
+-		err = xspi_start_transfer(spi, tfr, msg->actual_length);
++		if(spi->chip_select == 2) {
++			err = xspi_start_transfer_tpm(spi, tfr, msg->actual_length);
++		} else {
++			err = xspi_start_transfer(spi, tfr, msg->actual_length);
++		}
+ 		if(err)
+ 			goto out;
+ 
+@@ -536,6 +694,13 @@ static int xspi_probe(struct platform_device *pdev)
+ 
+ 	xspi_api_lib = xspi;	/* SPILIB Static data */
+ 
++	treg_base = ioremap(0x04080000, 0x100); // 2016.02.19
++	if (!treg_base){
++                dev_err(&pdev->dev, "could not ioremap : LM2 register\n");
++                err = -EINVAL;
++                goto out_master_put;
++        }
++
+ 	return 0;
+ 
+ 	/* error exit */
+diff --git a/include/linux/spi/tpm_stm_st33_spi.h b/include/linux/spi/tpm_stm_st33_spi.h
+new file mode 100644
+index 0000000..5dc8a90
+--- /dev/null
++++ b/include/linux/spi/tpm_stm_st33_spi.h
+@@ -0,0 +1,46 @@
++/*
++* STMicroelectronics TPM SPI Linux driver for TPM ST33NP18
++* Copyright (C) 2009, 2010 STMicroelectronics
++* Christophe RICARD tpmsupport@st.com
++* This program is free software; you can redistribute it and/or modify
++* it under the terms of the GNU General Public License as published by
++* the Free Software Foundation; either version 2 of the License, or
++* (at your option) any later version.
++*
++* This program is distributed in the hope that it will be useful,
++* but WITHOUT ANY WARRANTY; without even the implied warranty of
++* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++* GNU General Public License for more details.
++*
++* You should have received a copy of the GNU General Public License along
++* with this program; if not, write to the Free Software Foundation, Inc.,
++* 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++*
++* STMicroelectronics version 1.2.0, Copyright (C) 2010
++* STMicroelectronics comes with ABSOLUTELY NO WARRANTY.
++* This is free software, and you are welcome to redistribute it
++* under certain conditions.
++*
++* @File: stm_st33_tpm_spi.h
++*
++* @Date: 06/15/2008
++*/
++#ifndef __STM_ST33_TPM_SPI_H__
++#define __STM_ST33_TPM_SPI_H__
++
++#include <linux/spi/spi.h>
++
++#define TPM_ST33_SPI	   	"st33zp24_spi"
++
++#ifndef __STM_ST33_TPM_I2C_H__
++struct st33zp24_platform_data {
++	int io_serirq;
++	int io_lpcpd;
++	int latency;
++	bool bChipF;
++	u8 *tpm_spi_buffer[2]; /* 0 Request 1 Response */
++	struct completion irq_detection;
++};
++#endif
++
++#endif /* __STM_ST33_TPM_SPI_H__ */
+-- 
+1.7.1
+

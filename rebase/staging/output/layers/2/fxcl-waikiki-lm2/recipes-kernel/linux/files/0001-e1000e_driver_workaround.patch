@@ -1,0 +1,137 @@
+From 0931c2b913a7f46eee7f4ba7e97310fc7c8becc1 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:59 +0900
+Subject: [PATCH 151/169] 0001-e1000e_driver_workaround
+
+
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index 96139a8..5add8fb 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -1800,7 +1800,6 @@ static irqreturn_t e1000_intr(int __always_unused irq, void *data)
+ 	struct e1000_hw *hw = &adapter->hw;
+ 	u32 rctl, icr = er32(ICR);
+ 
+-//printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
+ 	if (!icr || test_bit(__E1000_DOWN, &adapter->state))
+ 		return IRQ_NONE;  /* Not our interrupt */
+ 
+@@ -1841,7 +1840,6 @@ static irqreturn_t e1000_intr(int __always_unused irq, void *data)
+ 			mod_timer(&adapter->watchdog_timer, jiffies + 1);
+ 	}
+ 	synopsys_pcie_interrupt_clear(95);	/* yamano */
+-//printk(KERN_ERR "___%s Interrupt Clear\n",__FUNCTION__);
+ 	/* Reset on uncorrectable ECC error */
+ 	if ((icr & E1000_ICR_ECCER) && (hw->mac.type == e1000_pch_lpt)) {
+ 		u32 pbeccsts = er32(PBECCSTS);
+@@ -2138,44 +2136,35 @@ static int e1000_request_irq(struct e1000_adapter *adapter)
+ {
+ 	struct net_device *netdev = adapter->netdev;
+ 	int err;
+-//printk(KERN_ERR "===== %s Entry\n",__FUNCTION__);
+ 	if (adapter->msix_entries) {
+ 		err = e1000_request_msix(adapter);
+-		if (!err){
+-//printk(KERN_ERR "===== %s msix error\n",__FUNCTION__);
++		if (!err)
+ 			return err;
+-		}
++
+ 		/* fall back to MSI */
+ 		e1000e_reset_interrupt_capability(adapter);
+ 		adapter->int_mode = E1000E_INT_MODE_MSI;
+ 		e1000e_set_interrupt_capability(adapter);
+-//printk(KERN_ERR "===== %s msix fall back\n",__FUNCTION__);
+ 	}
+ 	if (adapter->flags & FLAG_MSI_ENABLED) {
+-//printk(KERN_ERR "===== %s FLAG_MSI_ENABLE\n",__FUNCTION__);
+ 		err = request_irq(adapter->pdev->irq, e1000_intr_msi, 0,
+ 				  netdev->name, netdev);
+ 		if (!err){
+-//printk(KERN_ERR "===== %s MSI error\n",__FUNCTION__);
+ 
+ 			return err;
+ 		}
+ 		/* fall back to legacy interrupt */
+ 		e1000e_reset_interrupt_capability(adapter);
+ 		adapter->int_mode = E1000E_INT_MODE_LEGACY;
+-//printk(KERN_ERR "===== %s MSI fall back legacy\n",__FUNCTION__);
+ 	}
+ 
+-//printk(KERN_ERR "===== %s interrupt register %d \n",__FUNCTION__,adapter->pdev->irq);
+ 	err = request_irq(adapter->pdev->irq, e1000_intr, IRQF_SHARED,
+ 			  netdev->name, netdev);
+ 	if (err){
+ 
+-//printk(KERN_ERR "===== %s unable to allocate interrupt\n",__FUNCTION__);
+ 		e_err("Unable to allocate interrupt, Error: %d\n", err);
+ 	}
+ 
+-//printk(KERN_ERR "===== %s Normal Exit\n",__FUNCTION__);
+ 	return err;
+ }
+ 
+@@ -4491,12 +4480,10 @@ static void e1000e_update_phy_task(struct work_struct *work)
+ static void e1000_update_phy_info(unsigned long data)
+ {
+ 	struct e1000_adapter *adapter = (struct e1000_adapter *)data;
+-//printk(KERN_ERR "===== %s Entry\n",__FUNCTION__);
+ 	if (test_bit(__E1000_DOWN, &adapter->state))
+ 		return;
+ 
+ 	schedule_work(&adapter->update_phy_task);
+-//printk(KERN_ERR "===== %s Reschedule Exit\n",__FUNCTION__);
+ }
+ 
+ /**
+@@ -4845,7 +4832,6 @@ static void e1000_watchdog_task(struct work_struct *work)
+ 	struct e1000_hw *hw = &adapter->hw;
+ 	u32 link, tctl;
+ 
+-//printk(KERN_ERR "===== %s Entry \n",__FUNCTION__);	/* yamano */
+ 	if (test_bit(__E1000_DOWN, &adapter->state))
+ 		return;
+ 
+@@ -5272,7 +5258,6 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
+ 			buffer_info->dma = skb_frag_dma_map(&pdev->dev, frag,
+ 							    offset, size,
+ 							    DMA_TO_DEVICE);
+-//printk(KERN_ERR "___%s DMA %llx\n",__FUNCTION__,buffer_info->dma);
+ 			buffer_info->mapped_as_page = true;
+ 			if (dma_mapping_error(&pdev->dev, buffer_info->dma))
+ 				goto dma_error;
+@@ -5295,7 +5280,6 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
+ 	return count;
+ 
+ dma_error:
+-//printk(KERN_ERR "___%s Error\n",__FUNCTION__);
+ 	dev_err(&pdev->dev, "Tx DMA map failed\n");
+ 	buffer_info->dma = 0;
+ 	if (count)
+@@ -6668,7 +6652,11 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 			 "PHY reset is blocked due to SOL/IDER session.\n");
+ 
+ 	/* Set initial default active device features */
++#if 1	/* Workaround */
++	netdev->features = (
++#else
+ 	netdev->features = (NETIF_F_SG |
++#endif
+ 			    NETIF_F_HW_VLAN_CTAG_RX |
+ 			    NETIF_F_HW_VLAN_CTAG_TX |
+ 			    NETIF_F_TSO |
+@@ -6686,7 +6674,11 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 	if (adapter->flags & FLAG_HAS_HW_VLAN_FILTER)
+ 		netdev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+ 
++#if 1	/* Workaround */
++	netdev->vlan_features |= (
++#else
+ 	netdev->vlan_features |= (NETIF_F_SG |
++#endif
+ 				  NETIF_F_TSO |
+ 				  NETIF_F_TSO6 |
+ 				  NETIF_F_HW_CSUM);
+-- 
+1.7.1
+

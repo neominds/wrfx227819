@@ -1,0 +1,54 @@
+From 2836c9f1e5bf53c29a989b379a4bdfa689a3ecd3 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Thu, 12 Mar 2015 15:19:57 +0900
+Subject: [PATCH 1/1] gmac work around fixed
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ .../net/ethernet/stmicro/stmmac/dwmac1000_core.c   |   17 +++++++++++++++++
+ 1 files changed, 17 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
+index e25ff08..56da874 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
+@@ -32,6 +32,13 @@
+ #include <asm/io.h>
+ #include "dwmac1000.h"
+ 
++/* ohkuma work around start */
++#define	GMAC_RDPD	0x8004
++#define	GMAC_RCPD	0x8008
++#define	GMAC_TDPD	0x800c
++#define	GMAC_TCPD	0x8010
++/* ohkuma work around end */
++
+ static void dwmac1000_core_init(void __iomem *ioaddr)
+ {
+ 	u32 value = readl(ioaddr + GMAC_CONTROL);
+@@ -273,11 +280,21 @@ static int dwmac1000_irq_status(void __iomem *ioaddr,
+ 			x->pcs_link = 1;
+ #if 1	/* ohkuma workaround */
+ 			if ( x->pcs_speed == SPEED_1000 ) {
++#if 1	/* yamano */
++				writel(0x00000800,ioaddr + GMAC_TCPD);	/* GMACTCPD */
++				writel(0x00000000,ioaddr + GMAC_RCPD);	/* GMACRCPD */
++#else
+ 				writel(0x00000800,ioaddr + 0x0410);	/* GMACTCPD */
+ 				writel(0x00000000,ioaddr + 0x0408);	/* GMACRCPD */
++#endif
+ 			} else {
++#if 1	/* yamano */
++				writel(0x00003f00,ioaddr + GMAC_TCPD);	/* GMACTCPD */
++				writel(0x00003f00,ioaddr + GMAC_RCPD);	/* GMACRCPD */
++#else
+ 				writel(0x00003f00,ioaddr + 0x0410);	/* GMACTCPD */
+ 				writel(0x00003f00,ioaddr + 0x0408);	/* GMACRCPD */
++#endif
+ 			}
+ #endif	/* ohkuma workaround */
+ 			pr_debug("Link is Up - %d/%s\n", (int)x->pcs_speed,
+-- 
+1.7.1
+

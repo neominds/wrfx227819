@@ -1,0 +1,7 @@
+CONFLICT (content): Merge conflict in drivers/usb/gadget/printer.c
+Rebase failed at 0001-remove-double-lock-issue
+
+printer.c
+FX changes are only debug removal. Not required.
+
+/EOT

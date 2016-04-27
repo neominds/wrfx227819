@@ -1,0 +1,53 @@
+From e696849943d13a66378204909d577e13c412ec2a Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:49:15 +0900
+Subject: [PATCH 164/169] 0210-I2C_Build_Error
+
+
+diff --git a/drivers/char/lm2-seeprom.c b/drivers/char/lm2-seeprom.c
+index 1152072..e8522c7 100644
+--- a/drivers/char/lm2-seeprom.c
++++ b/drivers/char/lm2-seeprom.c
+@@ -560,7 +560,7 @@ static int lm2_seeprom_remove(struct platform_device *pdev)
+ static unsigned int     reg_bak[LM2_REGBAK_SIZE];
+ static unsigned int     reg_bak_chksum;
+ extern unsigned int     chksum_info;
+-void i2c_reg_save(void __iomem *base, int *bak_adr, int offset, int size)
++static void i2c_reg_save(void __iomem *base, int *bak_adr, int offset, int size)
+ {
+ 	int i;
+ 	int adr = *bak_adr;
+@@ -571,7 +571,7 @@ void i2c_reg_save(void __iomem *base, int *bak_adr, int offset, int size)
+ 	*bak_adr = i;
+ }
+ 
+-void i2c_reg_load(void __iomem *base, int *bak_adr, int offset, int size)
++static void i2c_reg_load(void __iomem *base, int *bak_adr, int offset, int size)
+ {
+ 	int i;
+ 	int adr = *bak_adr;
+diff --git a/drivers/i2c/busses/i2c-lm2.c b/drivers/i2c/busses/i2c-lm2.c
+index 9493bf5..bb58787 100644
+--- a/drivers/i2c/busses/i2c-lm2.c
++++ b/drivers/i2c/busses/i2c-lm2.c
+@@ -384,7 +384,7 @@ static int lm2_i2c_remove(struct platform_device *pdev)
+ static unsigned int     reg_bak[LM2_REGBAK_SIZE];
+ static unsigned int     reg_bak_chksum;
+ extern unsigned int     chksum_info;
+-void i2c_reg_save(void __iomem *base, int *bak_adr, int offset, int size)
++static void i2c_reg_save(void __iomem *base, int *bak_adr, int offset, int size)
+ {
+ 	int i;
+ 	int adr = *bak_adr;
+@@ -394,7 +394,7 @@ void i2c_reg_save(void __iomem *base, int *bak_adr, int offset, int size)
+ 	}
+ 	*bak_adr = i;
+ }
+-void i2c_reg_load(void __iomem *base, int *bak_adr, int offset, int size)
++static void i2c_reg_load(void __iomem *base, int *bak_adr, int offset, int size)
+ {
+ 	int i;
+ 	int adr = *bak_adr;
+-- 
+1.7.1
+

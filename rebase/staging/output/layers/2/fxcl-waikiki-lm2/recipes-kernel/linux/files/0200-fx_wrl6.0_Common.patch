@@ -1,0 +1,3800 @@
+From a592af7184315cd7c366fea7d0a470fa588fb04c Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:49:04 +0900
+Subject: [PATCH 155/169] 0200-fx_wrl6.0_Common
+
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index a94361c..9553cb6 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -1719,7 +1719,7 @@ source kernel/Kconfig.preempt
+ 
+ config HZ
+ 	int
+-	default 3000 if ARCH_LM2
++	default 100 if ARCH_LM2
+ 	default 200 if ARCH_EBSA110 || ARCH_S3C24XX || ARCH_S5P64X0 || \
+ 		ARCH_S5PV210 || ARCH_EXYNOS4
+ 	default AT91_TIMER_HZ if ARCH_AT91
+diff --git a/arch/arm/Kconfig.orig b/arch/arm/Kconfig.orig
+index 025d7d0..adaaa97 100644
+--- a/arch/arm/Kconfig.orig
++++ b/arch/arm/Kconfig.orig
+@@ -1718,6 +1718,7 @@ source kernel/Kconfig.preempt
+ 
+ config HZ
+ 	int
++	default 3000 if ARCH_LM2
+ 	default 200 if ARCH_EBSA110 || ARCH_S3C24XX || ARCH_S5P64X0 || \
+ 		ARCH_S5PV210 || ARCH_EXYNOS4
+ 	default AT91_TIMER_HZ if ARCH_AT91
+diff --git a/arch/arm/boot/Makefile b/arch/arm/boot/Makefile
+index 99dbe66..90aaa65 100644
+--- a/arch/arm/boot/Makefile
++++ b/arch/arm/boot/Makefile
+@@ -31,7 +31,7 @@ ifeq ($(CONFIG_XIP_KERNEL),y)
+ 
+ $(obj)/xipImage: vmlinux FORCE
+ 	$(call if_changed,objcopy)
+-	@$(kecho) '  Kernel: $@ is ready (physical address: $(CONFIG_XIP_PHYS_ADDR))'
++	@echo '  Kernel: $@ is ready (physical address: $(CONFIG_XIP_PHYS_ADDR))'
+ 
+ $(obj)/Image $(obj)/zImage: FORCE
+ 	@echo 'Kernel configured for XIP (CONFIG_XIP_KERNEL=y)'
+@@ -46,17 +46,27 @@ $(obj)/xipImage: FORCE
+ 
+ $(obj)/Image: vmlinux FORCE
+ 	$(call if_changed,objcopy)
+-	@$(kecho) '  Kernel: $@ is ready'
++	@echo '  Kernel: $@ is ready'
+ 
+ $(obj)/compressed/vmlinux: $(obj)/Image FORCE
+ 	$(Q)$(MAKE) $(build)=$(obj)/compressed $@
+ 
+ $(obj)/zImage:	$(obj)/compressed/vmlinux FORCE
+ 	$(call if_changed,objcopy)
+-	@$(kecho) '  Kernel: $@ is ready'
++	@echo '  Kernel: $@ is ready'
+ 
+ endif
+ 
++targets += $(dtb-y)
++
++# Rule to build device tree blobs
++$(obj)/%.dtb: $(src)/dts/%.dts FORCE
++	$(call if_changed_dep,dtc)
++
++$(obj)/dtbs: $(addprefix $(obj)/, $(dtb-y))
++
++clean-files := *.dtb
++
+ ifneq ($(LOADADDR),)
+   UIMAGE_LOADADDR=$(LOADADDR)
+ else
+@@ -68,8 +78,8 @@ else
+ endif
+ 
+ check_for_multiple_loadaddr = \
+-if [ $(words $(UIMAGE_LOADADDR)) -ne 1 ]; then \
+-	echo 'multiple (or no) load addresses: $(UIMAGE_LOADADDR)'; \
++if [ $(words $(UIMAGE_LOADADDR)) -gt 1 ]; then \
++	echo 'multiple load addresses: $(UIMAGE_LOADADDR)'; \
+ 	echo 'This is incompatible with uImages'; \
+ 	echo 'Specify LOADADDR on the commandline to build an uImage'; \
+ 	false; \
+@@ -82,7 +92,7 @@ $(obj)/uImage:	$(obj)/zImage FORCE
+ endif
+ 	@$(check_for_multiple_loadaddr)
+ 	$(call if_changed,uimage)
+-	@$(kecho) '  Image $@ is ready'
++	@echo '  Image $@ is ready'
+ 
+ $(obj)/bootp/bootp: $(obj)/zImage initrd FORCE
+ 	$(Q)$(MAKE) $(build)=$(obj)/bootp $@
+@@ -90,7 +100,7 @@ $(obj)/bootp/bootp: $(obj)/zImage initrd FORCE
+ 
+ $(obj)/bootpImage: $(obj)/bootp/bootp FORCE
+ 	$(call if_changed,objcopy)
+-	@$(kecho) '  Kernel: $@ is ready'
++	@echo '  Kernel: $@ is ready'
+ 
+ PHONY += initrd FORCE
+ initrd:
+@@ -119,4 +129,4 @@ i:
+ 	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
+ 	$(obj)/Image System.map "$(INSTALL_PATH)"
+ 
+-subdir-	    := bootp compressed dts
++subdir-	    := bootp compressed
+diff --git a/arch/arm/boot/Makefile.orig b/arch/arm/boot/Makefile.orig
+new file mode 100644
+index 0000000..99dbe66
+--- /dev/null
++++ b/arch/arm/boot/Makefile.orig
+@@ -0,0 +1,122 @@
++#
++# arch/arm/boot/Makefile
++#
++# This file is included by the global makefile so that you can add your own
++# architecture-specific flags and dependencies.
++#
++# This file is subject to the terms and conditions of the GNU General Public
++# License.  See the file "COPYING" in the main directory of this archive
++# for more details.
++#
++# Copyright (C) 1995-2002 Russell King
++#
++
++ifneq ($(MACHINE),)
++include $(srctree)/$(MACHINE)/Makefile.boot
++endif
++
++# Note: the following conditions must always be true:
++#   ZRELADDR == virt_to_phys(PAGE_OFFSET + TEXT_OFFSET)
++#   PARAMS_PHYS must be within 4MB of ZRELADDR
++#   INITRD_PHYS must be in RAM
++ZRELADDR    := $(zreladdr-y)
++PARAMS_PHYS := $(params_phys-y)
++INITRD_PHYS := $(initrd_phys-y)
++
++export ZRELADDR INITRD_PHYS PARAMS_PHYS
++
++targets := Image zImage xipImage bootpImage uImage
++
++ifeq ($(CONFIG_XIP_KERNEL),y)
++
++$(obj)/xipImage: vmlinux FORCE
++	$(call if_changed,objcopy)
++	@$(kecho) '  Kernel: $@ is ready (physical address: $(CONFIG_XIP_PHYS_ADDR))'
++
++$(obj)/Image $(obj)/zImage: FORCE
++	@echo 'Kernel configured for XIP (CONFIG_XIP_KERNEL=y)'
++	@echo 'Only the xipImage target is available in this case'
++	@false
++
++else
++
++$(obj)/xipImage: FORCE
++	@echo 'Kernel not configured for XIP (CONFIG_XIP_KERNEL!=y)'
++	@false
++
++$(obj)/Image: vmlinux FORCE
++	$(call if_changed,objcopy)
++	@$(kecho) '  Kernel: $@ is ready'
++
++$(obj)/compressed/vmlinux: $(obj)/Image FORCE
++	$(Q)$(MAKE) $(build)=$(obj)/compressed $@
++
++$(obj)/zImage:	$(obj)/compressed/vmlinux FORCE
++	$(call if_changed,objcopy)
++	@$(kecho) '  Kernel: $@ is ready'
++
++endif
++
++ifneq ($(LOADADDR),)
++  UIMAGE_LOADADDR=$(LOADADDR)
++else
++  ifeq ($(CONFIG_ZBOOT_ROM),y)
++    UIMAGE_LOADADDR=$(CONFIG_ZBOOT_ROM_TEXT)
++  else
++    UIMAGE_LOADADDR=$(ZRELADDR)
++  endif
++endif
++
++check_for_multiple_loadaddr = \
++if [ $(words $(UIMAGE_LOADADDR)) -ne 1 ]; then \
++	echo 'multiple (or no) load addresses: $(UIMAGE_LOADADDR)'; \
++	echo 'This is incompatible with uImages'; \
++	echo 'Specify LOADADDR on the commandline to build an uImage'; \
++	false; \
++fi
++
++ifeq ($(CONFIG_ARCH_IPROC),y)
++$(obj)/uImage:  $(obj)/Image FORCE
++else
++$(obj)/uImage:	$(obj)/zImage FORCE
++endif
++	@$(check_for_multiple_loadaddr)
++	$(call if_changed,uimage)
++	@$(kecho) '  Image $@ is ready'
++
++$(obj)/bootp/bootp: $(obj)/zImage initrd FORCE
++	$(Q)$(MAKE) $(build)=$(obj)/bootp $@
++	@:
++
++$(obj)/bootpImage: $(obj)/bootp/bootp FORCE
++	$(call if_changed,objcopy)
++	@$(kecho) '  Kernel: $@ is ready'
++
++PHONY += initrd FORCE
++initrd:
++	@test "$(INITRD_PHYS)" != "" || \
++	(echo This machine does not support INITRD; exit -1)
++	@test "$(INITRD)" != "" || \
++	(echo You must specify INITRD; exit -1)
++
++install: $(obj)/Image
++	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
++	$(obj)/Image System.map "$(INSTALL_PATH)"
++
++zinstall: $(obj)/zImage
++	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
++	$(obj)/zImage System.map "$(INSTALL_PATH)"
++
++uinstall: $(obj)/uImage
++	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
++	$(obj)/uImage System.map "$(INSTALL_PATH)"
++
++zi:
++	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
++	$(obj)/zImage System.map "$(INSTALL_PATH)"
++
++i:
++	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
++	$(obj)/Image System.map "$(INSTALL_PATH)"
++
++subdir-	    := bootp compressed dts
+diff --git a/arch/arm/boot/compressed/atags_to_fdt.c b/arch/arm/boot/compressed/atags_to_fdt.c
+index 14de13d..8efe4ed 100644
+--- a/arch/arm/boot/compressed/atags_to_fdt.c
++++ b/arch/arm/boot/compressed/atags_to_fdt.c
+@@ -4,12 +4,17 @@
+ #ifdef	CONFIG_ARCH_LM2
+ #include <asm/string.h>
+ #include <asm/page.h>
++#include <asm/byteorder.h>
++
++#include "bootLoaderInfo.h"
++
+ /*
+- * 0x7fff_f000 start virtual address
++ * 0x0fff_f000 start virtual address
+  */
+-#define	PARAM_ADDR	0x7ffff000
++#define	PARAM_ADDR	0x0ffff000
+ #define	ATAGS_ADDR	0x05000100
+ 
++#if 0
+ struct	lm2_param {
+ 	unsigned int	magic;
+ 	unsigned char	macaddr[6];
+@@ -20,7 +25,7 @@ struct	lm2_param {
+ 	unsigned long	firm_addr;
+ 	unsigned long	firm_size;
+ };
+-
++#endif
+ #endif	/* CONFIG_ARCH_LM2 */
+ 
+ #if defined(CONFIG_ARM_ATAG_DTB_COMPAT_CMDLINE_EXTEND)
+@@ -55,6 +60,14 @@ static int setprop(void *fdt, const char *node_path, const char *property,
+ 	return fdt_setprop(fdt, offset, property, val_array, size);
+ }
+ 
++static	int	replace_mac_addr(void *fdt, int total_space)
++{
++	boot_bootinfo_t	*p_ptr = (boot_bootinfo_t *)PARAM_ADDR;
++
++	setprop_inplace(fdt, "/mac_addr", "mac-address", p_ptr->bootInfoBootLoader.macaddr, 6);
++	return	1;
++}
++
+ static int setprop_string(void *fdt, const char *node_path,
+ 			  const char *property, const char *string)
+ {
+@@ -126,14 +139,6 @@ static void merge_fdt_bootargs(void *fdt, const char *fdt_cmdline)
+ 	setprop_string(fdt, "/chosen", "bootargs", cmdline);
+ }
+ 
+-static	int	replace_mac_addr(void *fdt, int total_space)
+-{
+-	struct	lm2_param	*p_ptr = (struct lm2_param *)PARAM_ADDR;
+-
+-	setprop_inplace(fdt, "/mac_addr", "mac-address", p_ptr->macaddr, 6);
+-	return	1;
+-}
+-
+ /*
+  * Convert and fold provided ATAGs into the provided FDT.
+  *
+@@ -144,18 +149,108 @@ static	int	replace_mac_addr(void *fdt, int total_space)
+  */
+ int atags_to_fdt(void *atag_list, void *fdt, int total_space)
+ {
+-	struct tag *atag = atag_list;
+ 	/* In the case of 64 bits memory size, need to reserve 2 cells for
+ 	 * address and size for each bank */
+ 	uint32_t mem_reg_property[2 * 2 * NR_BANKS];
++	uint32_t *size_len;
+ 	int memcount = 0;
+-	int ret, memsize;
++	int ret;
+ 	int len;
++	boot_bootinfo_t *p_ptr;
++	boot_infoBootLoader_t *pp;
++	boot_infoMemConfig_t *rp;
++	boot_infoInSeepRom_t *sp;
++	boot_infoInNVMem_t *np;
++	unsigned long long ramsize;
++	
++	uint32_t contigmem_size = 0, pagemem_size = 0;
++
+ #ifdef	CONFIG_ARCH_LM2
+-	if(replace_mac_addr(fdt,total_space))
+-		return	1;
+-#endif	/* CONFIG_ARCH_LM2 */
++	replace_mac_addr(fdt,total_space);
++
++	/* FX */
++	p_ptr = (boot_bootinfo_t*)PARAM_ADDR;
++	if (p_ptr == NULL){
++		goto out;
++	}
++	pp = &(p_ptr->bootInfoBootLoader);
++	if (pp == NULL){
++		goto out;
++	}
++	rp = &(p_ptr->bootInfoMemConfig);
++	if (rp == NULL){
++		goto out;
++	}
++	sp = &(p_ptr->bootInfoInSeepRom);
++	np = &(p_ptr->bootInfoInNVMem);
+ 
++	ret = fdt_open_into(fdt, fdt, total_space);
++
++	if (rp->magic != BOOT_BOOTINFO_MAGIC){
++		/* bootinfo not found... use dtb as is */
++        	size_len =  getprop(fdt, "/memory", "contigmem_size", &len);
++        	if (size_len)
++                	contigmem_size = fdt32_to_cpu(*size_len);
++        	size_len =  getprop(fdt, "/memory", "pagemem_size", &len);
++        	if (size_len)
++                	pagemem_size = fdt32_to_cpu(*size_len);
++
++		size_len = getprop(fdt, "/memory", "reg", &len);
++		ramsize = cpu_to_fdt32(*(size_len+1)) - 0x5000000 - contigmem_size;
++	} else {
++		/* bootinfo found */ 
++		unsigned int size_be;
++		if (rp->data == NULL){
++			/* no meminfo */
++			pagemem_size = 0;
++			contigmem_size = 0;
++		} else {
++			memcpy(&size_be, rp->data, 4);
++			/*pagemem_size = be32_to_cpu(size_be);*/
++			pagemem_size = size_be;
++			memcpy(&size_be, (rp->data)+4, 4);
++			/*contigmem_size = be32_to_cpu(size_be);*/
++			contigmem_size = size_be;
++		}
++		ramsize = pp->ramsize;
++
++		if (ramsize == 1*1024*1024*1024ULL){
++			/* 1GB RAM */
++			ramsize = pp->ramsize - 0x5000000 - contigmem_size - pagemem_size;
++		} else if (pp->ramsize == 2*1024*1024*1024ULL){
++			/* 2GB RAM */
++			ramsize = pp->ramsize - 0x5000000 - contigmem_size - pagemem_size;
++		} else {
++			/* 4GB RAM */
++			ramsize = 0xC0000000 - 0x5000000 - contigmem_size;
++			pagemem_size = 0x40000000;
++		}
++		//pp->initrd_addr = 0x28000000;
++		//pp->initrd_size = 23687580;
++		setprop_cell(fdt, "/chosen", "linux,initrd-start", pp->initrd_addr);
++		setprop_cell(fdt, "/chosen", "linux,initrd-end", pp->initrd_addr + pp->initrd_size);
++		if (sp){
++			int uitype;
++			int productid = (sp->Unit7[0x80] << 16) | (sp->Unit7[0x81] << 24);
++			int printertype = (sp->Unit4[0x27] << 24);
++			memcpy(&uitype, sp->Unit7+0x0c, 4);
++			setprop_cell(fdt, "/bootinfo", "printertype", printertype); 
++			setprop_cell(fdt, "/bootinfo", "uitype", be32_to_cpu(uitype));  /* Big Endian */
++			setprop_cell(fdt, "/bootinfo", "productid", productid);
++		}
++	}
++	mem_reg_property[memcount++] = cpu_to_fdt32(0x05000000);
++	mem_reg_property[memcount++] = cpu_to_fdt32(ramsize);
++	setprop(fdt, "/memory", "reg", mem_reg_property, 4 * memcount);
++	setprop_cell(fdt, "/memory", "pagemem_size", pagemem_size);
++	setprop_cell(fdt, "/memory", "contigmem_size", contigmem_size);
++
++	return fdt_pack(fdt);
++out:
++	return -1;
++	/* FX */
++#endif	/* CONFIG_ARCH_LM2 */
++#if 0
+ 	/* make sure we've got an aligned pointer */
+ 	if ((u32)atag_list & 0x3)
+ 		return 1;
+@@ -230,4 +325,5 @@ int atags_to_fdt(void *atag_list, void *fdt, int total_space)
+ 	}
+ 
+ 	return fdt_pack(fdt);
++#endif
+ }
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index 0247b81..078b657 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -17,11 +17,11 @@
+ 	#address-cells = <1>;
+ 	#size-cells = <1>;
+ 	chosen {
+-		bootargs = "root=/dev/sda1 ip=dhcp console=ttyS0,38400 mem=2992M";
+-	};
+-	mac_addr {
+-		mac-address = [ 11 22 33 44 55 66 ];
++		bootargs = "root=/dev/mmcblk0p2 rootwait init=/etc/preinit console=ttyS0,38400 quiet";
+ 	};
++        mac_addr {
++                mac-address = [ 11 22 33 44 55 66 ];
++        };
+ /*
+ 	aliases {
+ 		serial0 = &lm2_serial0;
+@@ -76,12 +76,14 @@
+ 			clock-frequency = <800000000>;
+ 		};
+ 	};
+-/*
++
+ 	memory@800000000 {
+ 		device_type = "memory";
+-		reg = <0x8 0x00000000  0xc0000000>;
++		reg = <0x05000000 0xC0000000>; /* 3GB */
++		contigmem_size = <325058560>; /* 310MB */
++		pagemem_size = <276824064>; /* 1024MB */
+ 	};
+-*/
++
+         gic: interrupt-controller@04300000 {
+                 compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
+                 #interrupt-cells = <3>;
+@@ -227,16 +229,15 @@
+ 			reg = <0x04a30000 0x200>;
+ 			interrupts = <85>;
+ 		};
+-*/
++
+ 		ethernet@04410000 {
+ 			compatible = "snps,dwmac";
+ 			reg = <0x04410000 0x10000>;
+ 			interrupts = <94 93>;
+ 			phy-mode = "mii";
+ 			reg-io-width = <4>;
+-			mac-address = [ 00 00 00 00 00 00 ];
+ 		};
+-/*
++
+ 		sdio@04440000 {
+ 			compatible = "sdhci";
+ 			reg = <0x0 0x04440000 0x0 0x500>;
+diff --git a/arch/arm/include/asm/hardirq.h b/arch/arm/include/asm/hardirq.h
+index 2740c2a..39bff64 100644
+--- a/arch/arm/include/asm/hardirq.h
++++ b/arch/arm/include/asm/hardirq.h
+@@ -5,7 +5,11 @@
+ #include <linux/threads.h>
+ #include <asm/irq.h>
+ 
++#ifdef CONFIG_FX_FWCMD_IPI_WITH_A7
++#define NR_IPI	16
++#else
+ #define NR_IPI	6
++#endif
+ 
+ typedef struct {
+ 	unsigned int __softirq_pending;
+diff --git a/arch/arm/kernel/atags_parse.c b/arch/arm/kernel/atags_parse.c
+index fb2d54c..85a61bb 100644
+--- a/arch/arm/kernel/atags_parse.c
++++ b/arch/arm/kernel/atags_parse.c
+@@ -192,6 +192,7 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 			printk("Machine: %s\n", p->name);
+ 			mdesc = p;
+ 			break;
++		}else{	/* yamano debug */
+ 		}
+ 
+ 	if (!mdesc) {
+diff --git a/arch/arm/kernel/deepsleep.S b/arch/arm/kernel/deepsleep.S
+index aaff7ef..92b7ab7 100644
+--- a/arch/arm/kernel/deepsleep.S
++++ b/arch/arm/kernel/deepsleep.S
+@@ -213,6 +213,7 @@ ENTRY(lm2_wfi0)
+ 	str	r1, [r0, #0x08]
+ 	bl	set_chksum
+ 	bl	v7_flush_kern_cache_all
++	bl      go_cpu_off
+ #ifdef	LM2_FORCE_LOOP
+ __lm2_force_loop0:
+ 	wfi
+diff --git a/arch/arm/kernel/process.c b/arch/arm/kernel/process.c
+index 308d2d3..34b8c5a 100644
+--- a/arch/arm/kernel/process.c
++++ b/arch/arm/kernel/process.c
+@@ -40,6 +40,8 @@
+ #include <asm/stacktrace.h>
+ #include <asm/mach/time.h>
+ 
++#include <linux/fxmodule/kernelOsddi.h>
++
+ #ifdef CONFIG_CC_STACKPROTECTOR
+ #include <linux/stackprotector.h>
+ unsigned long __stack_chk_guard __read_mostly;
+@@ -210,7 +212,8 @@ void machine_halt(void)
+ {
+ 	smp_send_stop();
+ #ifdef	CONFIG_ARCH_LM2
+-	a7_softirq(6);  // shutdown IPI
++	//a7_softirq(6);  // shutdown IPI
++	kernelGioNegate(OS_GIO_HW_RST); /* HW Reset */
+ #endif	/* CONFIG_ARCH_LM2 */
+ 
+ 	local_irq_disable();
+@@ -250,6 +253,10 @@ void machine_restart(char *cmd)
+ 
+ 	/* Give a grace period for failure to restart of 1s */
+ 	mdelay(1000);
++#ifdef	CONFIG_ARCH_LM2
++	//a7_softirq(6);  // shutdown IPI
++	kernelGioNegate(OS_GIO_HW_RST); /* HW Reset */
++#endif	/* CONFIG_ARCH_LM2 */
+ 
+ 	/* Whoops - the platform was unable to reboot. Tell the user! */
+ 	printk("Reboot failed -- System halted\n");
+diff --git a/arch/arm/kernel/smp.c b/arch/arm/kernel/smp.c
+index 0ac9844..14af33b 100644
+--- a/arch/arm/kernel/smp.c
++++ b/arch/arm/kernel/smp.c
+@@ -66,6 +66,14 @@ enum ipi_msg_type {
+ 	IPI_CALL_FUNC,
+ 	IPI_CALL_FUNC_SINGLE,
+ 	IPI_CPU_STOP,
++#ifdef CONFIG_FX_FWCMD_IPI_WITH_A7
++	IPI_UNUSED_6, IPI_UNUSED_7, IPI_UNUSED_8,
++	IPI_UNUSED_9, IPI_UNUSED_10, IPI_UNUSED_11,
++	IPI_RX_CMD_NOT_EMPTY,
++	IPI_RX_CMD_NOT_FULL,
++	IPI_TX_CMD_NOT_EMPTY,
++	IPI_TX_CMD_NOT_FULL,
++#endif
+ };
+ 
+ static DECLARE_COMPLETION(cpu_running);
+@@ -470,6 +478,18 @@ static const char *ipi_types[NR_IPI] = {
+ 	S(IPI_CALL_FUNC, "Function call interrupts"),
+ 	S(IPI_CALL_FUNC_SINGLE, "Single function call interrupts"),
+ 	S(IPI_CPU_STOP, "CPU stop interrupts"),
++#ifdef CONFIG_FX_FWCMD_IPI_WITH_A7
++	S(IPI_UNUSED_6, "Unknown IPI 6 interrupts"),
++	S(IPI_UNUSED_7, "Unknown IPI 7 interrupts"),
++	S(IPI_UNUSED_8, "Unknown IPI 8 interrupts"),
++	S(IPI_UNUSED_9, "Unknown IPI 9 interrupts"),
++	S(IPI_UNUSED_10, "Unknown IPI 10 interrupts"),
++	S(IPI_UNUSED_11, "Unknown IPI 11 interrupts"),
++	S(IPI_RX_CMD_NOT_EMPTY, "RX cmd not empty interrupts"),
++	S(IPI_RX_CMD_NOT_FULL, "RX cmd not full interrupts"),
++	S(IPI_TX_CMD_NOT_EMPTY, "TX cmd not empty interrupts"),
++	S(IPI_TX_CMD_NOT_FULL, "TX cmd not full interrupts"),
++#endif
+ };
+ 
+ void show_ipi_list(struct seq_file *p, int prec)
+@@ -645,6 +665,20 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
+ 		irq_exit();
+ 		break;
+ 
++#ifdef CONFIG_FX_FWCMD_IPI_WITH_A7
++	case IPI_RX_CMD_NOT_EMPTY:
++		irq_enter();
++		wakeup_for_cmd_not_empty();
++		irq_exit();
++                break;
++
++	case IPI_RX_CMD_NOT_FULL:
++		irq_enter();
++		wakeup_for_cmd_not_full();
++		irq_exit();
++                break;
++#endif
++
+ 	default:
+ 		printk(KERN_CRIT "CPU%u: Unknown IPI message 0x%x\n",
+ 		       cpu, ipinr);
+@@ -677,6 +711,18 @@ void smp_send_stop(void)
+ 		pr_warning("SMP: failed to stop secondary CPUs\n");
+ }
+ 
++#ifdef CONFIG_FX_FWCMD_IPI_WITH_A7
++void smp_send_cmd_not_empty(int cpu)
++{
++	smp_cross_call(cpumask_of(cpu), IPI_TX_CMD_NOT_EMPTY);
++}
++
++void smp_send_cmd_not_full(int cpu)
++{
++	smp_cross_call(cpumask_of(cpu), IPI_TX_CMD_NOT_FULL);
++}
++#endif
++
+ /*
+  * not supported here
+  */
+diff --git a/arch/arm/mach-lm2/Makefile b/arch/arm/mach-lm2/Makefile
+index daabaff..5a5168e 100644
+--- a/arch/arm/mach-lm2/Makefile
++++ b/arch/arm/mach-lm2/Makefile
+@@ -2,7 +2,7 @@
+ # Makefile for the linux kernel.
+ #
+ 
+-obj-y					:= lm2.o usb.o clock.o timer_alm.o lm2_pm.o 
++obj-y					:= lm2.o usb.o clock.o timer_alm.o lm2_pm.o lm2_pm_logger.o
+ obj-$(CONFIG_SMP)			+= platsmp.o
+ obj-$(CONFIG_SATA_AHCI_PLATFORM)	+= sata.o
+ obj-$(CONFIG_MMC_SDHCI_PLTFM)		+= sdhci.o
+diff --git a/arch/arm/mach-lm2/hotplug.c b/arch/arm/mach-lm2/hotplug.c
+index 373420e..a4448dc 100644
+--- a/arch/arm/mach-lm2/hotplug.c
++++ b/arch/arm/mach-lm2/hotplug.c
+@@ -94,6 +94,8 @@ printk(KERN_ERR "==%d platform_do_lowpower: wfi end(pen_release=%d)\n",read_cpui
+ #endif
+ }
+ 
++extern void return_from_cpu_off(void);
++
+ /*
+  * platform-specific code to shutdown a CPU
+  *
+@@ -117,7 +119,7 @@ printk(KERN_ERR "==%d %s: cpu=%d\n",read_cpuid_mpidr()&0xff, __func__, cpu);
+ 	 * coherency, and then restore interrupts
+ 	 */
+ 	cpu_leave_lowpower();
+-
++	return_from_cpu_off();
+ 	if (spurious)
+ 		pr_warn("CPU%u: %u spurious wakeup calls\n", cpu, spurious);
+ }
+diff --git a/arch/arm/mach-lm2/include/mach/motherboard.h b/arch/arm/mach-lm2/include/mach/motherboard.h
+index 3628dfd..8c626b5 100644
+--- a/arch/arm/mach-lm2/include/mach/motherboard.h
++++ b/arch/arm/mach-lm2/include/mach/motherboard.h
+@@ -13,15 +13,15 @@
+  * System clocking
+  */
+ #define	LM2_A15_CLK	(800*1000*1000)	/* 800MHz */
+-#define	LM2_A7_CLK	(400*1000*1000)	/* 400MHz */
++#define	LM2_A7_CLK	(400*1000*1000) /* 400MHz */
+ #define	LM2_TIM32_CLK	(300*1000*1000)	/* 300MHz */
+ #define	LM2_TIM64_CLK	(300*1000*1000)	/* 300MHz */
+-#define	LM2_UART0_CLK	(300*1000*1000)	/* 300MHz */
+-#define	LM2_UART1_CLK	(300*1000*1000)	/* 300MHz */
+-#define	LM2_UART2_CLK	(343*1000*1000)	/* 300MHz */
+-#define	LM2_UART3_CLK	(343*1000*1000)	/* 300MHz */
+-#define	LM2_UART4_CLK	(343*1000*1000)	/* 300MHz */
+-#define	LM2_UART5_CLK	(343*1000*1000)	/* 300MHz */
++#define	LM2_UART0_CLK	(275*1000*1000) /* 300MHz */
++#define	LM2_UART1_CLK	(275*1000*1000)	/* 300MHz */
++#define	LM2_UART2_CLK	(314*1000*1000)	/* 314MHz */
++#define LM2_UART3_CLK   (314*1000*1000) /* 314MHz */
++#define	LM2_UART4_CLK	(314*1000*1000)	/* 314MHz */
++#define	LM2_UART5_CLK	(314*1000*1000)	/* 314MHz */
+ 
+ #define	LM2_UART0_BPS	38400
+ 
+@@ -50,6 +50,9 @@
+ #define	LM2_GPDMA_0_BASE	(LM2_REGS_0 + 0x00150000)
+ #define	LM2_UART_0_BASE		(LM2_REGS_0 + 0x000b0010)
+ #define	LM2_UART_1_BASE		(LM2_REGS_0 + 0x00160010)
++#define LM2_UART_2_BASE     (LM2_REGS_0 + 0x012c0010)
++#define LM2_UART_3_BASE     (LM2_REGS_0 + 0x012d0010)
++#define LM2_UART_5_BASE     (LM2_REGS_0 + 0x012f0010)
+ #define	LM2_CIP_UI_BASE		(LM2_REGS_0 + 0x001f0000)
+ #define	LM2_GIC_BASE		(LM2_REGS_0 + 0x00300000)
+ #define	LM2_USB3_PHY		(LM2_REGS_0 + 0x00400000)
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 7b07eaa..05b5979 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -46,6 +46,8 @@
+ 
+ #include "core.h"
+ 
++#include <linux/fxmodule/kernelOsddi.h>
++
+ extern	void	lm2_clocksource_init(void __iomem *gpt);
+ extern	void	lm2_clockevent_init(int irq, void __iomem *gpt);
+ extern void    lm2_init_clock(void);
+@@ -73,6 +75,8 @@ static struct map_desc lm2_io_desc[] __initdata = {
+ const unsigned char lm2_use_irq[] = {
+ 34,    // RTC
+ 40,    // Timer
++44,    // CPLD
++45,    // Ethernet PHY Link up
+ #ifndef        NEW_PANBUG
+ 50,    // UART0
+ #endif
+@@ -96,6 +100,25 @@ const unsigned char lm2_use_irq[] = {
+ };
+ const unsigned int lm2_use_irq_size = sizeof(lm2_use_irq);
+ 
++static int lm2_board_version = 0;
++
++static void lm2_get_board_version(void)
++{
++	void __iomem *virt_addr;
++	u32     val;
++	virt_addr = ioremap(0x04010024,0x4);
++	val  = readl(virt_addr);
++	iounmap(virt_addr);
++	lm2_board_version = val;
++}
++
++int lm2_board_is_A0(void)
++{
++	return (lm2_board_version == 0);
++}
++
++EXPORT_SYMBOL_GPL(lm2_board_is_A0);
++
+ /*
+  * system timer initial
+  */
+@@ -104,7 +127,9 @@ static void __init lm2_timer_init(void)
+ 	void	__iomem	*clksrc_timer;
+ 	void	__iomem	*clkevt_timer;
+ 
+-	clksrc_timer = ioremap(LM2_TIMER_BASE + 0x10, 0x10);
++	lm2_get_board_version();
++
++	clksrc_timer = ioremap(LM2_TIMER_BASE + 0x20, 0x10); /* HRT1 */
+ 	clkevt_timer = ioremap(LM2_TIMER_BASE + 0x5c, 0x0c);
+ 	lm2_clocksource_init(clksrc_timer);
+ 	lm2_clockevent_init(LM2_IRQ_TIMER_4,clkevt_timer);
+@@ -121,7 +146,18 @@ static	struct	plat_serial8250_port	lm2_serial_resource[]={
+ 		.regshift	= 0,
+ 		.iotype		= UPIO_MEM,
+ 		.flags		= UPF_SKIP_TEST,
++		.fxpwsave_enable	= 0,
++	},
++	{
++		.mapbase	= LM2_UART_3_BASE,
++		.irq		= LM2_IRQ_UART_3,
++		.uartclk	= LM2_UART3_CLK,
++		.regshift	= 0,
++		.iotype		= UPIO_MEM,
++		.flags		= UPF_SKIP_TEST,
++		.fxpwsave_enable	= 1,
+ 	},
++
+ 	{},
+ };
+ static struct platform_device lm2_serial_device = {
+@@ -298,9 +334,11 @@ static	struct platform_device lm2_pcie_device = {
+ 	.num_resources	= ARRAY_SIZE(lm2_pcie_resource),
+ };
+ 
++
+ static void __init lm2_init_early(void)
+ {
+ }
++
+ static void lm2_restart(char str, const char *cmd)
+ {
+ 	printk(KERN_EMERG "Unable to reboot\n");
+@@ -340,6 +378,8 @@ static	void __init lm2_fixup_mem(struct tag *tags, char **form, struct meminfo *
+ #endif /* yamano debug */
+ 	return;
+ }
++
++
+ /*
+  * Machine initialize routine without DTB mode
+  */
+@@ -348,6 +388,7 @@ static void __init lm2_init(void)
+ 	void __iomem *virt_addr;
+ 
+ 	lm2_init_clock();
++
+ 	virt_addr = ioremap(LM2_UART_1_BASE,0x32);
+ 	lm2_serial_resource[0].membase = virt_addr;
+ #ifndef NEW_PANBUG
+@@ -444,14 +485,51 @@ static void __init lm2_dt_init(void)
+         void __iomem *virt_addr;
+ 	struct device_node	*node;
+ 	const struct	of_device_id *of_id;
++	int productId;
++
+ 	lm2_init_clock();
+ 	/* Serial DTB ok */
+ 	virt_addr = ioremap(LM2_UART_1_BASE,0x32);
+ 	lm2_serial_resource[0].membase = virt_addr;
++	if (lm2_board_is_A0()) lm2_serial_resource[0].uartclk = (300*1000*1000);
+ #ifndef NEW_PANBUG
+ 	virt_addr = ioremap(LM2_UART_0_BASE,0x32);
+ 	lm2_serial_resource[1].membase = virt_addr;
++	if (lm2_board_is_A0()) lm2_serial_resource[1].uartclk = (300*1000*1000);
+ #endif /* NEW_PANBUG */
++
++	productId = kernelGetProductId();
++	if (productId < 0) {
++		printk(KERN_ERR "lm2.c UART : %s : <ERROR> kernelGetProductId failed (ret=%d). Assign default port.\n", __func__, productId);
++	}
++	else {
++		printk(KERN_INFO "lm2.c UART : %s : productId = 0x%x\n", __func__, productId);
++	}
++
++	switch (productId) {
++	case OS_PRODUCT_ID_BOMBORA:
++	case OS_PRODUCT_ID_KAIMANA:
++		printk(KERN_INFO "lm2.c UART : %s : assign port 2\n", __func__);
++		lm2_serial_resource[1].membase	= ioremap(LM2_UART_2_BASE,0x32);
++		lm2_serial_resource[1].irq		= LM2_IRQ_UART_2;
++		lm2_serial_resource[1].uartclk	= LM2_UART2_CLK;
++		break;
++	case OS_PRODUCT_ID_TOMBOLO:
++	case OS_PRODUCT_ID_MARIS:
++		printk(KERN_INFO "lm2.c UART : %s : assign port 3\n", __func__);
++		lm2_serial_resource[1].membase	= ioremap(LM2_UART_3_BASE,0x32);
++		lm2_serial_resource[1].irq		= LM2_IRQ_UART_3;
++		lm2_serial_resource[1].uartclk	= LM2_UART3_CLK;
++		break;
++	default:
++		printk(KERN_INFO "lm2.c UART : %s : assign port 5\n", __func__);
++		lm2_serial_resource[1].membase	= ioremap(LM2_UART_5_BASE,0x32);
++		lm2_serial_resource[1].irq		= LM2_IRQ_UART_5;
++		lm2_serial_resource[1].uartclk	= LM2_UART5_CLK;
++	}
++
++	if (lm2_board_is_A0()) lm2_serial_resource[1].uartclk = (300*1000*1000);
++
+ 	platform_device_register(&lm2_serial_device);
+ 	platform_device_register(&lm2_eth_device);
+ #ifdef	CONFIG_SATA_AHCI_PLATFORM
+@@ -481,6 +559,16 @@ static void __init lm2_dt_init(void)
+ 		of_node_put(node);
+ 	}
+ 	lm2_cipui_tim_init();
++
++	if (lm2_board_is_A0()){
++		printk("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
++		printk("@             This is A0 board              @\n");
++		printk("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
++	} else {
++		printk("*********************************************\n");
++		printk("*             This is B0 board               \n");
++		printk("*********************************************\n");
++	}
+ }
+ 
+ /*
+diff --git a/arch/arm/mach-lm2/lm2_pm.c b/arch/arm/mach-lm2/lm2_pm.c
+index d54a97f..38e893e 100644
+--- a/arch/arm/mach-lm2/lm2_pm.c
++++ b/arch/arm/mach-lm2/lm2_pm.c
+@@ -26,22 +26,43 @@
+ #include <linux/spi/xspi.h>
+ #include <linux/debugfs.h>
+ 
++#include <linux/fxmodule/overlay.h>
++#include <linux/fxmodule/kernelOsddi.h>
++
+ #include "core.h"
++#include <asm/lm2_pm_logger.h>
+ 
+-//#define LM2_PM_DEBUG
++#define LM2_PM_DEBUG
+ //#define PM_TEST
+ 
+ /* Suspend End flag -> memory write */
+ #define LM2_SUSPEND_END_ADDRESS		0x804f00000
++#define LM2_SHARED_MEM_SEND_TO_A7	0x804f00004
++#define LM2_SHARED_MEM_RECV_FROM_A7	0x804f00000
++#define LM2_SET_RESUME_REQUEST		0x804f00014
++#define LM2_SHARED_MEM_SEND_TO_LDR	0x804f00018
+ #define LM2_SUSPEND_END_DATA 		0x13
+ /* chksum */
+ extern unsigned long	chksum_info;
+ 
+ extern void deepsleep_up(void);
+ extern void irq_to_a7(unsigned int);
++extern void irq_to_a15(unsigned int);
+ extern void lm2_wfi0(void);
+ extern void lm2_save_a15core(void);
+ 
++extern void overlayEnergyStateGotoCpuoff(void);
++extern void overlayUartReset(void);
++extern void overlayUartClkDisable(void);
++extern void overlayEnergyStateReturnCpuoff(void);
++extern void overlayUartClkEnable(void);
++extern void overlayUartUnreset(void);
++
++extern void overlaySdReset(void);
++extern void overlaySdUnreset(void);
++extern void overlaySdClkDisable(void);
++extern void overlaySdClkEnable(void);
++
+ /*
+  * We can't use regular spinlocks. In the switcher case, it is possible
+  * for an outbound CPU to call power_down() after its inbound counterpart
+@@ -61,12 +82,23 @@ static int lm2_pm_use_count[QUATRO55XX_MAX_CPUS_PER_CLUSTER][LM2_CLUSTERS];
+ 	(!lm2_pm_use_count[0][cluster] && \
+ 	 !lm2_pm_use_count[1][cluster])
+ 
++#if 0
++int lm2_pm_nvm_write_byte(u8 buf)
++{
++	SPILIB_PARAM    param;
++	param.unit   = SPI_UNIT3;
++	param.offset = 0x4c;
++	param.buf    = &buf;
++	param.size   = 1;
++}
++#endif
++
+ /* lm2_deeepsleepup_addr_set */
+ static void lm2_deeepsleepup_addr_set(void)
+ {
+ 	SPILIB_PARAM	param;
+ 	int		ret;
+-	phys_addr_t	start_adr = virt_to_phys(&deepsleep_up);
++	phys_addr_t	start_adr = cpu_to_be32(virt_to_phys(&deepsleep_up));
+ 	u32		buf;
+ 
+ 	buf = (start_adr&0xffffffff);
+@@ -88,6 +120,7 @@ static void lm2_suspend_reg_set(phys_addr_t addr, u32 set_data)
+ 	void    __iomem	*set_address;
+ 
+ 	set_address = ioremap(addr, 0x4);
++printk("LM2_PM: Set %x to %x\n", set_data, set_address);
+ #ifdef	LM2_PM_DEBUG
+ printk(KERN_ERR "LM2_PM: addr=0x%llx write_data=0x%x\n", addr, set_data);
+ #endif
+@@ -95,11 +128,29 @@ printk(KERN_ERR "LM2_PM: addr=0x%llx write_data=0x%x\n", addr, set_data);
+ 	iounmap(set_address);
+ }
+ 
++static void lm2_suspend_wait_reg(phys_addr_t addr, u32 set_data)
++{
++	volatile void    __iomem *set_address;
++	u32 read_data = 0x0;
++	set_address = ioremap(addr, 0x4);
++printk("LM2_PM: Wait %x from %x\n", set_data, set_address);
++	while (read_data != set_data)
++		read_data = readl(set_address);
++	iounmap(set_address);
++	return;
++}
++
++
+ static int lm2_pm_begin(suspend_state_t state)
+ {
++	energyTraceKernel(NULL);
++
+ 	lm2_deeepsleepup_addr_set();
++	printk("[PWRMGR] CPU OFF enter.\n");
+ 
++	energyTraceKernel(NULL);
+ 	cpu_idle_poll_ctrl(true);
++
+         return 0;
+ }
+ 
+@@ -112,6 +163,9 @@ static void lm2_pm_end(void)
+         u32             buf;
+ #endif
+ 
++	printk("[PWRMGR] CPU OFF exit.\n");
++	energyTraceKernel(NULL);
++
+         cpu_idle_poll_ctrl(false);
+ 
+ #ifdef  LM2_PM_DEBUG
+@@ -133,11 +187,38 @@ static void lm2_pm_end(void)
+ #endif  /* LM2_PM_DEBUG */
+ }
+ 
++unsigned int lm2_pm_subsw_pushed_flag = 0;
++
++void lm2_pm_subsw_pushed()
++{
++	/* Sub SW pushed */
++	lm2_pm_subsw_pushed_flag = 1;
++}
++
++void reset_for_swoff_retry()
++{
++	if (lm2_pm_subsw_pushed_flag){
++		lm2_suspend_reg_set(LM2_SHARED_MEM_SEND_TO_LDR, 0x91749174);
++		mdelay(100);
++	}
++}
++
++void go_cpu_off(){
++	lm2_suspend_reg_set(LM2_SHARED_MEM_SEND_TO_A7, 0x13);
++}
++
++void return_from_cpu_off(){
++	lm2_suspend_reg_set(LM2_SHARED_MEM_SEND_TO_A7, 0x02);
++}
+ 
+ static void lm2_pm_suspend(void)
+ {
+ 	unsigned int mpidr, cpu, cluster;
+ 
++	/* SATA */
++	energyTraceKernel(NULL);
++	kernelGioNegate(OS_GIO_HDD_PWR_CNT);
++
+ 	mpidr = read_cpuid_mpidr();
+ 	cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
+ 	cluster = MPIDR_AFFINITY_LEVEL(mpidr, 1);
+@@ -145,6 +226,20 @@ static void lm2_pm_suspend(void)
+ 	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
+ 	BUG_ON(cluster >= LM2_CLUSTERS || cpu >= QUATRO55XX_MAX_CPUS_PER_CLUSTER);
+ 
++	/* FX */
++	energyTraceKernel(NULL);
++	reset_for_swoff_retry();
++
++	overlaySdReset();
++	overlaySdClkDisable();
++	overlayEnergyStateGotoCpuoff();
++	overlayUartReset();
++	overlayUartClkDisable();
++
++	lm2_suspend_reg_set(LM2_SHARED_MEM_SEND_TO_A7, 0x01);
++	lm2_suspend_wait_reg(LM2_SHARED_MEM_RECV_FROM_A7, 0x81);/*0x81?*/
++	/* FX */
++
+ #ifdef	PM_TEST
+ 	printk(KERN_ERR "=> %s: irq=%03d TagetReg not Change\n",__func__,LM2_IRQ_CIPUI);
+ #else	/* PM_TEST */
+@@ -154,17 +249,33 @@ static void lm2_pm_suspend(void)
+ 	irq_to_a7(LM2_IRQ_SPI_0);	//  44
+ 	irq_to_a7(LM2_IRQ_SPI_2);	//  46
+ 
+-	lm2_suspend_reg_set(LM2_SUSPEND_END_ADDRESS, LM2_SUSPEND_END_DATA);
++	lm2_suspend_reg_set(LM2_SET_RESUME_REQUEST, 0x55805580);
+ 
+ 	lm2_save_a15core();		// Save A15Core C2/C13/SP
+ 	lm2_wfi0();
+ 	/************* Resume Start *************/
++	overlayEnergyStateReturnCpuoff();
++	overlayUartClkEnable();
++	overlayUartUnreset();
++	overlaySdClkEnable();
++	overlaySdUnreset();
++
++	/* SATA : will be deleted from here */
++	kernelGioAssert(OS_GIO_HDD_PWR_CNT);
++	energyTraceKernel(NULL);
++
++	//irq_to_a15(LM2_IRQ_CIPUI);	//  64
++	//irq_to_a15(LM2_IRQ_GMACK_STAT);	// 126
++	//irq_to_a15(LM2_IRQ_SPI_0);	//  44
++	//irq_to_a15(LM2_IRQ_SPI_2);	//  46
+ }
+ 
+ extern void dw3_reg_save(void);
+ extern void dw3_reg_load(void);
++#ifdef	CONFIG_PCIE_LM2
+ extern void lm2_pcie_suspend(void);
+ extern void lm2_pcie_resume(void);
++#endif
+ extern void stmac_reg_save(void);
+ extern void stmac_reg_load(void);
+ 
+@@ -177,15 +288,26 @@ static int lm2_pm_enter(suspend_state_t suspend_state)
+ #ifdef  LM2_PM_DEBUG
+ printk(KERN_ERR "LM2_PM: Register Save\n");
+ #endif
++			energyTraceKernel(NULL);
+ 			stmac_reg_save();
++#ifdef	CONFIG_PCIE_LM2
++			energyTraceKernel(NULL);
+ 			lm2_pcie_suspend();
++#endif
++			energyTraceKernel(NULL);
+ 			dw3_reg_save();
++			energyTraceKernel(NULL);
+ 			lm2_pm_suspend();
+ #ifdef  LM2_PM_DEBUG
+ printk(KERN_ERR "LM2_PM: Register Load\n");
+ #endif
++			energyTraceKernel(NULL);
+ 			dw3_reg_load();
++#ifdef	CONFIG_PCIE_LM2
++			energyTraceKernel(NULL);
+ 			lm2_pcie_resume();
++#endif
++			energyTraceKernel(NULL);
+ 			stmac_reg_load();
+ 			break;
+ 		default:
+@@ -196,6 +318,7 @@ printk(KERN_ERR "LM2_PM: Register Load\n");
+ 
+ static int lm2_pm_finish(void)
+ {
++	energyTraceKernel(NULL);
+ 	return 0;
+ }
+ 
+@@ -267,6 +390,8 @@ static int __init lm2_pm_init(void)
+ 	if (!d)
+ 		ret = -ENOMEM;
+ 	strcpy(&run_flag, "cold boot\n");
++	/* /sys/kernel/debug/pm_stamp */
++	lm2_pm_stamp_sysfs_entry();
+ #endif
+ 	return ret;
+ }
+diff --git a/arch/arm/mach-lm2/sdhci.c b/arch/arm/mach-lm2/sdhci.c
+index ece5d11..c1ef6d4 100644
+--- a/arch/arm/mach-lm2/sdhci.c
++++ b/arch/arm/mach-lm2/sdhci.c
+@@ -51,8 +51,8 @@ static struct platform_device lm2_sdhci0_device = {
+ };
+ static struct resource lm2_sdhci1_resources[] = {
+ 	[0] = {
+-		.start  = LM2_SDIO1_BASE + 0x200,       /* slot1 */
+-		.end    = LM2_SDIO1_BASE + 0x300,
++		.start  = LM2_SDIO1_BASE + 0x100,       /* slot1 */
++		.end    = LM2_SDIO1_BASE + 0x200,
+ 		.flags  = IORESOURCE_MEM,
+ 	},
+ 	[1] = {
+diff --git a/arch/arm/mm/init.c b/arch/arm/mm/init.c
+index 60938a4..9355fef 100644
+--- a/arch/arm/mm/init.c
++++ b/arch/arm/mm/init.c
+@@ -124,7 +124,7 @@ __tagtable(ATAG_INITRD2, parse_tag_initrd2);
+ #ifdef CONFIG_OF_FLATTREE
+ void __init early_init_dt_setup_initrd_arch(unsigned long start, unsigned long end)
+ {
+-	phys_initrd_start = start;
++	phys_initrd_start = start|0x800000000ULL;
+ 	phys_initrd_size = end - start;
+ }
+ #endif /* CONFIG_OF_FLATTREE */
+diff --git a/arch/arm/plat-waikiki/time.c b/arch/arm/plat-waikiki/time.c
+index 8558b72..4d65f6d 100644
+--- a/arch/arm/plat-waikiki/time.c
++++ b/arch/arm/plat-waikiki/time.c
+@@ -31,15 +31,15 @@
+  * also affect other timer.
+  */
+ 
+-#define	SYSCLK		(300*1000*1000)	/* 300MHz */
+-#define	DIVISOR		3000	/* 100KHz 10msec */
+-#define	PRESCALE	6	/* 50MHz 20nsec */
++extern int lm2_board_is_A0(void);
++#define	SYSCLK		( lm2_board_is_A0() ? (300*1000*1000) : (275*1000*1000) ) /* 275MHz */
++#define	DIVISOR		100	/* For HZ=100 10msec */
++#define	PRESCALE	275	/* Same as Panbug */
+ 
+ /* Register offsets, x is channel number */
+ #define	PRESCL(x)	((x)+0)
+-#define	HTCNTR_H(x)	((x)+0x04)
+-#define	HTCNTR_L(x)	((x)+0x08)
+-#define	HTCTLR(x)		((x)+0x0c)
++#define HTCNTR(x)       ((x)+0x04)
++#define	HTCTLR(x)	((x)+0x08)
+ 
+ #define CTLR(x)		((x)+8)
+ #define LOAD(x)		((x)+0)
+@@ -68,7 +68,7 @@ static	unsigned int	ticks_per_jiffy;
+ 
+ static	u32	lm2_read_sched_clock(void)
+ {
+-	return	readl(HTCNTR_L(clksrc_base));
++	return	readl(HTCNTR(clksrc_base));
+ }
+ 
+ #ifdef CONFIG_PM
+@@ -131,13 +131,14 @@ void	lm2_clocksource_init(__iomem void *gpt_base)
+ 	writel(PRESCALE-1,PRESCL(clksrc_base));
+ 
+ 	/* Start Timer */
++	writel(HTCTLR_CLR,HTCTLR(clksrc_base));
+ 	writel(HTCTLR_START,HTCTLR(clksrc_base));
+ 
+ 	/* rate culculate */
+ 	tick_rate = SYSCLK / PRESCALE;
+ 
+ 	/* register the clocksource tick_rate */
+-	result = clocksource_mmio_init(HTCNTR_L(clksrc_base),"system_timer",tick_rate,
++	result = clocksource_mmio_init(HTCNTR(clksrc_base),"system_timer",tick_rate,
+ 		200, 32, clocksource_mmio_readl_up);
+ 
+ 	setup_sched_clock(lm2_read_sched_clock,32,tick_rate);
+diff --git a/drivers/Kconfig b/drivers/Kconfig
+index 07366fe..5fb9c47 100644
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -171,4 +171,7 @@ source "drivers/reset/Kconfig"
+ source "drivers/powercap/Kconfig"
+ 
+ source "drivers/phy/Kconfig"
++
++source "drivers/fxmodule/Kconfig"
++
+ endmenu
+diff --git a/drivers/Makefile b/drivers/Makefile
+index 7fadea3..3dd32c9 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -156,3 +156,5 @@ obj-$(CONFIG_VME_BUS)		+= vme/
+ obj-$(CONFIG_IPACK_BUS)		+= ipack/
+ obj-$(CONFIG_NTB)		+= ntb/
+ obj-$(CONFIG_POWERCAP)         += powercap/
++obj-$(CONFIG_FXMODULE)          += fxmodule/
++
+diff --git a/drivers/ata/ahci_platform.c b/drivers/ata/ahci_platform.c
+index d5f361e..5141b2a 100644
+--- a/drivers/ata/ahci_platform.c
++++ b/drivers/ata/ahci_platform.c
+@@ -358,6 +358,8 @@ static int ahci_resume(struct device *dev)
+ 			goto disable_unprepare_clk;
+ 	}
+ 
++	sata_clk_set();
++
+ 	if (dev->power.power_state.event == PM_EVENT_SUSPEND) {
+ 		rc = ahci_reset_controller(host);
+ 		if (rc)
+diff --git a/drivers/base/power/main.c b/drivers/base/power/main.c
+index 5a9b656..b75b2be 100644
+--- a/drivers/base/power/main.c
++++ b/drivers/base/power/main.c
+@@ -32,6 +32,8 @@
+ #include "../base.h"
+ #include "power.h"
+ 
++#include <asm/lm2_pm_logger.h>
++
+ typedef int (*pm_callback_t)(struct device *);
+ 
+ /*
+@@ -696,6 +698,7 @@ void dpm_resume(pm_message_t state)
+ 
+ 			mutex_unlock(&dpm_list_mtx);
+ 
++			energyTraceKernel(dev_name(dev));
+ 			error = device_resume(dev, state, false);
+ 			if (error) {
+ 				suspend_stats.failed_resume++;
+@@ -1186,6 +1189,7 @@ int dpm_suspend(pm_message_t state)
+ 		get_device(dev);
+ 		mutex_unlock(&dpm_list_mtx);
+ 
++		energyTraceKernel(dev_name(dev));
+ 		error = device_suspend(dev);
+ 
+ 		mutex_lock(&dpm_list_mtx);
+diff --git a/drivers/i2c/busses/i2c-lm2.c b/drivers/i2c/busses/i2c-lm2.c
+index 7c85362..9493bf5 100644
+--- a/drivers/i2c/busses/i2c-lm2.c
++++ b/drivers/i2c/busses/i2c-lm2.c
+@@ -61,8 +61,11 @@ struct lm2_i2c_eeprom {
+ 	unsigned int	len;
+ 	unsigned char	offset;
+ 	unsigned char	buf[32];
++	struct mutex lock;
+ };
+ 
++extern int lm2_board_is_A0(void);
++
+ /*
+  * Interrupt handler
+  */
+@@ -101,9 +104,10 @@ static void lm2_i2c_mrecv(struct lm2_i2c_eeprom *id)
+ 	int len;
+ 	unsigned int	reg;
+ 
+-	dev_info(id->adap.dev.parent, "mrecv call\n");
++//	dev_info(id->adap.dev.parent, "mrecv call\n");
+ 	/* set the read count */
+ 	reg = readl(id->iobase + EMSR);
++	reg = reg & ~0x0003c000; /* clear */
+ 	reg |= ((id->len-1) << 14);
+ 	writel(reg, id->iobase + EMSR);
+ 
+@@ -123,8 +127,9 @@ static void lm2_i2c_msend(struct lm2_i2c_eeprom *id)
+ {
+ 	u32	val;
+ 
+-	dev_info(id->adap.dev.parent, "msend call\n");
++//	dev_info(id->adap.dev.parent, "msend call\n");
+ 	val = readl(id->iobase + EMSR);
++	val = val & ~0x0003c000; /* clear */
+ 	val = val | ((id->len-1) << 14);
+ 	writel(val, id->iobase+EMSR);
+ 
+@@ -150,19 +155,27 @@ static int lm2_i2c_master_xfer(struct i2c_adapter *adap,
+ 	struct lm2_i2c_eeprom *id = adap->algo_data;
+ 	int 	i, ret;
+ 	struct	i2c_msg	dat;
++	unsigned int delay_msec = lm2_board_is_A0() ? 50 : 5;
++
+ 	u32	length;
+ 	u32	idx;
++	u32	start;
+ 	u32	addr;
+ 
+ 	if (lm2_i2c_busy_check(id)) {
+ 		dev_err(&adap->dev, "lm2-i2c %d: bus busy!\n", adap->nr);
+ 		return -EBUSY;
+ 	}
++	mutex_lock(&id->lock);
+ //	dev_info( &adap->dev, "call master xfer %x %d\n", msgs, num);
+ //	dev_info(&adap->dev, "slave addr = %d\n",msgs->addr);
+ //	dev_info(&adap->dev, "flags = %x\n",msgs->flags);
+ //	dev_info(&adap->dev, "msg length = %d\n",msgs->len);
+ //	dev_info(&adap->dev, "buf = %x\n",msgs->buf);
++	/* FX */
++	start = msgs->buf[0];
++	msgs++;
++	/* FX */
+ 	addr = (msgs->addr)<<1;
+ 	writel(addr,id->iobase + ESAR);
+ 	id->msg = msgs;
+@@ -170,9 +183,14 @@ static int lm2_i2c_master_xfer(struct i2c_adapter *adap,
+ 	idx = 0;
+ 	id->addr =0;
+ 	while (length) {
+-		if(length > 32){
+-			id->len = 32;
+-		}else{
++		if(idx == 0 && (start % 16) != 0){
++			id->len = 16 - (start % 16);
++			if (id->len > length){
++				id->len = length;
++			}
++		} else if(length > 16){
++			id->len = 16;
++		} else {
+ 			id->len = length;
+ 		}
+ 		/* setup synchronize */
+@@ -180,9 +198,10 @@ static int lm2_i2c_master_xfer(struct i2c_adapter *adap,
+ 
+ // dev_info(&adap->dev, "idx = %d length= %d\n", idx, length);
+ 		if (msgs->flags & I2C_M_RD){
+-			id->addr = idx;
++			id->addr = start + idx;
+ 			lm2_i2c_mrecv(id);	/* recv */
+ 		}else{
++			id->addr = start + idx;
+ 			for(i = 0 ; i < id->len ; i++){
+ 				writel(msgs->buf[idx],id->iobase+EDR1+i*4);
+ 				idx++;
+@@ -205,7 +224,9 @@ static int lm2_i2c_master_xfer(struct i2c_adapter *adap,
+ 			}
+ 		}
+ 		length = length - id->len;
++		mdelay(delay_msec);
+ 	}
++	mutex_unlock(&id->lock);
+ 	return	num;
+ }
+ 
+diff --git a/drivers/irqchip/irq-gic.c b/drivers/irqchip/irq-gic.c
+index 105fe9b..82b1703 100644
+--- a/drivers/irqchip/irq-gic.c
++++ b/drivers/irqchip/irq-gic.c
+@@ -311,6 +311,27 @@ printk(KERN_ERR "LM2_PM: irq=%03d offset=0x%x shift=%d val=0x%08x\n",irq, (GIC_D
+ #endif
+ }
+ EXPORT_SYMBOL(irq_to_a7);
++
++void irq_to_a15(unsigned int irq)
++{
++        unsigned int offset;
++        unsigned int shift;
++        u32     val;
++        struct gic_chip_data *gic = &gic_data[0];
++        void __iomem *base = gic_data_dist_base(gic);
++
++        offset = irq / 4;
++        shift  = irq % 4;
++        raw_spin_lock(&irq_controller_lock);
++        val  = readl_relaxed(base + GIC_DIST_TARGET + offset * 4) & ~(0xff << (( irq % 4 ) * 8));
++        val |= 0x02 << (( irq % 4 ) * 8);
++        writel_relaxed(val,  base + GIC_DIST_TARGET + offset * 4);
++        raw_spin_unlock(&irq_controller_lock);
++#ifdef  LM2_PM_DEBUG
++printk(KERN_ERR "LM2_PM: irq=%03d offset=0x%x shift=%d val=0x%08x\n",irq, (GIC_DIST_TARGET+offset*4), shift,val);
++#endif
++}
++EXPORT_SYMBOL(irq_to_a15);
+ #endif	/* CONFIG_ARCH_LM2 */
+ 
+ #ifdef CONFIG_PM
+@@ -829,6 +850,15 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
+ 	for_each_cpu(cpu, mask)
+ 		map |= gic_cpu_map[cpu];
+ 
++#ifdef CONFIG_FX_FWCMD_IPI_WITH_A7
++/* for debug */
++        if ((map != 2) && (map != 4)) {
++/*              printk("gic_raise_softirq: map = %d irq = %d cpu = %d mask = 0x%x\n", (unsigned int)map, irq, cpu, (unsigned int)mask); */
++                map = 1;
++/*              printk("gic_raise_softirq: new map = %d irq = %d\n", (unsigned int)map, irq); */
++        }
++#endif
++
+ 	/*
+ 	 * Ensure that stores to Normal memory are visible to the
+ 	 * other CPUs before issuing the IPI.
+diff --git a/drivers/mmc/core/sdio.c b/drivers/mmc/core/sdio.c
+index 80d89cf..1a34b56 100644
+--- a/drivers/mmc/core/sdio.c
++++ b/drivers/mmc/core/sdio.c
+@@ -18,6 +18,7 @@
+ #include <linux/mmc/sdio.h>
+ #include <linux/mmc/sdio_func.h>
+ #include <linux/mmc/sdio_ids.h>
++#include <linux/mmc/sdhci.h>
+ 
+ #include "core.h"
+ #include "bus.h"
+@@ -158,6 +159,9 @@ static int sdio_read_cccr(struct mmc_card *card, u32 ocr)
+ 				goto out;
+ 
+ 			if (mmc_host_uhs(card->host)) {
++
++				card->sw_caps.sd3_bus_mode=SD_MODE_UHS_SDR25;
++
+ 				if (data & SDIO_UHS_DDR50)
+ 					card->sw_caps.sd3_bus_mode
+ 						|= SD_MODE_UHS_DDR50;
+@@ -480,18 +484,13 @@ static int sdio_set_bus_speed_mode(struct mmc_card *card)
+ 
+ 	bus_speed = SDIO_SPEED_SDR12;
+ 	timing = MMC_TIMING_UHS_SDR12;
++	/*
+ 	if ((card->host->caps & MMC_CAP_UHS_SDR104) &&
+ 	    (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR104)) {
+ 			bus_speed = SDIO_SPEED_SDR104;
+ 			timing = MMC_TIMING_UHS_SDR104;
+ 			card->sw_caps.uhs_max_dtr = UHS_SDR104_MAX_DTR;
+ 			card->sd_bus_speed = UHS_SDR104_BUS_SPEED;
+-	} else if ((card->host->caps & MMC_CAP_UHS_DDR50) &&
+-		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_DDR50)) {
+-			bus_speed = SDIO_SPEED_DDR50;
+-			timing = MMC_TIMING_UHS_DDR50;
+-			card->sw_caps.uhs_max_dtr = UHS_DDR50_MAX_DTR;
+-			card->sd_bus_speed = UHS_DDR50_BUS_SPEED;
+ 	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
+ 		    MMC_CAP_UHS_SDR50)) && (card->sw_caps.sd3_bus_mode &
+ 		    SD_MODE_UHS_SDR50)) {
+@@ -499,7 +498,14 @@ static int sdio_set_bus_speed_mode(struct mmc_card *card)
+ 			timing = MMC_TIMING_UHS_SDR50;
+ 			card->sw_caps.uhs_max_dtr = UHS_SDR50_MAX_DTR;
+ 			card->sd_bus_speed = UHS_SDR50_BUS_SPEED;
+-	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
++	} else if ((card->host->caps & MMC_CAP_UHS_DDR50) &&
++		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_DDR50)) {
++			bus_speed = SDIO_SPEED_DDR50;
++			timing = MMC_TIMING_UHS_DDR50;
++			card->sw_caps.uhs_max_dtr = UHS_DDR50_MAX_DTR;
++			card->sd_bus_speed = UHS_DDR50_BUS_SPEED;
++	} else */
++	if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
+ 		    MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR25)) &&
+ 		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR25)) {
+ 			bus_speed = SDIO_SPEED_SDR25;
+@@ -664,19 +670,25 @@ try_again:
+ 	 * it.
+ 	 */
+ 	if (!powered_resume && (ocr & R4_18V_PRESENT) && mmc_host_uhs(host)) {
+-		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180);
+-		if (err == -EAGAIN) {
+-			sdio_reset(host);
+-			mmc_go_idle(host);
+-			mmc_send_if_cond(host, host->ocr_avail);
+-			mmc_remove_card(card);
+-			retries--;
+-			goto try_again;
+-		} else if (err) {
+-			ocr &= ~R4_18V_PRESENT;
+-			host->ocr &= ~R4_18V_PRESENT;
++		struct sdhci_host *sd_host=mmc_priv(host);
++		if(sd_host->ch==0){
++			err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180);
++			if (err == -EAGAIN) {
++				sdio_reset(host);
++				mmc_go_idle(host);
++				mmc_send_if_cond(host, host->ocr_avail);
++				mmc_remove_card(card);
++				retries--;
++				goto try_again;
++			} else if (err) {
++				ocr &= ~R4_18V_PRESENT;
++				host->ocr &= ~R4_18V_PRESENT;
++			}
++			err = 0;
++		}else{/*delete power switch sequence for ch1*/
++			host->ios.signal_voltage = MMC_SIGNAL_VOLTAGE_180;
++			host->ios.vdd = 7; /* MMC_VDD_165_195 (1.8V)  */
+ 		}
+-		err = 0;
+ 	} else {
+ 		ocr &= ~R4_18V_PRESENT;
+ 		host->ocr &= ~R4_18V_PRESENT;
+@@ -1145,6 +1157,8 @@ int mmc_attach_sdio(struct mmc_host *host)
+ 	if (host->ocr_avail_sdio)
+ 		host->ocr_avail = host->ocr_avail_sdio;
+ 
++	host->ocr_avail=MMC_VDD_32_33 | MMC_VDD_33_34 |MMC_VDD_29_30 | MMC_VDD_30_31 | MMC_VDD_165_195;/* add 3.3V support */
++
+ 	/*
+ 	 * Sanity check the voltages that the card claims to
+ 	 * support.
+@@ -1266,3 +1280,61 @@ err:
+ 	return err;
+ }
+ 
++#include <linux/export.h>
++int sdio_reset_comm(struct mmc_card *card)
++{
++	struct mmc_host *host = card->host;
++	u32 ocr;
++	int err;
++
++	printk("%s():\n", __func__);
++	mmc_go_idle(host);
++
++	mmc_set_clock(host, host->f_min);
++
++	err = mmc_send_io_op_cond(host, 0, &ocr);
++	if (err)
++		goto err;
++
++	host->ocr = mmc_select_voltage(host, ocr);
++	if (!host->ocr) {
++		err = -EINVAL;
++		goto err;
++	}
++
++	err = mmc_send_io_op_cond(host, host->ocr, &ocr);
++	if (err)
++		goto err;
++
++	if (mmc_host_is_spi(host)) {
++		err = mmc_spi_set_crc(host, use_spi_crc);
++		if (err)
++		goto err;
++	}
++
++	if (!mmc_host_is_spi(host)) {
++		err = mmc_send_relative_addr(host, &card->rca);
++		if (err)
++			goto err;
++		mmc_set_bus_mode(host, MMC_BUSMODE_PUSHPULL);
++	}
++	if (!mmc_host_is_spi(host)) {
++		err = mmc_select_card(card);
++		if (err)
++			goto err;
++	}
++
++	mmc_set_clock(host, card->cis.max_dtr);
++	err = sdio_enable_wide(card);
++	if (err)
++		goto err;
++
++	return 0;
++ err:
++	printk("%s: Error resetting SDIO communications (%d)\n",
++	       mmc_hostname(host), err);
++	mmc_release_host(host);
++	return err;
++}
++EXPORT_SYMBOL_GPL(sdio_reset_comm);
++
+diff --git a/drivers/mmc/core/sdio_io.c b/drivers/mmc/core/sdio_io.c
+index 78cb4d5..f8661ed 100644
+--- a/drivers/mmc/core/sdio_io.c
++++ b/drivers/mmc/core/sdio_io.c
+@@ -10,10 +10,13 @@
+  */
+ 
+ #include <linux/export.h>
++#include <linux/delay.h>
++
+ #include <linux/mmc/host.h>
+ #include <linux/mmc/card.h>
+ #include <linux/mmc/sdio.h>
+ #include <linux/mmc/sdio_func.h>
++#include <linux/mmc/sdhci.h>
+ 
+ #include "sdio_ops.h"
+ 
+@@ -306,6 +309,13 @@ static int sdio_io_rw_ext_helper(struct sdio_func *func, int write,
+ 	unsigned remainder = size;
+ 	unsigned max_blocks;
+ 	int ret;
++	bool is_block=false;
++	struct sdhci_host *host;
++	unsigned long flags;
++
++	host = mmc_priv(func->card->host);
++	spin_lock_irqsave(&host->lock, flags);
++	spin_unlock_irqrestore(&host->lock, flags);
+ 
+ 	/* Do the bulk of the transfer using block mode (if supported). */
+ 	if (func->card->cccr.multi_block && (size > sdio_max_byte_size(func))) {
+@@ -326,7 +336,7 @@ static int sdio_io_rw_ext_helper(struct sdio_func *func, int write,
+ 				blocks, func->cur_blksize);
+ 			if (ret)
+ 				return ret;
+-
++			is_block=true;
+ 			remainder -= size;
+ 			buf += size;
+ 			if (incr_addr)
+@@ -349,6 +359,11 @@ static int sdio_io_rw_ext_helper(struct sdio_func *func, int write,
+ 		if (incr_addr)
+ 			addr += size;
+ 	}
++
++	if(is_block){
++		extern void sdhci_send_command52(struct sdhci_host *host);
++		sdhci_send_command52(host);
++	}
+ 	return 0;
+ }
+ 
+diff --git a/drivers/mmc/host/sdhci-lm2.c b/drivers/mmc/host/sdhci-lm2.c
+index fdd4711..1712b45 100644
+--- a/drivers/mmc/host/sdhci-lm2.c
++++ b/drivers/mmc/host/sdhci-lm2.c
+@@ -19,7 +19,12 @@
+ 
+ static unsigned int sdhci_lm2_get_max_clk(struct sdhci_host *host)
+ {
+-	return 177780000/2;	/* 177.78MHz/2 */
++	if(host->ch==0){
++		return 200000000;       /* 200MHz */;
++		//return 177780000/2;/* 177.78MHz/2 */
++	}else{
++		return 200000000;	/* 200MHz */
++	}
+ }
+ 
+ static void sdhci_lm2_set_clock(struct sdhci_host *host, unsigned int clock)
+@@ -28,12 +33,23 @@ static void sdhci_lm2_set_clock(struct sdhci_host *host, unsigned int clock)
+ 	int div = 1;
+ 	u16 clk=0;
+ 	unsigned long timeout;
++	u16 ctrl;
+ 
+ 	if (clock == host->clock)
+ 		return;
+ 
+ 	sdhci_writew(host, 0, SDHCI_CLOCK_CONTROL);
+ 
++	if(host->ch==1){
++		ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
++		if(!(ctrl&SDHCI_CTRL_VDD_180)){
++			ctrl |= SDHCI_CTRL_VDD_180;
++			sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
++			ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
++		}
++
++	}
++
+ 	if (clock == 0)
+ 		return;
+ 
+@@ -96,7 +112,172 @@ static int sdhci_lm2_buswidth(struct sdhci_host *host, int bus_width)
+         sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+         return 0;
+ }
+-static void sdhci_lm2_platform_init(struct sdhci_host *host)
++
++
++/******* FUNCTION SPECIFICATIONS BEGIN ****************************************
++
++ 機能 LM2 SD PHY遅延値設定
++ 形式 STATUS sdcLm2SetPhyDelay(pCard, mode)
++ 引数 pCard  カード情報構造体ポインタ
++      mode   SDカードスピードモード
++ 返値 なし
++ 説明 LM2 SDカードコントローラPHY遅延値を設定する
++
++******** FUNCTION SPECIFICATIONS END *****************************************/
++
++#define SDC_LM2_SPDMODE_DS           (0)
++#define SDC_LM2_SPDMODE_HS           (1)
++#define SDC_LM2_SPDMODE_SDR12        (2)
++#define SDC_LM2_SPDMODE_SDR25        (3)
++#define SDC_LM2_SPDMODE_SDR50        (4)
++#define SDC_LM2_SPDMODE_DDR50        (5)
++
++#define UIS_PHY_ADDR_WR_DS				(0b00000)
++#define UIS_PHY_ADDR_WR_HS				(0b00001)
++#define UIS_PHY_ADDR_WR_SDR12			(0b01000)
++#define UIS_PHY_ADDR_WR_SDR25			(0b01001)
++#define UIS_PHY_ADDR_WR_SDR50			(0b01010)
++#define UIS_PHY_ADDR_WR_SDR104			(0b01011)
++#define UIS_PHY_ADDR_WR_DDR50			(0b01100)
++#define UIS_PHY_ADDR_WR_MMCDS			(0b10000)
++#define UIS_PHY_ADDR_WR_MMCHS			(0b10001)
++#define UIS_PHY_ADDR_WR_MMCDDR			(0b10100)
++
++#define UIS_PHY_ADDR_RD_DS				(0b00000)
++#define UIS_PHY_ADDR_RD_HS				(0b00001)
++#define UIS_PHY_ADDR_RD_SDR12			(0b00010)
++#define UIS_PHY_ADDR_RD_SDR25			(0b00011)
++#define UIS_PHY_ADDR_RD_SDR50			(0b00100)
++#define UIS_PHY_ADDR_RD_SDR104			(0b00101)
++#define UIS_PHY_ADDR_RD_DDR50			(0b00110)
++#define UIS_PHY_ADDR_RD_MMCDS			(0b00111)
++#define UIS_PHY_ADDR_RD_MMCHS			(0b01000)
++#define UIS_PHY_ADDR_RD_MMCDDR			(0b01001)
++
++
++
++#define SDIO0_PHYDELAY_DS			(9)
++#define SDIO0_PHYDELAY_HS			(2)
++#define SDIO0_PHYDELAY_SDR12		(0)
++#define SDIO0_PHYDELAY_SDR25		(0)
++#define SDIO0_PHYDELAY_SDR50		(0)
++#define SDIO0_PHYDELAY_DDR50		(2)
++
++#define SDIO1_PHYDELAY_DS			(9)
++#define SDIO1_PHYDELAY_HS			(2)
++#define SDIO1_PHYDELAY_SDR12		(0)
++#define SDIO1_PHYDELAY_SDR25		(0)
++#define SDIO1_PHYDELAY_SDR50		(3)
++#define SDIO1_PHYDELAY_DDR50		(2)
++
++
++
++
++#define SDIO_HRS44_OFF					0x000000B0
++
++#define SDIO0_HRS44						0x044400B0
++#define SDIO1_HRS44						0x044500B0
++
++#define SDIO_HRS44__ACK__SHIFT			26
++#define SDIO_HRS44__ACK__WIDTH			1
++#define SDIO_HRS44__ACK__MASK			0x04000000
++#define SDIO_HRS44__ACK__HW_DEFAULT		0x0
++#define SDIO_HRS44__RD__SHIFT			25
++#define SDIO_HRS44__RD__WIDTH			1
++#define SDIO_HRS44__RD__MASK			0x02000000
++#define SDIO_HRS44__RD__HW_DEFAULT		0x0
++#define SDIO_HRS44__WR__SHIFT			24
++#define SDIO_HRS44__WR__WIDTH			1
++#define SDIO_HRS44__WR__MASK			0x01000000
++#define SDIO_HRS44__WR__HW_DEFAULT		0x0
++#define SDIO_HRS44__WDATA__SHIFT		16
++#define SDIO_HRS44__WDATA__WIDTH		5
++#define SDIO_HRS44__WDATA__MASK			0x001F0000
++#define SDIO_HRS44__WDATA__HW_DEFAULT	0x0
++#define SDIO_HRS44__RDATA__SHIFT		8
++#define SDIO_HRS44__RDATA__WIDTH		5
++#define SDIO_HRS44__RDATA__MASK			0x00001F00
++#define SDIO_HRS44__RDATA__HW_DEFAULT	0x0
++#define SDIO_HRS44__ADDR__SHIFT			0
++#define SDIO_HRS44__ADDR__WIDTH			6
++#define SDIO_HRS44__ADDR__MASK			0x0000003F
++#define SDIO_HRS44__ADDR__HW_DEFAULT	0x0
++
++
++static char sdio_phy_delay[2][6]=
++{
++	{SDIO0_PHYDELAY_DS,SDIO0_PHYDELAY_HS,SDIO0_PHYDELAY_SDR12,SDIO0_PHYDELAY_SDR25,SDIO0_PHYDELAY_SDR50,SDIO0_PHYDELAY_DDR50},
++	{SDIO1_PHYDELAY_DS,SDIO1_PHYDELAY_HS,SDIO1_PHYDELAY_SDR12,SDIO1_PHYDELAY_SDR25,SDIO1_PHYDELAY_SDR50,SDIO1_PHYDELAY_DDR50}
++};
++
++
++void sdcLm2SetPhyDelay(int ch,int mode)
++{
++	void __iomem *virt_addr;
++	u32     val;
++	unsigned char addr;
++	unsigned char data;
++	int i;
++
++	switch(mode) {
++	case SDC_LM2_SPDMODE_DS:
++		addr = UIS_PHY_ADDR_WR_DS;
++		break;
++	case SDC_LM2_SPDMODE_HS:
++		addr = UIS_PHY_ADDR_WR_HS;
++		break;
++	case SDC_LM2_SPDMODE_DDR50:
++		addr = UIS_PHY_ADDR_WR_DDR50;
++		break;
++	case SDC_LM2_SPDMODE_SDR50:
++		addr = UIS_PHY_ADDR_WR_SDR50;
++		break;
++	default:
++		return; /* 何もしない */
++	}
++
++	data = sdio_phy_delay[ch][mode];
++
++	/* 1) write UIS_ADDR field to reg SDIO0_HRS44 */
++	/* 2)write HRS44.UIS_RWDATA field */
++	/* 3)set HRS44.UIS_WR */
++	if(ch==0){
++		virt_addr = ioremap(SDIO0_HRS44,0x4);
++	}else{
++		virt_addr = ioremap(SDIO1_HRS44,0x4);
++	}
++
++	val  = readl(virt_addr);
++	val = (addr << SDIO_HRS44__ADDR__SHIFT) | (data << SDIO_HRS44__RDATA__SHIFT);
++	val |= SDIO_HRS44__WR__MASK;
++	writel(val, virt_addr);
++
++	/* 4)wait until HRS44.UIS_ACK=1 */
++	for(i=0;i<100;i++){
++		val  = readl(virt_addr);
++		if(val&SDIO_HRS44__ACK__MASK){
++			break;
++		}
++	}
++	/* 5)clear HRS44.UIS_WR */
++	val &= ( ~ SDIO_HRS44__WR__MASK);
++	writel(val, virt_addr);
++
++	/* 6)wait until HRS44.UIS_ACK=0 */
++	for(i=0;i<100;i++){
++		val  = readl(virt_addr);
++		if(!(val&SDIO_HRS44__ACK__MASK)){
++			break;
++		}
++	}
++
++	/* 7)write operation is now complete */
++	iounmap(virt_addr);
++
++}     
++
++
++static void sdhci_lm2_platform_init_ch0(struct sdhci_host *host)
+ {
+ 	void __iomem *virt_addr;
+ 	u32     val;
+@@ -104,7 +285,7 @@ static void sdhci_lm2_platform_init(struct sdhci_host *host)
+ 	/***************/
+ 	/* SDIO 0 init */
+ 	/***************/
+-
++#if 0
+ 	/* GPF-SYS(0x288:SDIOPWRCTRL) */
+ 	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x280 ,0x10);
+ 	val  = readl(virt_addr + 0x8);
+@@ -125,6 +306,7 @@ static void sdhci_lm2_platform_init(struct sdhci_host *host)
+ 	val  = 0x00441111;
+ 	writel(val, virt_addr + 0x28);		/* SDIO Low Dropout Regulator Output : */
+ 	iounmap(virt_addr);
++#endif
+ 
+ 	/* SDIO0 HRS2 */
+ 	virt_addr = ioremap(LM2_SDIO0_BASE + 0x08,0x4);
+@@ -143,11 +325,32 @@ static void sdhci_lm2_platform_init(struct sdhci_host *host)
+ 	writel(0x00000081, virt_addr + 0x0);	/* SDIO0ADB Control register */
+ 	iounmap(virt_addr);
+ 
++	/* PHY遅延値設定 */
++//	sdcLm2SetPhyDelay(SDC_LM2_SPDMODE_DS); /* Default Speed Mode(Max 25MHz) */
++//	sdcLm2SetPhyDelay(SDC_LM2_SPDMODE_HS); /* High Speed Mode(Max 50MHz) */
++	sdcLm2SetPhyDelay(host->ch,SDC_LM2_SPDMODE_DDR50); /* UHS-I DDR50 Speed Mode(Max 50MHz) */
++}
++
++static void sdhci_lm2_platform_init_ch1(struct sdhci_host *host)
++{
++	void __iomem *virt_addr;
++	u32     val;
++
+ 	/***************/
+ 	/* SDIO 1 init */
+ 	/***************/
++	/* 1.8V */
++	virt_addr = ioremap(LM2_SDIO1_BASE + 0x128,0x4);
++	writel(0x00000b06, virt_addr);
++	val = readl(virt_addr);
++	iounmap(virt_addr);
++
++	virt_addr = ioremap(LM2_SDIO1_BASE + 0x13c,0x4);
++	writel(0x00080000, virt_addr);
++	val = readl(virt_addr);
++	iounmap(virt_addr);
+ 
+-	/* GPF-SYS(0x288) */
++	/* GPF-SYS(0x288) SDIOPWRCTRL  */
+ 	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x280 ,0x10);
+ 	val  = readl(virt_addr + 0x8);
+ 	val  = (val & 0xffff8eff);
+@@ -159,32 +362,44 @@ static void sdhci_lm2_platform_init(struct sdhci_host *host)
+ 	virt_addr = ioremap(LM2_OVLSYS_BASE, 0x30);
+ 	val  = readl(virt_addr + 0x2c);
+ 	val  = (val & 0x88888888);
+-	val |= 0x00000022;			/* Input is "SD0S1CMDI"; output is "SD0S1CMDO" */
+-						/* Output is "SD0S1CLK" */
+-	val |= 0x11222200;
+-	writel(val, virt_addr + 0x2c);		/* SDIO Low Dropout Regulator Output : */
++	val |= 0x11111111;
+ 
++	writel(val, virt_addr + 0x2c);		/* SDIO Low Dropout Regulator Output : */
+ 
+ 	/* SDIO1 HRS2 */
+ 	virt_addr = ioremap(LM2_SDIO1_BASE + 0x08,0x4);
+ 	writel(0x00000004, virt_addr);		/* SDIO1_HRS2  DMA Burst=4  */
+-	pr_err("SDIO1_HRS2 0x8: 0x%08x\n",readl(virt_addr));
+ 	iounmap(virt_addr);
+ 
+-	/* GPF-SYS(0x284) */
++	/*  GPF-SYS(0x284:SDIO1_EXTCTL) */
+ 	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x280 ,0x10);
+ 	val = readl(virt_addr + 0x4);
+ 	val = (val & 0xfffffff3) | 0x4;
+ 	writel(val, virt_addr + 0x4);
+ 	iounmap(virt_addr);
+ 
+-	/* GPF-SYS(0x1B8:SDIO0ADBCTL) */
++	/* GPF-SYS(0x1B8:SDIO1ADBCTL) */
+ 	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x1b8 ,0x10);
+-	writel(0x00000081, virt_addr + 0x4);	/* SDIO0ADB Control register */
++	writel(0x00000081, virt_addr + 0x0);	/* SDIO0ADB Control register */
+ 	iounmap(virt_addr);
+ 
++	/* PHY遅延値設定 */
++//	sdcLm2SetPhyDelay(SDC_LM2_SPDMODE_DS); /* Default Speed Mode(Max 25MHz) */
++//	sdcLm2SetPhyDelay(SDC_LM2_SPDMODE_HS); /* High Speed Mode(Max 50MHz) */
++	sdcLm2SetPhyDelay(host->ch,SDC_LM2_SPDMODE_DDR50); /* UHS-I DDR50 Speed Mode(Max 50MHz) */
++	sdcLm2SetPhyDelay(host->ch,SDC_LM2_SPDMODE_SDR50); /* UHS-I SDR50 Speed Mode(Max 100MHz) */
++}
+ 
++static void sdhci_lm2_platform_init(struct sdhci_host *host)
++{
++	if(host->ch==0){
++		return sdhci_lm2_platform_init_ch0(host);
++	}else{
++		return sdhci_lm2_platform_init_ch1(host);
++	}
+ }
++
++
+ static u8 sdhci_lm2_read_b(struct sdhci_host *host, int reg)
+ {
+ 	u16 res;
+diff --git a/drivers/mmc/host/sdhci-pltfm.c b/drivers/mmc/host/sdhci-pltfm.c
+index d6b5b71..7ac6621 100644
+--- a/drivers/mmc/host/sdhci-pltfm.c
++++ b/drivers/mmc/host/sdhci-pltfm.c
+@@ -171,6 +171,7 @@ struct sdhci_host *sdhci_pltfm_init(struct platform_device *pdev,
+ 		goto err_remap;
+ 	}
+ 
++	host->ch=pdev->id;/* add id for ch0/ch1 */
+ 	/*
+ 	 * Some platforms need to probe the controller to be able to
+ 	 * determine which caps should be used.
+diff --git a/drivers/mmc/host/sdhci.c b/drivers/mmc/host/sdhci.c
+index 8c66ecf..32fd520 100644
+--- a/drivers/mmc/host/sdhci.c
++++ b/drivers/mmc/host/sdhci.c
+@@ -13,6 +13,9 @@
+  *     - JMicron (hardware and technical support)
+  */
+ 
++#include <linux/kernel.h>
++#include <linux/sched.h>
++#include <linux/kthread.h>
+ #include <linux/delay.h>
+ #include <linux/highmem.h>
+ #include <linux/io.h>
+@@ -47,6 +50,8 @@
+ static unsigned int debug_quirks = 0;
+ static unsigned int debug_quirks2;
+ 
++void sdhci_send_command12(struct sdhci_host *host);
++
+ static void sdhci_finish_data(struct sdhci_host *);
+ 
+ static void sdhci_send_command(struct sdhci_host *, struct mmc_command *);
+@@ -1081,6 +1086,86 @@ static void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
+ 	sdhci_writew(host, SDHCI_MAKE_CMD(cmd->opcode, flags), SDHCI_COMMAND);
+ }
+ 
++
++void sdhci_send_command12(struct sdhci_host *host)
++{
++	int flags;
++	u32 mask;
++	unsigned long timeout;
++
++
++	WARN_ON(host->cmd);
++
++	/* Wait max 10 ms */
++	timeout = 10;
++
++	mask = SDHCI_CMD_INHIBIT;
++
++	/* We shouldn't wait for data inihibit for stop commands, even
++	   though they might use busy signaling */
++
++	while (sdhci_readl(host, SDHCI_PRESENT_STATE) & mask) {
++		if (timeout == 0) {
++			pr_err("%s: Controller never released "
++				"inhibit bit(s).\n", mmc_hostname(host->mmc));
++			sdhci_dumpregs(host);
++			tasklet_schedule(&host->finish_tasklet);
++			return;
++		}
++		timeout--;
++		mdelay(1);
++	}
++
++	mod_timer(&host->timer, jiffies + 10 * HZ);
++
++	sdhci_writel(host, 0, SDHCI_ARGUMENT);
++	sdhci_writew(host, 0, SDHCI_TRANSFER_MODE);
++
++	flags = SDHCI_CMD_ABORTCMD|SDHCI_CMD_INDEX;
++
++	sdhci_writew(host, SDHCI_MAKE_CMD(12, flags), SDHCI_COMMAND);
++}
++
++
++void sdhci_send_command52(struct sdhci_host *host)
++{
++	int flags;
++	u32 mask;
++	unsigned long timeout;
++
++
++	WARN_ON(host->cmd);
++
++	/* Wait max 10 ms */
++	timeout = 10;
++
++	mask = SDHCI_CMD_INHIBIT;
++
++	/* We shouldn't wait for data inihibit for stop commands, even
++	   though they might use busy signaling */
++
++	while (sdhci_readl(host, SDHCI_PRESENT_STATE) & mask) {
++		if (timeout == 0) {
++			pr_err("%s: Controller never released "
++				"inhibit bit(s).\n", mmc_hostname(host->mmc));
++			sdhci_dumpregs(host);
++			tasklet_schedule(&host->finish_tasklet);
++			return;
++		}
++		timeout--;
++		mdelay(1);
++	}
++
++	mod_timer(&host->timer, jiffies + 10 * HZ);
++
++	sdhci_writel(host, 0x00000a00, SDHCI_ARGUMENT); /* dummy read offset05 register */
++	sdhci_writew(host, 0, SDHCI_TRANSFER_MODE);
++
++	flags = SDHCI_CMD_ABORTCMD|SDHCI_CMD_INDEX;
++
++	sdhci_writew(host, SDHCI_MAKE_CMD(52, flags), SDHCI_COMMAND);
++}
++
+ static void sdhci_finish_command(struct sdhci_host *host)
+ {
+ 	int i;
+@@ -1742,6 +1827,7 @@ static void sdhci_enable_sdio_irq(struct mmc_host *mmc, int enable)
+ {
+ 	struct sdhci_host *host = mmc_priv(mmc);
+ 	unsigned long flags;
++	u32 presentstate;
+ 
+ 	spin_lock_irqsave(&host->lock, flags);
+ 	sdhci_enable_sdio_irq_nolock(host, enable);
+@@ -2255,10 +2341,10 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask)
+ 	BUG_ON(intmask == 0);
+ 
+ 	if (!host->cmd) {
+-		pr_err("%s: Got command interrupt 0x%08x even "
++		/*pr_err("%s: Got command interrupt 0x%08x even "
+ 			"though no command operation was in progress.\n",
+ 			mmc_hostname(host->mmc), (unsigned)intmask);
+-		sdhci_dumpregs(host);
++		sdhci_dumpregs(host);*/
+ 		return;
+ 	}
+ 
+@@ -2444,6 +2530,8 @@ static irqreturn_t sdhci_irq(int irq, void *dev_id)
+ 	struct sdhci_host *host = dev_id;
+ 	u32 intmask, unexpected = 0;
+ 	int cardint = 0, max_loops = 16;
++	u32 presentstate;
++	bool need_wakeup_recovery=false;
+ 
+ 	spin_lock(&host->lock);
+ 
+@@ -2463,6 +2551,14 @@ again:
+ 	DBG("*** %s got interrupt: 0x%08x\n",
+ 		mmc_hostname(host->mmc), intmask);
+ 
++	if(host->flags & SDHCI_SDIO_IRQ_ENABLED){
++		if (intmask & (SDHCI_INT_RESPONSE|SDHCI_INT_DATA_END)){
++			presentstate = sdhci_readl(host, SDHCI_PRESENT_STATE);
++			if(presentstate==0x01df0008){/*CMDLine=1,DAT[1]=0,WriteProtect=1,CardDetect=1,CardStateStable=1,CardInsert=1,Re-TunningRequest=1   */
++				cardint=1;
++			}
++		}
++	}
+ 	if (intmask & (SDHCI_INT_CARD_INSERT | SDHCI_INT_CARD_REMOVE)) {
+ 		u32 present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
+ 			      SDHCI_CARD_PRESENT;
+@@ -2512,8 +2608,10 @@ again:
+ 
+ 	intmask &= ~SDHCI_INT_BUS_POWER;
+ 
+-	if (intmask & SDHCI_INT_CARD_INT)
++
++	if (intmask & SDHCI_INT_CARD_INT){
+ 		cardint = 1;
++	}
+ 
+ 	intmask &= ~SDHCI_INT_CARD_INT;
+ 
+@@ -2525,8 +2623,10 @@ again:
+ 	result = IRQ_HANDLED;
+ 
+ 	intmask = sdhci_readl(host, SDHCI_INT_STATUS);
+-	if (intmask && --max_loops)
++
++	if (intmask && --max_loops){
+ 		goto again;
++	}
+ out:
+ 	spin_unlock(&host->lock);
+ 
+@@ -2538,8 +2638,9 @@ out:
+ 	/*
+ 	 * We have to delay this as it calls back into the driver.
+ 	 */
+-	if (cardint)
++	if (cardint){
+ 		mmc_signal_sdio_irq(host->mmc);
++	}
+ 
+ 	return result;
+ }
+@@ -2814,6 +2915,8 @@ int sdhci_add_host(struct sdhci_host *host)
+ 
+ 	sdhci_reset(host, SDHCI_RESET_ALL);
+ 
++	host->quirks2|=SDHCI_QUIRK2_PRESET_VALUE_BROKEN;
++
+ 	host->version = sdhci_readw(host, SDHCI_HOST_VERSION);
+ 	host->version = (host->version & SDHCI_SPEC_VER_MASK)
+ 				>> SDHCI_SPEC_VER_SHIFT;
+@@ -2826,6 +2929,14 @@ int sdhci_add_host(struct sdhci_host *host)
+ 	caps[0] = (host->quirks & SDHCI_QUIRK_MISSING_CAPS) ? host->caps :
+ 		sdhci_readl(host, SDHCI_CAPABILITIES);
+ 
++	if(host->ch==1){
++		caps[0] &= ~(SDHCI_CAN_VDD_330|SDHCI_CAN_VDD_300);
++	}
++	if(host->ch==0){
++	        /* For LM2 eMMC */
++		mmc->caps |= MMC_CAP_4_BIT_DATA | MMC_CAP_8_BIT_DATA;	
++	}
++
+ 	if (host->version >= SDHCI_SPEC_300)
+ 		caps[1] = (host->quirks & SDHCI_QUIRK_MISSING_CAPS) ?
+ 			host->caps1 :
+@@ -3027,6 +3138,8 @@ int sdhci_add_host(struct sdhci_host *host)
+ 		caps[1] &= ~(SDHCI_SUPPORT_SDR104 | SDHCI_SUPPORT_SDR50 |
+ 		       SDHCI_SUPPORT_DDR50);
+ 
++	caps[1] &= ~(SDHCI_SUPPORT_SDR104);/* our ASIC can't support SDR104 */
++
+ 	/* Any UHS-I mode in caps implies SDR12 and SDR25 support. */
+ 	if (caps[1] & (SDHCI_SUPPORT_SDR104 | SDHCI_SUPPORT_SDR50 |
+ 		       SDHCI_SUPPORT_DDR50))
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index 5b94959..eeb8d63 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -6933,6 +6933,7 @@ static const struct pci_error_handlers e1000_err_handler = {
+ };
+ 
+ static DEFINE_PCI_DEVICE_TABLE(e1000_pci_tbl) = {
++#if 0	
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82571EB_COPPER), board_82571 },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82571EB_FIBER), board_82571 },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82571EB_QUAD_COPPER), board_82571 },
+@@ -6955,8 +6956,10 @@ static DEFINE_PCI_DEVICE_TABLE(e1000_pci_tbl) = {
+ 
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82574L), board_82574 },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82574LA), board_82574 },
++#endif	
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82583V), board_82583 },
+ 
++#if 0
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_80003ES2LAN_COPPER_DPT),
+ 	  board_80003es2lan },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_80003ES2LAN_COPPER_SPT),
+@@ -7009,7 +7012,7 @@ static DEFINE_PCI_DEVICE_TABLE(e1000_pci_tbl) = {
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_I218_V2), board_pch_lpt },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_I218_LM3), board_pch_lpt },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_I218_V3), board_pch_lpt },
+-
++#endif
+ 	{ 0, 0, 0, 0, 0, 0, 0 }	/* terminate list */
+ };
+ MODULE_DEVICE_TABLE(pci, e1000_pci_tbl);
+diff --git a/drivers/net/ethernet/stmicro/stmmac/enh_desc.c b/drivers/net/ethernet/stmicro/stmmac/enh_desc.c
+index b11af52..07862e6 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/enh_desc.c
++++ b/drivers/net/ethernet/stmicro/stmmac/enh_desc.c
+@@ -205,6 +205,8 @@ static int enh_desc_get_rx_status(void *data, struct stmmac_extra_stats *x,
+ 				  struct dma_desc *p)
+ {
+ 	int ret = good_frame;
++	int error_summary = 0;
++
+ 	struct net_device_stats *stats = (struct net_device_stats *)data;
+ 
+ 	if (unlikely(p->des01.erx.error_summary)) {
+@@ -242,6 +244,7 @@ static int enh_desc_get_rx_status(void *data, struct stmmac_extra_stats *x,
+ 			stats->rx_crc_errors++;
+ 		}
+ 		ret = discard_frame;
++		error_summary = 1;
+ 	}
+ 
+ 	/* After a payload csum error, the ES bit is set.
+@@ -277,6 +280,10 @@ static int enh_desc_get_rx_status(void *data, struct stmmac_extra_stats *x,
+ 	}
+ #endif
+ 
++	if(error_summary){
++		return discard_frame;
++	}
++
+ 	return ret;
+ }
+ 
+diff --git a/drivers/net/ethernet/stmicro/stmmac/ring_mode.c b/drivers/net/ethernet/stmicro/stmmac/ring_mode.c
+index 500b4a0..562f508 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/ring_mode.c
++++ b/drivers/net/ethernet/stmicro/stmmac/ring_mode.c
+@@ -47,11 +47,12 @@ static int stmmac_jumbo_frm(void *p, struct sk_buff *skb, int csum)
+ 		desc= priv->dma_tx + entry;
+ 
+ 	if (priv->plat->enh_desc)
+-		bmax = JUMBO_FLAME_LEN;
++		bmax = BUF_SIZE_4KiB + BUF_SIZE_2KiB;
+ 	else
+ 		bmax = BUF_SIZE_2KiB;
+ 
+ 	len = nopaged_len - bmax;
++	if (nopaged_len > bmax) {
+ 		tmp = dma_map_single(priv->device, skb->data, bmax, DMA_TO_DEVICE);
+ 		if (dma_mapping_error(priv->device, tmp))
+ 			return -1;
+@@ -77,7 +78,20 @@ static int stmmac_jumbo_frm(void *p, struct sk_buff *skb, int csum)
+ 		desc->des2 = tmp&0xffffffff;
+ 		priv->tx_skbuff_dma[entry].buf = tmp;
+ 		priv->hw->desc->prepare_tx_desc(desc, 0, len, csum, STMMAC_RING_MODE);
++		priv->hw->desc->set_tx_owner(desc);
+ 		wmb();
++	} else {
++		tmp = dma_map_single(priv->device, skb->data,
++					    nopaged_len, DMA_TO_DEVICE);
++		if (dma_mapping_error(priv->device, tmp))
++			return -1;
++		desc->des2 = tmp&0xffffffff;
++		priv->tx_skbuff_dma[entry].buf = tmp;
++		desc->des3 = desc->des2 + BUF_SIZE_4KiB;
++		priv->hw->desc->prepare_tx_desc(desc, 1, nopaged_len, csum,
++						STMMAC_RING_MODE);
++		wmb();
++	}
+ 
+ 	return entry;
+ }
+@@ -86,7 +100,7 @@ static unsigned int stmmac_is_jumbo_frm(int len, int enh_desc)
+ {
+ 	unsigned int ret = 0;
+ 
+-	if (len >= JUMBO_FLAME_LEN)
++	if (len >= BUF_SIZE_4KiB)
+ 		ret = 1;
+ 
+ 	return ret;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac.h b/drivers/net/ethernet/stmicro/stmmac/stmmac.h
+index 57a31d7..d4cc96f 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac.h
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac.h
+@@ -33,8 +33,6 @@
+ #include "common.h"
+ #include <linux/ptp_clock_kernel.h>
+ 
+-#define	JUMBO_FLAME_LEN	(BUF_SIZE_4KiB + BUF_SIZE_2KiB)
+-
+ struct stmmac_tx_info {
+ 	dma_addr_t buf;
+ 	bool map_as_page;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index 997f177..59ebb1f 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -61,22 +61,6 @@
+ #define DBG(nlevel, klevel, fmt, args...) do { } while (0)
+ #endif
+ 
+-#undef STMMAC_RX_DEBUG
+-/*#define STMMAC_RX_DEBUG*/
+-#ifdef STMMAC_RX_DEBUG
+-#define RX_DBG(fmt, args...)  printk(fmt, ## args)
+-#else
+-#define RX_DBG(fmt, args...)  do { } while (0)
+-#endif
+-
+-#undef STMMAC_XMIT_DEBUG
+-/*#define STMMAC_XMIT_DEBUG*/
+-#ifdef STMMAC_XMIT_DEBUG
+-#define TX_DBG(fmt, args...)  printk(fmt, ## args)
+-#else
+-#define TX_DBG(fmt, args...)  do { } while (0)
+-#endif
+-
+ #define STMMAC_ALIGN(x)	L1_CACHE_ALIGN(x)
+ 
+ /* Module parameters */
+@@ -148,7 +132,6 @@ static void stmmac_exit_fs(void);
+ #define STMMAC_COAL_TIMER(x) (jiffies + usecs_to_jiffies(x))
+ 
+ #ifdef	CONFIG_ARCH_LM2
+-//#define  LM2_DEBUG
+ struct reg_access_t {
+         unsigned short  offset;
+         unsigned int    variable;
+@@ -223,48 +206,6 @@ static void stmmac_clk_csr_set(struct stmmac_priv *priv)
+ 	}
+ }
+ 
+-#if defined(STMMAC_XMIT_DEBUG) || defined(STMMAC_RX_DEBUG)
+-#define	PRINT_OFFSET	0
+-static void print_pkt(char *moji, unsigned char *buf, int len)
+-{
+-	int j;
+-	unsigned char	tmp[64];
+-	int		tmp_len=0;
+-	if ( len > 0  && len > PRINT_OFFSET ) {
+-		printk(KERN_ERR "** %s frm_len=%d byte, bufaddr=0x%p **\n", moji, len, buf);
+-		for (j = PRINT_OFFSET; j < len; j++) {
+-			if ((j % 16) == 0) {
+-				if ( j != 0 )
+-					printk(KERN_ERR "%s\n",tmp);
+-	
+-				memset(&tmp, 0, sizeof(tmp));
+-				sprintf(tmp, "%03x: %02x",j,buf[j]);
+-			} else {
+-				sprintf(&tmp[tmp_len], " %02x",buf[j]);
+-			}
+-			tmp_len=strlen(tmp);
+-		}
+-		printk(KERN_ERR "%s\n",tmp);
+-	}
+-}
+-static void print_txdesc(char *moji, struct dma_desc *p)
+-{
+-	printk(KERN_ERR "== Tx %s ==\n", moji);
+-	printk(KERN_ERR "own                    = %d\n", p->des01.etx.own);
+-	printk(KERN_ERR "interrupt              = %d\n", p->des01.etx.interrupt);
+-	printk(KERN_ERR "last_segment           = %d\n", p->des01.etx.last_segment);
+-	printk(KERN_ERR "first_segment          = %d\n", p->des01.etx.first_segment);
+-	printk(KERN_ERR "crc_disable            = %d\n", p->des01.etx.crc_disable);
+-	printk(KERN_ERR "disable_padding        = %d\n", p->des01.etx.disable_padding);
+-	printk(KERN_ERR "time_stamp_enable      = %d\n", p->des01.etx.time_stamp_enable);
+-	printk(KERN_ERR "checksum_insertion     = %d\n", p->des01.etx.checksum_insertion);
+-	printk(KERN_ERR "end_ring               = %d\n", p->des01.etx.end_ring);
+-	printk(KERN_ERR "second_address_chained = %d\n", p->des01.etx.second_address_chained);
+-	printk(KERN_ERR "buffer2_size           = %d\n", p->des01.etx.buffer2_size);
+-	printk(KERN_ERR "buffer1_size           = %d\n", p->des01.etx.buffer1_size);
+-}
+-#endif
+-
+ /* minimum number of free TX descriptors required to wake up TX process */
+ #define STMMAC_TX_THRESH(x)	(x->dma_tx_size/2)
+ 
+@@ -380,7 +321,10 @@ bool stmmac_eee_init(struct stmmac_priv *priv)
+ 			priv->hw->mac->set_eee_pls(priv->ioaddr,
+ 						   priv->phydev->link);
+ 
+-//		pr_info("stmmac: Energy-Efficient Ethernet initialized\n");
++#if 0
++		pr_info("stmmac: Energy-Efficient Ethernet initialized\n");
++#endif
++
+ 		ret = true;
+ 	}
+ out:
+@@ -1013,6 +957,8 @@ static int stmmac_set_bfsize(int mtu, int bufsize)
+ 		ret = BUF_SIZE_8KiB;
+ 	else if (mtu >= BUF_SIZE_2KiB)
+ 		ret = BUF_SIZE_4KiB;
++	else if (mtu >= DEFAULT_BUFSIZE)
++		ret = BUF_SIZE_2KiB;
+ 	else
+ 		ret = DEFAULT_BUFSIZE;
+ 
+@@ -1376,18 +1322,11 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
+  * @priv: driver private structure
+  * Description: it reclaims resources after transmission completes.
+  */
+-#ifdef	LM2_DEBUG
+-unsigned int tmp_flag = 255;
+-unsigned int tmp_bbb=0;
+-#endif
+ static void stmmac_tx_clean(struct stmmac_priv *priv)
+ {
+ 	unsigned int txsize = priv->dma_tx_size;
+ 	unsigned int dirty_tx;
+ 	unsigned int cur_tx;
+-#ifdef	LM2_DEBUG
+-	unsigned int tmp;
+-#endif
+ 
+ 	spin_lock(&priv->tx_lock_clear);
+ 
+@@ -1396,16 +1335,6 @@ static void stmmac_tx_clean(struct stmmac_priv *priv)
+ 
+ 	priv->xstats.tx_clean++;
+ 
+-#ifdef	LM2_DEBUG
+-	tmp = stmmac_tx_avail(priv);
+-	if ( tmp < tmp_flag || ((tmp_bbb%20000) == 0) || netif_queue_stopped(priv->dev) ) {
+-		printk(KERN_ERR "avail=%d(%d) dirty_tx=%d cur_tx=%d\n", tmp, tmp_flag, dirty_tx, cur_tx);
+-	}
+-	if ( tmp < tmp_flag ) {
+-		tmp_flag = tmp;
+-	}
+-	tmp_bbb++;
+-#endif
+ 	while (dirty_tx != cur_tx) {
+ 		int last;
+ 		unsigned int entry = dirty_tx % txsize;
+@@ -1420,14 +1349,6 @@ static void stmmac_tx_clean(struct stmmac_priv *priv)
+ 		/* Check if the descriptor is owned by the DMA. */
+ #ifdef	CONFIG_ARCH_LM2
+ 		if (priv->hw->desc->get_tx_owner(p)) {
+-#ifdef  LM2_DEBUG
+-			struct dma_extended_desc *ep = (struct dma_extended_desc *)p;
+-			u64 x;
+-			u32     dma_status = readl(priv->ioaddr + 0x1014);
+-			x = *(u64 *) ep;
+-			printk(KERN_ERR "%s: entry=%d is DMA Status=0x%x (0x%08x 0x%08x 0x%08x)\n", __func__,
+-				entry, dma_status, (unsigned int)x, (unsigned int)(x >> 32),ep->basic.des2);
+-#endif
+ 			priv->hw->dma->enable_dma_transmission(priv->ioaddr);
+ 			break;
+ 		}
+@@ -1481,12 +1402,7 @@ static void stmmac_tx_clean(struct stmmac_priv *priv)
+ 	if (unlikely(netif_queue_stopped(priv->dev) &&
+ 		     stmmac_tx_avail(priv) > STMMAC_TX_THRESH(priv))) {
+ 		netif_tx_lock(priv->dev);
+-//		if (netif_queue_stopped(priv->dev) &&
+-//		    stmmac_tx_avail(priv) > STMMAC_TX_THRESH(priv)) {
+-			TX_DBG("%s: restart transmit\n", __func__);
+-//			printk(KERN_ERR "%s: restart transmit\n", __func__);
+ 			netif_wake_queue(priv->dev);
+-//		}
+ 		netif_tx_unlock(priv->dev);
+ 	}
+ 
+@@ -2000,7 +1916,7 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ {
+ 	struct stmmac_priv *priv = netdev_priv(dev);
+ 	unsigned int txsize = priv->dma_tx_size;
+-	unsigned int entry;
++	unsigned int entry, entry_new;
+ 	int i, csum_insertion = 0, is_jumbo = 0;
+ 	int nfrags = skb_shinfo(skb)->nr_frags;
+ 	struct dma_desc *desc, *first;
+@@ -2014,9 +1930,6 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 		if (!netif_queue_stopped(dev)) {
+ 			netif_stop_queue(dev);
+ 			/* This is a hard error, log it. */
+-#ifdef	LM2_DEBUG
+-			pr_err("%s: Tx Ring full when queue awake\n", __func__);
+-#endif
+ 		}
+ 		spin_unlock(&priv->tx_lock);
+ 		return NETDEV_TX_BUSY;
+@@ -2040,27 +1953,27 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 	if (enh_desc)
+ 		is_jumbo = priv->hw->ring->is_jumbo_frm(skb->len, enh_desc);
+ 
+-#if 1	/* Workaround */
+-	if( csum_insertion && skb->len > 1534) {
++#if 1   /* Workaround */
++//	printk(KERN_ERR "Tx:csum_insertion=%d(nfrags=%d skb->len:%d)\n",csum_insertion, nfrags, skb->len);
++	if( csum_insertion && skb->len > 1500) {
+ 		unsigned short Ethertype;
+ 		unsigned int   packet_len=0;
+ 		Ethertype = skb->data[12]<<8 | skb->data[13]<<0 ;
+ 		if ( Ethertype == 0x0800 ) {
+ 			unsigned char  Iptype;
+-			packet_len = ((skb->data[ETH_HLEN + 2] *256) + skb->data[ETH_HLEN + 2 +1]);	
+-			/* IPv4 */
++			packet_len = ((skb->data[ETH_HLEN + 2] *256) + skb->data[ETH_HLEN + 2 +1]);
+ 			Iptype = skb->data[23];
+ 			if ( ((skb->data[14]>>4)==4) && (Iptype == 0x06 || Iptype == 0x11) ) {
+ 				/* tcp */
+ 				int i;
+-				unsigned int	checksum=0;
+-				unsigned int	checksum_ichi;
+-				unsigned short	tmp;
+-				unsigned char	pseudo_header[32];
+-				unsigned int	tcp_header_start = ETH_HLEN + (skb->data[ETH_HLEN] & 0x0f)*4 ;
+-				unsigned int	tcp_header_end   = tcp_header_start + packet_len - 20 ;
+-				unsigned int	tcp_checksum_cpu=0;
+-				unsigned int	tcp_checksum_calc=0;
++				unsigned int    checksum=0;
++				unsigned int    checksum_ichi;
++				unsigned short  tmp;
++				unsigned char   pseudo_header[32];
++				unsigned int    header_start = ETH_HLEN + (skb->data[ETH_HLEN] & 0x0f)*4 ;
++				unsigned int    header_end   = header_start + packet_len - 20 ;
++				unsigned int    checksum_cpu=0;
++				unsigned int    checksum_calc=0;
+ 				/* Pseudo Header */
+ 				memcpy(&pseudo_header[0], &skb->data[ETH_HLEN + 12], 4);
+ 				memcpy(&pseudo_header[4], &skb->data[ETH_HLEN + 16], 4);
+@@ -2078,32 +1991,33 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 					checksum_ichi=16;
+ 				else
+ 					checksum_ichi=6;
+-				for(i=tcp_header_start;i<tcp_header_end;i+=2) {
+-					if( i%2 == 0 && (i != tcp_header_start+checksum_ichi)){
+-						if ( (i+1)  == tcp_header_end ) {
++
++				for(i=header_start;i<header_end;i+=2) {
++					if( i%2 == 0 && (i != header_start+checksum_ichi)){
++						if ( (i+1)  == header_end )
+ 							tmp =  (skb->data[i] *256);
+-						} else {
++						else
+ 							tmp = ((skb->data[i] *256) + skb->data[i +1]);
+-						}
+ 						checksum += tmp;
+ 					}
+-					if(i==tcp_header_start+checksum_ichi) {
+-						tcp_checksum_cpu = ((skb->data[i] *256) + skb->data[i +1]);
+-					}
++					if(i==header_start+checksum_ichi)
++						checksum_cpu = ((skb->data[i] *256) + skb->data[i +1]);
+ 				}
+-				tcp_checksum_calc  = (checksum & 0x0000ffff) + ((checksum & 0xffff0000)>>16);
+-				if ( tcp_checksum_calc > 0xffff )
+-					tcp_checksum_calc =(tcp_checksum_calc & 0x0000ffff) + ((tcp_checksum_calc & 0xffff0000)>>16);
+-
+-				tcp_checksum_calc ^= 0xffff;
+-				//printk(KERN_ERR "TCP: Checksum=0x%04x(calc:%04x)\n",tcp_crc, tcp_checksum_calc);
++				checksum_calc  = (checksum & 0x0000ffff) + ((checksum & 0xffff0000)>>16);
++				if ( checksum_calc > 0xffff )
++					checksum_calc =(checksum_calc & 0x0000ffff) + ((checksum_calc & 0xffff0000)>>16);
++				checksum_calc ^= 0xffff;
++//				if(Iptype==0x06)
++//					printk(KERN_ERR "TCP:Checksum=0x%04x(calc:%04x)\n",checksum_cpu, checksum_calc);
++//				else
++//					printk(KERN_ERR "UDP:Checksum=0x%04x(calc:%04x)\n",checksum_cpu, checksum_calc);
+ 				/* Checksum update */
+-				skb->data[tcp_header_start+checksum_ichi+0] = (tcp_checksum_calc&0xff00)>>8;
+-				skb->data[tcp_header_start+checksum_ichi+1] = (tcp_checksum_calc&0x00ff)>>0;
++				skb->data[header_start+checksum_ichi+0] = (checksum_calc&0xff00)>>8;
++				skb->data[header_start+checksum_ichi+1] = (checksum_calc&0x00ff)>>0;
+ 			}
+ 		}
+ 	}
+-#endif
++#endif	/* Workaround */
+ 
+ 	if (likely(!is_jumbo)) {
+ 		tmp = dma_map_single(priv->device, skb->data, nopaged_len, DMA_TO_DEVICE);
+@@ -2116,17 +2030,24 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 		wmb();
+ 		pkt_num=1;
+ 	} else {
+-		first = desc;
+-		entry = priv->hw->ring->jumbo_frm(priv, skb, csum_insertion);
+-		if (unlikely(entry < 0))
++		desc = first;
++		entry_new = priv->hw->ring->jumbo_frm(priv, skb, csum_insertion);
++		if (unlikely(entry_new < 0))
+ 			goto dma_map_err;
+ 
+-		if (priv->extend_desc)
+-			desc = (struct dma_desc *)(priv->dma_etx + entry);
++		if ( entry != entry_new ) {
++			entry = entry_new;
++			if (priv->extend_desc)
++				desc = (struct dma_desc *)(priv->dma_etx + entry);
++			else
++				desc = priv->dma_tx + entry;
++		}
++		if ( skb_headlen(skb) > (BUF_SIZE_4KiB + BUF_SIZE_2KiB)  )
++			pkt_num=2;
+ 		else
+-			desc = priv->dma_tx + entry;
+-		pkt_num=2;
++			pkt_num=1;
+ 	}
++
+ 	for (i = 0; i < nfrags; i++) {
+ 		const skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+ 		int len = skb_frag_size(frag);
+@@ -2165,35 +2086,22 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 	if (priv->tx_coal_frames > priv->tx_count_frames) {
+ 		priv->hw->desc->clear_tx_ic(desc);
+ 		priv->xstats.tx_reset_ic_bit++;
+-		TX_DBG("\t[entry %d]: tx_count_frames %d\n", entry,
+-		       priv->tx_count_frames);
+ 		mod_timer(&priv->txtimer,
+ 			  STMMAC_COAL_TIMER(priv->tx_coal_timer));
+ 	} else
+ 		priv->tx_count_frames = 0;
+ 
+ 	/* To avoid raise condition */
+-	if ( pkt_num == 1) {
+-		priv->hw->desc->set_tx_owner(first);
+-	} else {
+-		priv->hw->desc->set_tx_owner(first);
+-		priv->hw->desc->set_tx_owner(desc);
+-	}
++	priv->hw->desc->set_tx_owner(first);
+ 	wmb();
+ 
+ #ifdef	CONFIG_ARCH_LM2
+ 	if ( stmmac_tx_avail(priv) < ((priv->dma_tx_size / 10)*1) ) {
+-#ifdef	LM2_DEBUG
+-		printk(KERN_ERR "%s: Send Buffer 1/10\n");
+-#endif
+ 		stmmac_tx_clean(priv);
+ 	}
+ #endif	/* CONFIG_ARCH_LM2 */
+ 
+ 	if (unlikely(stmmac_tx_avail(priv) <= (MAX_SKB_FRAGS + 1))) {
+-#ifdef	LM2_DEBUG
+-		printk(KERN_ERR "%s: stop transmitted packets\n", __func__);
+-#endif
+ 		netif_stop_queue(dev);
+ 	}
+ 
+@@ -2209,18 +2117,6 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 	if (!priv->hwts_tx_en)
+ 		skb_tx_timestamp(skb);
+ 
+-#ifdef	STMMAC_XMIT_DEBUG
+-	if ( pkt_num == 2 ) {
+-		print_txdesc("first", first);
+-		print_txdesc("desc",  desc);
+-	} else {
+-		print_txdesc("first", first);
+-	}
+-	if ( skb->len > JUMBO_FLAME_LEN ) {
+-		print_pkt("Tx", skb->data, skb->len);
+-	}
+-#endif /* STMMAC_XMIT_DEBUG */
+-
+ 	priv->hw->dma->enable_dma_transmission(priv->ioaddr);
+ 	priv->cur_tx += pkt_num;
+ 
+@@ -2244,6 +2140,7 @@ dma_map_err:
+ static inline void stmmac_rx_refill(struct stmmac_priv *priv)
+ {
+ 	unsigned int rxsize = priv->dma_rx_size;
++	int bfsize = priv->dma_buf_sz;
+ 	for (; priv->cur_rx - priv->dirty_rx > 0; priv->dirty_rx++) {
+ 		unsigned int entry = priv->dirty_rx % rxsize;
+ 		struct dma_desc *p;
+@@ -2256,15 +2153,14 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv)
+ 		if (likely(priv->rx_skbuff[entry] == NULL)) {
+ 			struct sk_buff *skb;
+ 
+-			skb = netdev_alloc_skb_ip_align(priv->dev, priv->dma_buf_sz);
+-			if (!skb) {
+-				pr_err("%s: Rx refill fails; skb is NULL\n", __func__);
++			skb = netdev_alloc_skb_ip_align(priv->dev, bfsize);
++
++			if (unlikely(skb == NULL))
+ 				break;
+-			}
+ 
+ 			priv->rx_skbuff[entry] = skb;
+ 			priv->rx_skbuff_dma[entry] =
+-			    dma_map_single(priv->device, skb->data, priv->dma_buf_sz,
++			    dma_map_single(priv->device, skb->data, bfsize,
+ 					   DMA_FROM_DEVICE);
+ 			if (dma_mapping_error(priv->device,
+ 					      priv->rx_skbuff_dma[entry])) {
+@@ -2275,7 +2171,6 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv)
+ 			p->des2 = priv->rx_skbuff_dma[entry]&0xffffffff;
+ 			priv->hw->ring->refill_desc3(priv, p);
+ 
+-			RX_DBG(KERN_INFO "\trefill entry #%d\n", entry);
+ 		}
+ 		wmb();
+ 		priv->hw->desc->set_rx_owner(p);
+@@ -2298,15 +2193,6 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit)
+ 	unsigned int count = 0;
+ 	int coe = priv->plat->rx_coe;
+ 
+-#ifdef STMMAC_RX_DEBUG
+-	if (netif_msg_hw(priv)) {
+-		pr_debug(">>> stmmac_rx: descriptor ring:\n");
+-		if (priv->extend_desc)
+-			stmmac_display_ring((void *)priv->dma_erx, rxsize, 1);
+-		else
+-			stmmac_display_ring((void *)priv->dma_rx, rxsize, 0);
+-	}
+-#endif
+ 	while (count < limit) {
+ 		int status;
+ 		struct dma_desc *p;
+@@ -2365,15 +2251,6 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit)
+ 				priv->dev->stats.rx_dropped++;
+ 				break;
+ 			}
+-#ifdef STMMAC_RX_DEBUG
+-			if (frame_len > ETH_FRAME_LEN)
+-				pr_debug("\tRX frame size %d, COE status: %d\n",
+-					 frame_len, status);
+-
+-			if (netif_msg_hw(priv))
+-				pr_debug("\tdesc: %p [entry %d] buff=0x%x\n",
+-					 p, entry, p->des2);
+-#endif
+ 			skb = priv->rx_skbuff[entry];
+ 			if (unlikely(!skb)) {
+ 				pr_err("%s: Inconsistent Rx descriptor chain\n",
+@@ -2397,9 +2274,6 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit)
+ 			else
+ 				skb->ip_summed = CHECKSUM_UNNECESSARY;
+ 
+-#ifdef	STMMAC_RX_DEBUG
+-			print_pkt("Rx", skb->data, frame_len);
+-#endif
+ 			napi_gro_receive(&priv->napi, skb);
+ 
+ 			priv->dev->stats.rx_packets++;
+@@ -2939,6 +2813,8 @@ static int stmmac_hw_init(struct stmmac_priv *priv)
+ 	if (priv->plat->pmt) {
+ 		pr_info(" Wake-Up On Lan supported\n");
+ 		device_set_wakeup_capable(priv->device, 1);
++		device_set_wakeup_enable(priv->device, 1);/* the default value  is wakeup enable  */
++		priv->wolopts=WAKE_MAGIC | WAKE_UCAST;
+ 	}
+ 
+ 	return 0;
+@@ -3219,6 +3095,8 @@ int stmmac_suspend(struct net_device *ndev)
+ 
+ 	netif_stop_queue(ndev);
+ 	napi_disable(&priv->napi);
++
++#if 0 /* the device will not wake up if network stopped */
+ 	del_timer_sync(&priv->txtimer);
+ 
+ 	/* Stop TX/RX DMA */
+@@ -3229,12 +3107,13 @@ int stmmac_suspend(struct net_device *ndev)
+ 	free_dma_desc_resources(priv);
+ 
+ 	stmmac_set_mac(priv->ioaddr, false);
++#endif 
+ 
+ 	netif_carrier_off(ndev);
+ 	/* Enable Power down mode by programming the PMT regs */
+-	if (device_may_wakeup(priv->device))
+-		priv->hw->mac->pmt(priv->ioaddr, priv->wolopts);
+-	else {
++	if (device_may_wakeup(priv->device)){
++		//priv->hw->mac->pmt(priv->ioaddr, priv->wolopts);
++	}else {
+ 		stmmac_set_mac(priv->ioaddr, false);
+ 		/* Disable clock in case of PWM is off */
+ 		clk_disable_unprepare(priv->stmmac_clk);
+@@ -3272,6 +3151,7 @@ int stmmac_resume(struct net_device *ndev)
+ 		/* enable the clk prevously disabled */
+ 		clk_prepare_enable(priv->stmmac_clk);
+ 
++#if 0
+ 	rtn = alloc_dma_desc_resources(priv);
+ 	if (rtn < 0) {
+ 		pr_err("%s: DMA descriptors allocation failed\n", __func__);
+@@ -3310,6 +3190,10 @@ int stmmac_resume(struct net_device *ndev)
+ 	}
+ 	if (priv->pcs && priv->hw->mac->ctrl_ane)
+ 		priv->hw->mac->ctrl_ane(priv->ioaddr, 0);
++#else
++	stmmac_set_mac(priv->ioaddr, true);
++#endif
++
+ 
+ 	napi_enable(&priv->napi);
+ 	netif_start_queue(ndev);
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
+index 483590c..b5a6c37 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
+@@ -27,6 +27,7 @@
+ #include <linux/of.h>
+ #include <linux/of_net.h>
+ #include "stmmac.h"
++#include "dwmac1000.h"
+ 
+ #define GMAC_EXTCFG	0x801c
+ 
+@@ -76,6 +77,27 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
+ }
+ #endif /* CONFIG_OF */
+ 
++
++#define MII_BUSY 0x00000001
++#define MII_WRITE 0x00000002
++
++static int stmmac_busy_wait(void __iomem *ioaddr, unsigned int mii_addr)
++{
++	unsigned long curr;
++	unsigned long finish = jiffies + 3 * HZ;
++
++	do {
++		curr = jiffies;
++		if (readl(ioaddr + mii_addr) & MII_BUSY)
++			cpu_relax();
++		else
++			return 0;
++	} while (!time_after_eq(curr, finish));
++
++	return -EBUSY;
++}
++
++
+ /**
+  * stmmac_pltfr_probe
+  * @pdev: platform device pointer
+@@ -150,8 +172,12 @@ static int stmmac_pltfr_probe(struct platform_device *pdev)
+ #endif
+ 
+ 	/* Get MAC address if available (DT) */
+-	if (mac)
++	if (mac){
+ 		memcpy(priv->dev->dev_addr, mac, ETH_ALEN);
++	}else{
++		/* get the mac address from the dmac register */	
++		stmmac_get_mac_addr(priv->ioaddr,priv->dev->dev_addr,GMAC_ADDR_HIGH(0),GMAC_ADDR_LOW(0));
++	}
+ 
+ 	/* Get the MAC information */
+ 	priv->dev->irq = platform_get_irq_byname(pdev, "macirq");
+@@ -164,6 +190,17 @@ static int stmmac_pltfr_probe(struct platform_device *pdev)
+ #ifdef  CONFIG_ARCH_LM2	/* No19 */
+ 	/* GMAC_EXTCFG Set */
+ 	writel(0x18 , priv->ioaddr + GMAC_EXTCFG);
++
++	/* NetPHY LED setting */
++	stmmac_busy_wait(priv->ioaddr,GMAC_MII_ADDR);
++	writel(0x0d04, priv->ioaddr + GMAC_MII_DATA);
++	writel(0x07cb, priv->ioaddr + GMAC_MII_ADDR);
++
++	stmmac_busy_wait(priv->ioaddr,GMAC_MII_ADDR);
++	writel(0x2c00, priv->ioaddr + GMAC_MII_DATA);
++	writel(0x040b, priv->ioaddr + GMAC_MII_ADDR);
++	stmmac_busy_wait(priv->ioaddr,GMAC_MII_ADDR);
++
+ #endif	/* CONFIG_ARCH_LM2 */
+ 	/*
+ 	 * On some platforms e.g. SPEAr the wake up irq differs from the mac irq
+diff --git a/drivers/of/fdt.c b/drivers/of/fdt.c
+index 1187737..528fb61 100644
+--- a/drivers/of/fdt.c
++++ b/drivers/of/fdt.c
+@@ -612,6 +612,9 @@ u64 __init dt_mem_next_cell(int s, __be32 **cellp)
+ 	return of_read_number(p, s);
+ }
+ 
++phys_addr_t real_ram_top;
++phys_addr_t contigmem_start;
++phys_addr_t pagemem_start;
+ /**
+  * early_init_dt_scan_memory - Look for an parse memory nodes
+  */
+@@ -621,6 +624,9 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
+ 	char *type = of_get_flat_dt_prop(node, "device_type", NULL);
+ 	__be32 *reg, *endp;
+ 	unsigned long l;
++	u64 base = 0ULL, size = 0ULL;
++	unsigned long contigmem_size;
++	unsigned long pagemem_size;
+ 
+ 	/* We are scanning "memory" nodes only */
+ 	if (type == NULL) {
+@@ -644,8 +650,8 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
+ 	pr_debug("memory scan node %s, reg size %ld, data: %x %x %x %x,\n",
+ 	    uname, l, reg[0], reg[1], reg[2], reg[3]);
+ 
++
+ 	while ((endp - reg) >= (dt_root_addr_cells + dt_root_size_cells)) {
+-		u64 base, size;
+ 
+ 		base = dt_mem_next_cell(dt_root_addr_cells, &reg);
+ 		size = dt_mem_next_cell(dt_root_size_cells, &reg);
+@@ -655,8 +661,20 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
+ 		pr_debug(" - %llx ,  %llx\n", (unsigned long long)base,
+ 		    (unsigned long long)size);
+ 
+-		early_init_dt_add_memory_arch(base, size);
++		early_init_dt_add_memory_arch(0x800000000ULL|base, size);
+ 	}
++	reg = of_get_flat_dt_prop(node, "contigmem_size", &l);
++	contigmem_size = of_read_ulong(reg, l/4);
++	reg = of_get_flat_dt_prop(node, "pagemem_size", &l);
++	pagemem_size = of_read_ulong(reg, l/4);
++
++	real_ram_top = base + size + contigmem_size;
++	contigmem_start = base + size;
++	printk("System Memory: 0x%0llx - 0x%0llx (%llu MB)\n", base|0x800000000, (base+size-1)|0x800000000, size/1024/1024);
++	printk("Contig Memory: 0x%0llx - 0x%0llx (%lu MB)\n", (base+size)|0x800000000, (base+size+contigmem_size-1)|0x800000000, contigmem_size/1024/1024);
++	printk("Page Memory  : 0x%0llx - 0x%0llx (%lu MB)\n", (base+size+contigmem_size)|0x800000000, (base+size+contigmem_size+pagemem_size-1)|0x800000000, pagemem_size/1024/1024);
++
++	pagemem_start = (base + size + contigmem_size) | 0x800000000;
+ 
+ 	return 0;
+ }
+diff --git a/drivers/rtc/rtc-quatro53xx.c b/drivers/rtc/rtc-quatro53xx.c
+index 9639691..47759d9 100644
+--- a/drivers/rtc/rtc-quatro53xx.c
++++ b/drivers/rtc/rtc-quatro53xx.c
+@@ -569,6 +569,7 @@ void rtc_reg_load(void __iomem *base, int *bak_adr, int offset, int size)
+ 
+ static int lm2_rtc_suspend(struct device *dev)
+ {
++#if 0
+ //	struct lm2_rtc  *rtc = dev_get_drvdata(dev);
+ 	int i=0;
+ 	void __iomem *base;
+@@ -582,12 +583,14 @@ static int lm2_rtc_suspend(struct device *dev)
+ 	reg_bak_chksum=0;
+ 	for(i=0; i<LM2_REGBAK_SIZE; i++)
+ 		reg_bak_chksum += reg_bak[i];
++#endif
+ 
+         return 0;
+ }
+ 
+ static int lm2_rtc_resume(struct device *dev)
+ {
++#if 0
+ //	struct lm2_rtc  *rtc = dev_get_drvdata(dev);
+ 	int i=0;
+ 	void __iomem *base;
+@@ -607,7 +610,7 @@ static int lm2_rtc_resume(struct device *dev)
+         rtc_reg_load(base, &i, 0x018,  1);
+         rtc_reg_load(base, &i, 0x01c,  1);
+         iounmap(base);
+-
++#endif
+         return 0;
+ }
+ #endif	/* CONFIG_ARCH_LM2 */
+@@ -623,7 +626,7 @@ static	struct	platform_driver lm2_rtc_driver = {
+ 	.driver = {
+ 		.name	= "lm2-rtc",
+ 		.owner	= THIS_MODULE,
+-		/* .pm	= &lm2_rtc_pm_ops, */
++//		.pm	= &lm2_rtc_pm_ops,
+ 	},
+ 	.id_table	= lm2_rtc_id_table,
+ 	.probe		= lm2_rtc_probe,
+diff --git a/drivers/tty/serial/8250/8250_core.c b/drivers/tty/serial/8250/8250_core.c
+index f61e2fc..c666ee8 100644
+--- a/drivers/tty/serial/8250/8250_core.c
++++ b/drivers/tty/serial/8250/8250_core.c
+@@ -46,6 +46,8 @@
+ #include <asm/io.h>
+ #include <asm/irq.h>
+ 
++#include <linux/fxmodule/fx_uart.h>
++
+ #include "8250.h"
+ /*
+  * Configuration:
+@@ -80,6 +82,12 @@ static unsigned int skip_txen_test; /* force skip of txen test at init time */
+ #define DEBUG_INTR(fmt...)	do { } while (0)
+ #endif
+ 
++#if 0
++#define FXDEBUG(fmt...) printk(fmt)
++#else
++#define FXDEBUG(fmt...)	do { } while (0)
++#endif
++
+ /*
+  * On -rt we can have a more delays, and legitimately
+  * so - so don't drop work spuriously and spam the
+@@ -1289,6 +1297,11 @@ static void serial8250_stop_tx(struct uart_port *port)
+ 	struct uart_8250_port *up =
+ 		container_of(port, struct uart_8250_port, port);
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return;
++	}
++
+ 	__stop_tx(up);
+ 
+ 	/*
+@@ -1305,6 +1318,11 @@ static void serial8250_start_tx(struct uart_port *port)
+ 	struct uart_8250_port *up =
+ 		container_of(port, struct uart_8250_port, port);
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return;
++	}
++
+ 	if (up->dma && !serial8250_tx_dma(up)) {
+ 		return;
+ 	} else if (!(up->ier & UART_IER_THRI)) {
+@@ -1334,6 +1352,11 @@ static void serial8250_stop_rx(struct uart_port *port)
+ 	struct uart_8250_port *up =
+ 		container_of(port, struct uart_8250_port, port);
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return;
++	}
++
+ 	up->ier &= ~UART_IER_RLSI;
+ 	up->port.read_status_mask &= ~UART_LSR_DR;
+ 	serial_port_out(port, UART_IER, up->ier);
+@@ -1344,6 +1367,11 @@ static void serial8250_enable_ms(struct uart_port *port)
+ 	struct uart_8250_port *up =
+ 		container_of(port, struct uart_8250_port, port);
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return;
++	}
++
+ 	/* no MSR capabilities */
+ 	if (up->bugs & UART_BUG_NOMSR)
+ 		return;
+@@ -1800,6 +1828,11 @@ static unsigned int serial8250_tx_empty(struct uart_port *port)
+ 	unsigned long flags;
+ 	unsigned int lsr;
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return TIOCSER_TEMT;
++	}
++
+ 	spin_lock_irqsave(&port->lock, flags);
+ 	lsr = serial_port_in(port, UART_LSR);
+ 	up->lsr_saved_flags |= lsr & LSR_SAVE_FLAGS;
+@@ -1815,6 +1848,11 @@ static unsigned int serial8250_get_mctrl(struct uart_port *port)
+ 	unsigned int status;
+ 	unsigned int ret;
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return 0;
++	}
++
+ 	status = serial8250_modem_status(up);
+ 
+ 	ret = 0;
+@@ -1826,6 +1864,7 @@ static unsigned int serial8250_get_mctrl(struct uart_port *port)
+ 		ret |= TIOCM_DSR;
+ 	if (status & UART_MSR_CTS)
+ 		ret |= TIOCM_CTS;
++
+ 	return ret;
+ }
+ 
+@@ -1835,6 +1874,11 @@ static void serial8250_set_mctrl(struct uart_port *port, unsigned int mctrl)
+ 		container_of(port, struct uart_8250_port, port);
+ 	unsigned char mcr = 0;
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return;
++	}
++
+ 	if (mctrl & TIOCM_RTS)
+ 		mcr |= UART_MCR_RTS;
+ 	if (mctrl & TIOCM_DTR)
+@@ -1857,6 +1901,11 @@ static void serial8250_break_ctl(struct uart_port *port, int break_state)
+ 		container_of(port, struct uart_8250_port, port);
+ 	unsigned long flags;
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return;
++	}
++
+ 	spin_lock_irqsave(&port->lock, flags);
+ 	if (break_state == -1)
+ 		up->lcr |= UART_LCR_SBC;
+@@ -1909,6 +1958,13 @@ static void wait_for_xmitr(struct uart_8250_port *up, int bits)
+ static int serial8250_get_poll_char(struct uart_port *port)
+ {
+ 	unsigned char lsr = serial_port_in(port, UART_LSR);
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return NO_POLL_CHAR;
++	}
+ 
+ 	if (!(lsr & UART_LSR_DR))
+ 		return NO_POLL_CHAR;
+@@ -1924,6 +1980,11 @@ static void serial8250_put_poll_char(struct uart_port *port,
+ 	struct uart_8250_port *up =
+ 		container_of(port, struct uart_8250_port, port);
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return;
++	}
++
+ 	/*
+ 	 *	First save the IER then disable the interrupts
+ 	 */
+@@ -1962,6 +2023,15 @@ static int serial8250_startup(struct uart_port *port)
+ 	unsigned char lsr, iir;
+ 	int retval;
+ 
++	struct uart_state *state;
++	struct tty_struct *tty = NULL;
++	struct circ_buf *xmit = NULL;
++
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return 0;
++	}
++
+ 	if (port->type == PORT_8250_CIR)
+ 		return -ENODEV;
+ 
+@@ -2003,6 +2073,13 @@ static int serial8250_startup(struct uart_port *port)
+ 	 */
+ 	serial8250_clear_fifos(up);
+ 
++	state = port->state;
++	tty = state->port.tty;
++	xmit = &state->xmit;
++
++	uart_circ_clear(xmit);
++	tty_buffer_flush(tty);
++
+ 	/*
+ 	 * Clear the interrupt registers.
+ 	 */
+@@ -2213,6 +2290,11 @@ static void serial8250_shutdown(struct uart_port *port)
+ 		container_of(port, struct uart_8250_port, port);
+ 	unsigned long flags;
+ 
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return;
++	}
++
+ 	/*
+ 	 * Disable interrupts from this port
+ 	 */
+@@ -2473,6 +2555,14 @@ static void
+ serial8250_set_termios(struct uart_port *port, struct ktermios *termios,
+ 		       struct ktermios *old)
+ {
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++
++	if (up->fxpwsave_flag) {
++		FXDEBUG(KERN_INFO "8250 UART (%d) : %s ignore\n", serial8250_find_port(port), __func__);
++		return;
++	}
++
+ 	if (port->set_termios)
+ 		port->set_termios(port, termios, old);
+ 	else
+@@ -2504,10 +2594,39 @@ static void
+ serial8250_pm(struct uart_port *port, unsigned int state,
+ 	      unsigned int oldstate)
+ {
+-	if (port->pm)
++	struct uart_state *st;
++	struct tty_struct *tty = NULL;
++	struct circ_buf *xmit = NULL;
++	struct uart_8250_port *up;
++
++	st = port->state;
++	tty = st->port.tty;
++	xmit = &st->xmit;
++	up = container_of(port, struct uart_8250_port, port);
++
++	if (up->fxpwsave_enable) {
++		if (state == UART_PM_STATE_ON && !port->suspended) {
++			up->fxpwsave_flag = 0;          /* open / resume */
++		}
++		else if (state != UART_PM_STATE_ON && port->suspended) {
++			up->fxpwsave_flag = 1;          /* close / suspend */
++		}
++		else if (state == UART_PM_STATE_ON && port->suspended) {
++			up->fxpwsave_flag = 1;          /* open */
++		}
++		else if (state != UART_PM_STATE_ON && !port->suspended) {
++			up->fxpwsave_flag = 0;          /* close */
++		}
++	}
++
++	printk(KERN_INFO "8250 UART (%d) : %s (st=%u, oldst=%u, suspended=%u, flg=%u)\n", serial8250_find_port(port), __func__, state, oldstate, port->suspended, up->fxpwsave_flag);
++
++	if (port->pm) {
+ 		port->pm(port, state, oldstate);
+-	else
++	}
++	else {
+ 		serial8250_do_pm(port, state, oldstate);
++	}
+ }
+ 
+ static unsigned int serial8250_port_size(struct uart_8250_port *pt)
+@@ -2723,6 +2842,60 @@ serial8250_type(struct uart_port *port)
+ 	return uart_config[type].name;
+ }
+ 
++
++static int serial8250_ioctl(struct uart_port *p,
++							unsigned int cmd, unsigned long arg)
++{
++	struct uart_state *state;
++	struct tty_struct *tty = NULL;
++	struct tty_port *tty_p;
++	struct circ_buf *xmit = NULL;
++	int line;
++	struct uart_8250_port *up;
++
++	state = p->state;
++	tty = state->port.tty;
++	tty_p = &state->port;
++	xmit = &state->xmit;
++	up = container_of(p, struct uart_8250_port, port);
++	line = serial8250_find_port(p);
++	if (line < 0) return line;
++
++	switch(cmd) {
++		case UART_SLEEPING:
++			printk(KERN_INFO "8250 UART (%d) : UART_SLEEPING start\n", line);
++
++			mutex_unlock(&tty_p->mutex);
++			uart_suspend_port(&serial8250_reg, p);
++			mutex_lock(&tty_p->mutex);
++
++			printk(KERN_INFO "8250 UART (%d) : UART_SLEEPING end\n", line);
++
++			break;
++
++		case UART_WAKEUP:
++			printk(KERN_INFO "8250 UART (%d) : UART_WAKEUP start\n", line);
++
++			/* if not set, resume doesn't work */
++			set_bit(ASYNCB_SUSPENDED, &tty_p->flags);
++			clear_bit(ASYNCB_INITIALIZED, &tty_p->flags);
++			state->pm_state = UART_PM_STATE_OFF;
++
++			mutex_unlock(&tty_p->mutex);
++			serial8250_resume_port(line);
++			mutex_lock(&tty_p->mutex);
++
++			printk(KERN_INFO "8250 UART (%d) : UART_WAKEUP end\n", line);
++
++			break;
++
++		default:
++			return -ENOIOCTLCMD;
++	}
++
++	return 0;
++}
++
+ static struct uart_ops serial8250_pops = {
+ 	.tx_empty	= serial8250_tx_empty,
+ 	.set_mctrl	= serial8250_set_mctrl,
+@@ -2746,6 +2919,7 @@ static struct uart_ops serial8250_pops = {
+ 	.poll_get_char = serial8250_get_poll_char,
+ 	.poll_put_char = serial8250_put_poll_char,
+ #endif
++	.ioctl = serial8250_ioctl,
+ };
+ 
+ static struct uart_8250_port serial8250_ports[UART_NR];
+@@ -3105,6 +3279,7 @@ static int serial8250_probe(struct platform_device *dev)
+ 		uart.port.pm		= p->pm;
+ 		uart.port.dev		= &dev->dev;
+ 		uart.port.irqflags	|= irqflag;
++		uart.fxpwsave_enable = p->fxpwsave_enable;
+ 		ret = serial8250_register_8250_port(&uart);
+ 		if (ret < 0) {
+ 			dev_err(&dev->dev, "unable to register port at index %d "
+@@ -3139,7 +3314,8 @@ static int serial8250_suspend(struct platform_device *dev, pm_message_t state)
+ 	for (i = 0; i < UART_NR; i++) {
+ 		struct uart_8250_port *up = &serial8250_ports[i];
+ 
+-		if (up->port.type != PORT_UNKNOWN && up->port.dev == &dev->dev)
++		if (up->port.type != PORT_UNKNOWN && up->port.dev == &dev->dev
++			&& !up->fxpwsave_enable)
+ 			uart_suspend_port(&serial8250_reg, &up->port);
+ 	}
+ 
+@@ -3153,7 +3329,8 @@ static int serial8250_resume(struct platform_device *dev)
+ 	for (i = 0; i < UART_NR; i++) {
+ 		struct uart_8250_port *up = &serial8250_ports[i];
+ 
+-		if (up->port.type != PORT_UNKNOWN && up->port.dev == &dev->dev)
++		if (up->port.type != PORT_UNKNOWN && up->port.dev == &dev->dev
++			&& !up->fxpwsave_enable)
+ 			serial8250_resume_port(i);
+ 	}
+ 
+@@ -3260,6 +3437,9 @@ int serial8250_register_8250_port(struct uart_8250_port *up)
+ 		uart->tx_loadsz		= up->tx_loadsz;
+ 		uart->capabilities	= up->capabilities;
+ 
++		uart->fxpwsave_flag = 0;
++		uart->fxpwsave_enable = up->fxpwsave_enable;
++
+ 		/* Take tx_loadsz from fifosize if it wasn't set separately */
+ 		if (uart->port.fifosize && !uart->tx_loadsz)
+ 			uart->tx_loadsz = uart->port.fifosize;
+diff --git a/drivers/usb/class/usblp.c b/drivers/usb/class/usblp.c
+index d4c47d5..5123619 100644
+--- a/drivers/usb/class/usblp.c
++++ b/drivers/usb/class/usblp.c
+@@ -78,6 +78,10 @@
+ #define IOCNR_GET_BUS_ADDRESS		5
+ #define IOCNR_GET_VID_PID		6
+ #define IOCNR_SOFT_RESET		7
++#define IOCNR_FX_SET_RESET		8
++#define IOCNR_FX_GET_LENGTH		9
++
++
+ /* Get device_id string: */
+ #define LPIOC_GET_DEVICE_ID(len) _IOC(_IOC_READ, 'P', IOCNR_GET_DEVICE_ID, len)
+ /* The following ioctls were added for http://hpoj.sourceforge.net: */
+@@ -96,6 +100,10 @@
+ /* Perform class specific soft reset */
+ #define LPIOC_SOFT_RESET _IOC(_IOC_NONE, 'P', IOCNR_SOFT_RESET, 0);
+ 
++#define LPIOC_FX_SET_RESET		_IOC(_IOC_NONE, 'P', IOCNR_FX_SET_RESET, 0)
++#define LPIOC_FX_GET_LENGTH		_IOC(_IOC_READ, 'P', IOCNR_FX_GET_LENGTH, sizeof(int))
++
++
+ /*
+  * A DEVICE_ID string may include the printer's serial number.
+  * It should end with a semi-colon (';').
+@@ -113,6 +121,11 @@ MFG:HEWLETT-PACKARD;MDL:DESKJET 970C;CMD:MLC,PCL,PML;CLASS:PRINTER;DESCRIPTION:H
+ #define USBLP_REQ_RESET				0x02
+ #define USBLP_REQ_HP_CHANNEL_CHANGE_REQUEST	0x00	/* HP Vendor-specific */
+ 
++
++#define USBLP_REQ_SET_RESET			0x00
++#define USBLP_REQ_GET_LEN			0x01
++
++
+ #define USBLP_MINORS		16
+ #define USBLP_MINOR_BASE	0
+ 
+@@ -279,6 +292,13 @@ static int usblp_ctrl_msg(struct usblp *usblp, int request, int type, int dir, i
+ #define usblp_reset(usblp)\
+ 	usblp_ctrl_msg(usblp, USBLP_REQ_RESET, USB_TYPE_CLASS, USB_DIR_OUT, USB_RECIP_OTHER, 0, NULL, 0)
+ 
++#define usblp_setreset(usblp)\
++	usblp_ctrl_msg(usblp, USBLP_REQ_SET_RESET, USB_TYPE_VENDOR, USB_DIR_OUT, USB_RECIP_DEVICE, 0, NULL, 0)
++
++#define usblp_get_len(usblp, len)\
++	usblp_ctrl_msg(usblp, USBLP_REQ_GET_LEN, USB_TYPE_VENDOR, USB_DIR_IN, USB_RECIP_DEVICE, 0, len, 4)
++
++
+ #define usblp_hp_channel_change_request(usblp, channel, buffer) \
+ 	usblp_ctrl_msg(usblp, USBLP_REQ_HP_CHANNEL_CHANGE_REQUEST, USB_TYPE_VENDOR, USB_DIR_IN, USB_RECIP_INTERFACE, channel, buffer, 1)
+ 
+@@ -498,6 +518,7 @@ static long usblp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+ 	int status;
+ 	int twoints[2];
+ 	int retval = 0;
++	int fxlen;
+ 
+ 	mutex_lock(&usblp->mut);
+ 	if (!usblp->present) {
+@@ -654,8 +675,32 @@ static long usblp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+ 			}
+ 			retval = usblp_reset(usblp);
+ 			break;
+-		default:
++			
++		case IOCNR_FX_SET_RESET:
++			if (_IOC_DIR(cmd) != _IOC_NONE) {
++				retval = -EINVAL;
++				goto done;
++			}
++			retval = usblp_setreset(usblp);
++			break;		default:
+ 			retval = -ENOTTY;
++
++		case IOCNR_FX_GET_LENGTH: /* get the DEVICE_ID string */
++		
++			if (_IOC_DIR(cmd) != _IOC_READ) {
++				retval = -EINVAL;
++				goto done;
++			}
++
++			if ((retval = usblp_get_len(usblp, &fxlen))) {
++				printk_ratelimited(KERN_ERR "usblp%d:"
++					    "failed get fx lenth (%d)\n",usblp->minor, retval);
++				retval = -EIO;
++				goto done;
++			}
++			if (copy_to_user((void __user *)arg, &fxlen, sizeof(int)))
++				retval = -EFAULT;
++			break;
+ 		}
+ 	else	/* old-style ioctl value */
+ 		switch (cmd) {
+@@ -1409,6 +1454,7 @@ static const struct usb_device_id usblp_ids[] = {
+ 	{ USB_INTERFACE_INFO(7, 1, 2) },
+ 	{ USB_INTERFACE_INFO(7, 1, 3) },
+ 	{ USB_DEVICE(0x04b8, 0x0202) },	/* Seiko Epson Receipt Printer M129C */
++	{ USB_DEVICE(0x0550, 0x0002) }, /* fx test printer */
+ 	{ }						/* Terminating entry */
+ };
+ 
+diff --git a/drivers/usb/dwc3/gadget.c b/drivers/usb/dwc3/gadget.c
+index 744be99..7ed0806 100644
+--- a/drivers/usb/dwc3/gadget.c
++++ b/drivers/usb/dwc3/gadget.c
+@@ -1337,6 +1337,7 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
+ 	req->request.status	= -EINPROGRESS;
+ 	req->direction		= dep->direction;
+ 	req->epnum		= dep->number;
++	req->dep		=dep;
+ 
+ #if	0	/*<HN>*/
+ 	dev_vdbg(dwc->dev, "%s <HN>\n",__FUNCTION__);
+diff --git a/drivers/usb/gadget/Kconfig b/drivers/usb/gadget/Kconfig
+index 11fc47b..4129b11 100644
+--- a/drivers/usb/gadget/Kconfig
++++ b/drivers/usb/gadget/Kconfig
+@@ -857,6 +857,20 @@ config USB_G_PRINTER
+ 	  For more information, see Documentation/usb/gadget_printer.txt
+ 	  which includes sample code for accessing the device file.
+ 
++config USB_G_FXPRINTER
++	tristate "Fuji Xerox Printer Gadget"
++	select USB_LIBCOMPOSITE
++	help
++	  The Fuji Xerox Printer Gadget channels data between the USB host and a
++	  userspace program driving the print engine. The user space
++	  program reads and writes the device file /dev/g_printer to
++	  receive or send printer data. It can use ioctl calls to
++	  the device file to get or set printer status.
++
++	  Say "y" to link the driver statically, or "m" to build a
++	  dynamically linked module called "g_fxprinter".
++
++
+ if TTY
+ 
+ config USB_CDC_COMPOSITE
+diff --git a/drivers/usb/gadget/Makefile b/drivers/usb/gadget/Makefile
+index ecd27d3..aa2cb42 100644
+--- a/drivers/usb/gadget/Makefile
++++ b/drivers/usb/gadget/Makefile
+@@ -59,6 +59,7 @@ g_midi-y			:= gmidi.o
+ gadgetfs-y			:= inode.o
+ g_mass_storage-y		:= mass_storage.o
+ g_printer-y			:= printer.o
++g_fxprinter-y			:= fxprinter.o
+ g_cdc-y				:= cdc2.o
+ g_multi-y			:= multi.o
+ g_hid-y				:= hid.o
+@@ -77,6 +78,7 @@ obj-$(CONFIG_USB_FUNCTIONFS)	+= g_ffs.o
+ obj-$(CONFIG_USB_MASS_STORAGE)	+= g_mass_storage.o
+ obj-$(CONFIG_USB_G_SERIAL)	+= g_serial.o
+ obj-$(CONFIG_USB_G_PRINTER)	+= g_printer.o
++obj-$(CONFIG_USB_G_FXPRINTER)	+= g_fxprinter.o
+ obj-$(CONFIG_USB_MIDI_GADGET)	+= g_midi.o
+ obj-$(CONFIG_USB_CDC_COMPOSITE) += g_cdc.o
+ obj-$(CONFIG_USB_G_HID)		+= g_hid.o
+diff --git a/drivers/usb/gadget/composite.c b/drivers/usb/gadget/composite.c
+index e7f2a6b..ca786cd 100644
+--- a/drivers/usb/gadget/composite.c
++++ b/drivers/usb/gadget/composite.c
+@@ -1291,6 +1291,8 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
+ 				value = min(w_length, (u16) value);
+ 			}
+ 			break;
++		default:
++			goto unknown;
+ 		}
+ 		break;
+ 
+diff --git a/drivers/usb/gadget/epautoconf.c b/drivers/usb/gadget/epautoconf.c
+index a777f7b..6a36f58 100644
+--- a/drivers/usb/gadget/epautoconf.c
++++ b/drivers/usb/gadget/epautoconf.c
+@@ -160,6 +160,13 @@ ep_matches (
+ 	}
+ 
+ 	/* MATCH!! */
++	if ((isdigit (ep->name [2]))&&(desc->bEndpointAddress&USB_ENDPOINT_NUMBER_MASK)) {
++		u8	num = simple_strtoul (&ep->name [2], NULL, 10);
++
++		if(num!=(desc->bEndpointAddress&USB_ENDPOINT_NUMBER_MASK)){
++			return 0;
++		}
++	}
+ 
+ 	/* report address */
+ 	desc->bEndpointAddress &= USB_DIR_IN;
+diff --git a/drivers/usb/host/xhci-plat.c b/drivers/usb/host/xhci-plat.c
+index 49f47ed..0a1fae6 100644
+--- a/drivers/usb/host/xhci-plat.c
++++ b/drivers/usb/host/xhci-plat.c
+@@ -15,8 +15,24 @@
+ #include <linux/module.h>
+ #include <linux/slab.h>
+ 
++#include <linux/fs.h>
++#include <linux/errno.h>
++#include <linux/types.h>
++#include <linux/proc_fs.h>
++#include <linux/fcntl.h>
++#include <linux/seq_file.h>
++#include <linux/cdev.h>
++
+ #include "xhci.h"
+ 
++#include <linux/fxmodule/xchi_ioctl.h>
++
++static int xchi_cdev_open(struct inode *inode, struct file *filp);
++static int xchi_cdev_release(struct inode *inode, struct file *filp);
++static long xchi_cdev_ioctl(struct file *filp,unsigned int cmd, unsigned long arg);
++static int xhci_plat_create_dev(struct platform_device *pdev);
++
++
+ static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
+ {
+ 	/*
+@@ -82,6 +98,67 @@ static const struct hc_driver xhci_plat_xhci_driver = {
+ 	.bus_resume =		xhci_bus_resume,
+ };
+ 
++struct xchi_cdevinfo{
++	struct platform_device *pdev;
++	struct device*			dev;	
++	struct cdev				cdev;
++	struct class*			pclass;				/* the class for this device */
++	dev_t devno;
++
++};
++
++
++
++struct file_operations xhci_cdev_fops = {
++	.owner =    THIS_MODULE,
++	.unlocked_ioctl =    xchi_cdev_ioctl,
++	.open =     xchi_cdev_open,
++	.release =  xchi_cdev_release,
++};
++
++static struct xchi_cdevinfo g_xchi_cdev;
++static int xhci_plat_create_dev(struct platform_device *pdev)
++{
++	int status;
++	struct cdev* p_cdev;
++
++	memset(&g_xchi_cdev,0,sizeof(g_xchi_cdev));
++
++	g_xchi_cdev.pclass=class_create(THIS_MODULE, "xhci_cdev");
++	if(IS_ERR(g_xchi_cdev.pclass)){
++		status = PTR_ERR(g_xchi_cdev.pclass);
++		pr_err("unable to create xhcid class %d\n", status);
++		return status;
++	}
++	status = alloc_chrdev_region(&g_xchi_cdev.devno, 0, 1,"xchi cdev");
++	if (status) {
++		pr_err("alloc_chrdev_region %d\n", status);
++		class_destroy(g_xchi_cdev.pclass);
++		return status;
++	}
++	p_cdev=&g_xchi_cdev.cdev;
++
++	cdev_init(p_cdev, &xhci_cdev_fops);
++	p_cdev->owner = THIS_MODULE;
++
++	status = cdev_add(p_cdev, g_xchi_cdev.devno, 1);
++	if (status) {
++		pr_err("Failed to open char device\n");
++		class_destroy(g_xchi_cdev.pclass);
++		return status;
++	}
++
++	g_xchi_cdev.dev = device_create(g_xchi_cdev.pclass, NULL, g_xchi_cdev.devno,NULL, XHCI_CDEV_DEVICE);
++	if (IS_ERR(g_xchi_cdev.dev)) {
++		pr_err("Failed to open char device\n");
++		class_destroy(g_xchi_cdev.pclass);
++		return(-ENODEV);
++	}
++
++	g_xchi_cdev.pdev=pdev;
++	return 0;
++}
++
+ static int xhci_plat_probe(struct platform_device *pdev)
+ {
+ 	const struct hc_driver	*driver;
+@@ -152,6 +229,9 @@ static int xhci_plat_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto put_usb3_hcd;
+ 
++
++	xhci_plat_create_dev(pdev);
++
+ //dev_info(&pdev->dev, "==================== USB Normal End =========================\n");
+ 	return 0;
+ 
+@@ -178,6 +258,11 @@ static int xhci_plat_remove(struct platform_device *dev)
+ 	struct usb_hcd	*hcd = platform_get_drvdata(dev);
+ 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+ 
++	if(g_xchi_cdev.pclass){
++		unregister_chrdev_region(g_xchi_cdev.devno, 1);
++		class_destroy(g_xchi_cdev.pclass);
++	}
++
+ 	usb_remove_hcd(xhci->shared_hcd);
+ 	usb_put_hcd(xhci->shared_hcd);
+ 
+@@ -311,6 +396,48 @@ static int xhci_host_resume(struct platform_device *pdev)
+         return i;
+ }
+ 
++static int xchi_cdev_open(struct inode *inode, struct file *filp)
++{
++	struct xchi_cdevinfo* p_cdevinfo;
++	p_cdevinfo = container_of(inode->i_cdev, struct xchi_cdevinfo, cdev);
++	filp->private_data = p_cdevinfo;
++	return 0;
++}
++
++static int xchi_cdev_release(struct inode *inode, struct file *filp)
++{
++	return 0;
++}
++
++static long xchi_cdev_ioctl(struct file *filp,unsigned int cmd, unsigned long arg)
++{
++	struct xchi_cdevinfo* p_cdevinfo;
++	struct platform_device *pdev;
++	struct usb_hcd *hcd;
++	int retval = 0;
++
++	p_cdevinfo=(struct xchi_cdevinfo*)(filp->private_data);
++	pdev=p_cdevinfo->pdev;
++	hcd = platform_get_drvdata(pdev);
++
++	switch(cmd) {
++		case XHCI_SLEEPING:
++			//turn off port power of roothub
++			xhci_hub_control(hcd, ClearPortFeature,USB_PORT_FEAT_POWER,1, 0, 0);
++			xhci_hub_control(hcd, ClearPortFeature,USB_PORT_FEAT_POWER,2, 0, 0);
++			break;
++
++		case XHCI_WAKEUP:
++			xhci_hub_control(hcd, SetPortFeature,USB_PORT_FEAT_POWER,1, 0, 0);
++			xhci_hub_control(hcd, SetPortFeature,USB_PORT_FEAT_POWER,2, 0, 0);
++			break;
++		default:
++			return -EINVAL;
++	}
++	return retval;
++}
++
++
+ #endif	/* CONFIG_ARCH_LM2 */
+ 
+ static struct platform_driver usb_xhci_driver = {
+diff --git a/include/linux/mmc/sdhci.h b/include/linux/mmc/sdhci.h
+index 40de6bf..6da680d 100644
+--- a/include/linux/mmc/sdhci.h
++++ b/include/linux/mmc/sdhci.h
+@@ -181,6 +181,9 @@ struct sdhci_host {
+ #define SDHCI_TUNING_MODE_1	0
+ 	struct timer_list	tuning_timer;	/* Timer for tuning */
+ 
++	bool block_pending;
++	unsigned int ch;/* host channel no */
++
+ 	unsigned long private[0] ____cacheline_aligned;
+ };
+ #endif /* LINUX_MMC_SDHCI_H */
+diff --git a/include/linux/serial_8250.h b/include/linux/serial_8250.h
+index af47a8a..046fe83 100644
+--- a/include/linux/serial_8250.h
++++ b/include/linux/serial_8250.h
+@@ -39,6 +39,8 @@ struct plat_serial8250_port {
+ 	void		(*pm)(struct uart_port *, unsigned int state,
+ 			      unsigned old);
+ 	void		(*handle_break)(struct uart_port *);
++
++	unsigned char fxpwsave_enable;
+ };
+ 
+ /*
+@@ -98,6 +100,9 @@ struct uart_8250_port {
+ 	/* 8250 specific callbacks */
+ 	int			(*dl_read)(struct uart_8250_port *);
+ 	void			(*dl_write)(struct uart_8250_port *, int);
++
++	unsigned char fxpwsave_enable;
++	unsigned char fxpwsave_flag;
+ };
+ 
+ int serial8250_register_8250_port(struct uart_8250_port *);
+diff --git a/include/linux/smp.h b/include/linux/smp.h
+index 5a57c1d..5b88209 100644
+--- a/include/linux/smp.h
++++ b/include/linux/smp.h
+@@ -37,6 +37,8 @@ int smp_call_function_single(int cpuid, smp_call_func_t func, void *info,
+ #include <linux/thread_info.h>
+ #include <asm/smp.h>
+ 
++#define CONFIG_FX_FWCMD_IPI_WITH_A7
++
+ /*
+  * main cross-CPU interfaces, handles INIT, TLB flush, STOP, etc.
+  * (defined in asm header):
+@@ -68,6 +70,18 @@ extern int __cpu_up(unsigned int cpunum, struct task_struct *tidle);
+  */
+ extern void smp_cpus_done(unsigned int max_cpus);
+ 
++#ifdef CONFIG_FX_FWCMD_IPI_WITH_A7 
++/*
++ * OS intermediate communication with A7
++ */ 
++
++extern void smp_send_cmd_not_empty(int cpu);
++extern void smp_send_cmd_not_full(int cpu);
++
++void wakeup_for_cmd_not_empty(void);
++void wakeup_for_cmd_not_full(void);
++#endif
++
+ /*
+  * Call a function on all other processors
+  */
+-- 
+1.7.1
+

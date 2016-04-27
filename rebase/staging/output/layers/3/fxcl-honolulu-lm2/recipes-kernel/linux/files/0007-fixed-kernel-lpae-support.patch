@@ -1,0 +1,94 @@
+From 188ee7e52449d36d999a36c7522fddfe5a9d061c Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:21:17 +0900
+Subject: [PATCH 008/170] 0007-fixed-kernel-lpae-support
+
+
+diff --git a/arch/arm/mm/dma-mapping.c b/arch/arm/mm/dma-mapping.c
+index 096179c..f7d3c04 100644
+--- a/arch/arm/mm/dma-mapping.c
++++ b/arch/arm/mm/dma-mapping.c
+@@ -854,7 +854,11 @@ static void dma_cache_maint_page(struct page *page, unsigned long offset,
+ static void __dma_page_cpu_to_dev(struct page *page, unsigned long off,
+ 	size_t size, enum dma_data_direction dir)
+ {
++#if 1	/* ohkuma unsigned long->phys_addr_t change */
++	phys_addr_t paddr;
++#else
+ 	unsigned long paddr;
++#endif
+ 
+ 	dma_cache_maint_page(page, off, size, dir, dmac_map_area);
+ 
+@@ -870,7 +874,11 @@ static void __dma_page_cpu_to_dev(struct page *page, unsigned long off,
+ static void __dma_page_dev_to_cpu(struct page *page, unsigned long off,
+ 	size_t size, enum dma_data_direction dir)
+ {
++#if 1   /* ohkuma unsigned long->phys_addr_t change */
++	phys_addr_t paddr;
++#else
+ 	unsigned long paddr = page_to_phys(page) + off;
++#endif
+ 
+ 	/* FIXME: non-speculating: not required */
+ 	/* don't bother invalidating if DMA to device */
+diff --git a/arch/arm/mm/ioremap.c b/arch/arm/mm/ioremap.c
+index f123d6e..f599d12 100644
+--- a/arch/arm/mm/ioremap.c
++++ b/arch/arm/mm/ioremap.c
+@@ -103,8 +103,13 @@ void __init add_static_vm_early(struct static_vm *svm)
+ 	list_add_tail(&svm->list, &curr_svm->list);
+ }
+ 
++#ifdef	CONFIG_ARM_LPAE
++int ioremap_page(unsigned long virt, phys_addr_t phys,
++		 const struct mem_type *mtype)
++#else
+ int ioremap_page(unsigned long virt, unsigned long phys,
+ 		 const struct mem_type *mtype)
++#endif	/* CONFIG_ARM_LPAE yamano */
+ {
+ 	return ioremap_page_range(virt, virt + PAGE_SIZE, phys,
+ 				  __pgprot(mtype->prot_pte));
+@@ -335,7 +340,12 @@ void __iomem *__arm_ioremap_caller(phys_addr_t phys_addr, size_t size,
+ 	unsigned int mtype, void *caller)
+ {
+ 	phys_addr_t last_addr;
+- 	unsigned long offset = phys_addr & ~PAGE_MASK;
++#ifdef	CONFIG_ARM__LPAE
++ 	phys_addr_t offset;
++#else
++ 	unsigned long offset;
++#endif	/* CONFIG_ARM_LPAE yamano */
++	offset = phys_addr & ~PAGE_MASK;
+  	unsigned long pfn = __phys_to_pfn(phys_addr);
+ 
+  	/*
+diff --git a/arch/arm/mm/proc-v7-3level.S b/arch/arm/mm/proc-v7-3level.S
+index 4d7f816..4bc8a3d 100644
+--- a/arch/arm/mm/proc-v7-3level.S
++++ b/arch/arm/mm/proc-v7-3level.S
+@@ -137,15 +137,20 @@ ENDPROC(cpu_v7_set_pte_ext)
+ 	 */
+ 	orrls	\tmp, \tmp, #TTBR1_SIZE				@ TTBCR.T1SZ
+ 	mcr	p15, 0, \tmp, c2, c0, 2				@ TTBCR
++	isb							@ fxcl
+ 	mov	\tmp, \ttbr1, lsr #(32 - ARCH_PGD_SHIFT)	@ upper bits
+ 	mov	\ttbr1, \ttbr1, lsl #ARCH_PGD_SHIFT		@ lower bits
+ 	addls	\ttbr1, \ttbr1, #TTBR1_OFFSET
+ 	mcrr	p15, 1, \ttbr1, \zero, c2			@ load TTBR1
++	isb							@ fxcl 
+ 	mov	\tmp, \ttbr0, lsr #(32 - ARCH_PGD_SHIFT)	@ upper bits
+ 	mov	\ttbr0, \ttbr0, lsl #ARCH_PGD_SHIFT		@ lower bits
+ 	mcrr	p15, 0, \ttbr0, \zero, c2			@ load TTBR0
++	isb							@ fxcl
+ 	mcrr	p15, 1, \ttbr1, \zero, c2			@ load TTBR1
++	isb							@ fxcl
+ 	mcrr	p15, 0, \ttbr0, \zero, c2			@ load TTBR0
++	isb
+ 	.endm
+ 
+ 	__CPUINIT
+-- 
+1.7.1
+

@@ -1,0 +1,92 @@
+From d35901fdb56784853ca6910c340b6123690a6618 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:47:15 +0900
+Subject: [PATCH 070/169] 0001-remove-atag-debug
+
+
+diff --git a/arch/arm/kernel/atags_parse.c b/arch/arm/kernel/atags_parse.c
+index 4ad1056..352ae33 100644
+--- a/arch/arm/kernel/atags_parse.c
++++ b/arch/arm/kernel/atags_parse.c
+@@ -66,7 +66,7 @@ static	struct {
+ 	{ 0, ATAG_NONE}
+ };
+ #endif	/* yamano debug */
+-#if 1 /* yamano */
++#if 0 /* yamano */
+ #define UART_BASE       0xfc160000
+ #define UART_DATA(base) (*(volatile unsigned char *)((base) + 0x10))
+ #define UART_STAT(base) (*(volatile unsigned char *)((base) + 0x15))
+@@ -95,7 +95,8 @@ static  void    putstr(const char *ptr)
+         }
+         flush();
+ }
+-
++#else
++#define	putstr(x)	
+ #endif  /* yamano */
+ 
+ static int __init parse_tag_core(const struct tag *tag)
+@@ -236,8 +237,8 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 
+ 	default_tags.mem.start = PHYS_OFFSET;
+ //	default_tags.mem.start = 0x0000000890000000ULL;
+-	sprintf(buf,"machine_nr:%x\n",machine_nr);
+-	putstr(buf);
++//	sprintf(buf,"machine_nr:%x\n",machine_nr);
++//	putstr(buf);
+ 	machine_nr = 0x157c;	/* yamano debug */
+ 	/*
+ 	 * locate machine in the list of supported machines.
+@@ -245,13 +246,13 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 	for_each_machine_desc(p)
+ 		if (machine_nr == p->nr) {
+ 			printk("Machine: %s\n", p->name);
+-			putstr(p->name);	/* yamano debug */
++//			putstr(p->name);	/* yamano debug */
+ 			mdesc = p;
+ 			break;
+ 		}else{	/* yamano debug */
+-			putstr(p->name);
+-			sprintf(buf,"==%x==",p->nr);
+-			putstr(buf);
++//			putstr(p->name);
++//			sprintf(buf,"==%x==",p->nr);
++//			putstr(buf);
+ 		}
+ 
+ 	if (!mdesc) {
+@@ -261,10 +262,10 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 	}
+ #if 1
+ 	if (__atags_pointer){
+-	putstr("atags point vaild\n");
++//	putstr("atags point vaild\n");
+ 		tags = phys_to_virt(__atags_pointer);
+ 	}else if (mdesc->atag_offset){
+-	putstr("atag offset valid\n");
++//	putstr("atag offset valid\n");
+ 		tags = (void *)(PAGE_OFFSET + mdesc->atag_offset);
+ 	}
+ #if defined(CONFIG_DEPRECATED_PARAM_STRUCT)
+@@ -276,7 +277,7 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 		convert_to_tag_list(tags);
+ #endif
+ 	if (tags->hdr.tag != ATAG_CORE) {
+-	putstr("atag header invalid end\n");
++//	putstr("atag header invalid end\n");
+ 		early_print("Warning: Neither atags nor dtb found\n");
+ 		tags = (struct tag *)&default_tags;
+ 	}
+@@ -300,7 +301,7 @@ putstr(buf);
+ 		parse_tags(tags);
+ 	}
+ 
+-	putstr("atag execution end\n");
++//	putstr("atag execution end\n");
+ 	/* parse_early_param needs a boot_command_line */
+ 	strlcpy(boot_command_line, from, COMMAND_LINE_SIZE);
+ 
+-- 
+1.7.1
+

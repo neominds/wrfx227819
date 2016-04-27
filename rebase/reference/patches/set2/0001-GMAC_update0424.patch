@@ -1,0 +1,162 @@
+From f1a6050d6943386e0a4703d520ffedac0641f6e9 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Fri, 24 Apr 2015 11:29:26 +0900
+Subject: [PATCH 1/1] GMAC_update0424
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/net/ethernet/stmicro/stmmac/ring_mode.c   |    3 +-
+ drivers/net/ethernet/stmicro/stmmac/stmmac_main.c |   46 ++++++++++++++++++--
+ 2 files changed, 43 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/ring_mode.c b/drivers/net/ethernet/stmicro/stmmac/ring_mode.c
+index 9940a5a..e98442d 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/ring_mode.c
++++ b/drivers/net/ethernet/stmicro/stmmac/ring_mode.c
+@@ -38,6 +38,7 @@ static int stmmac_jumbo_frm(void *p, struct sk_buff *skb, int csum)
+ 	unsigned int bmax, len;
+ #ifdef  CONFIG_ARCH_LM2
+ 	dma_addr_t	tmp;
++	unsigned int	cur_tx = priv->cur_tx;
+ #endif
+ 
+ 	if (priv->extend_desc)
+@@ -63,7 +64,7 @@ static int stmmac_jumbo_frm(void *p, struct sk_buff *skb, int csum)
+ 		wmb();
+ 
+ 		priv->tx_skbuff[entry] = NULL;
+-		entry = (++priv->cur_tx) % txsize;
++		entry = (++cur_tx) % txsize;
+ 
+ 		if (priv->extend_desc)
+ 			desc = (struct dma_desc *)(priv->dma_etx + entry);
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index be4adcb..7a1e877 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -238,7 +238,7 @@ static void print_pkt(unsigned char *buf, int len)
+ #endif
+ 
+ /* minimum number of free TX descriptors required to wake up TX process */
+-#define STMMAC_TX_THRESH(x)	(x->dma_tx_size/4)
++#define STMMAC_TX_THRESH(x)	(x->dma_tx_size/2)
+ 
+ static inline u32 stmmac_tx_avail(struct stmmac_priv *priv)
+ {
+@@ -1316,7 +1316,11 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
+ 		 * 2) There is no bugged Jumbo frame support
+ 		 *    that needs to not insert csum in the TDES.
+ 		 */
++#ifdef	CONFIG_ARCH_LM2
++		priv->hw->dma->dma_mode(priv->ioaddr, SF_DMA_MODE, 128);
++#else
+ 		priv->hw->dma->dma_mode(priv->ioaddr, SF_DMA_MODE, SF_DMA_MODE);
++#endif
+ 		tc = SF_DMA_MODE;
+ 	} else {
+ #ifdef	CONFIG_ARCH_LM2
+@@ -1374,8 +1378,23 @@ static void stmmac_tx_clean(struct stmmac_priv *priv)
+ 			p = priv->dma_tx + entry;
+ 
+ 		/* Check if the descriptor is owned by the DMA. */
++#ifdef	CONFIG_ARCH_LM2
++		if (priv->hw->desc->get_tx_owner(p)) {
++#ifdef  LM2_DEBUG
++			struct dma_extended_desc *ep = (struct dma_extended_desc *)p;
++			u64 x;
++			u32     dma_status = readl(priv->ioaddr + 0x1014);
++			x = *(u64 *) ep;
++			printk(KERN_ERR "%s: entry=%d is DMA Status=0x%x (0x%08x 0x%08x 0x%08x)\n", __func__,
++				entry, dma_status, (unsigned int)x, (unsigned int)(x >> 32),ep->basic.des2);
++#endif
++			priv->hw->dma->enable_dma_transmission(priv->ioaddr);
++			break;
++		}
++#else
+ 		if (priv->hw->desc->get_tx_owner(p))
+ 			break;
++#endif	/* CONFIG_ARCH_LM2 */
+ 
+ 		/* Verify tx error by looking at the last segment. */
+ 		last = priv->hw->desc->get_tx_ls(p);
+@@ -1502,7 +1521,11 @@ static void stmmac_dma_interrupt(struct stmmac_priv *priv)
+ 		/* Try to bump up the dma threshold on this failure */
+ 		if (unlikely(tc != SF_DMA_MODE) && (tc <= 256)) {
+ 			tc += 64;
++#ifdef  CONFIG_ARCH_LM2
++			priv->hw->dma->dma_mode(priv->ioaddr, tc, 128);
++#else
+ 			priv->hw->dma->dma_mode(priv->ioaddr, tc, SF_DMA_MODE);
++#endif
+ 			priv->xstats.threshold = tc;
+ 		}
+ 	} else if (unlikely(status == tx_hard_error))
+@@ -1944,15 +1967,15 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 	unsigned int nopaged_len = skb_headlen(skb);
+ 	unsigned int enh_desc = priv->plat->enh_desc;
+         dma_addr_t      tmp;
++	unsigned int pkt_num=0;
+ 
+ 	spin_lock(&priv->tx_lock);
+ 	if (unlikely(stmmac_tx_avail(priv) < nfrags + 1)) {
+ 		if (!netif_queue_stopped(dev)) {
+ 			netif_stop_queue(dev);
+ 			/* This is a hard error, log it. */
+-			pr_err("%s: Tx Ring full when queue awake\n", __func__);
+ #ifdef	LM2_DEBUG
+-			printk(KERN_ERR "%s: Tx Ring full when queue awake\n", __func__);
++			pr_err("%s: Tx Ring full when queue awake\n", __func__);
+ #endif
+ 		}
+ 		spin_unlock(&priv->tx_lock);
+@@ -1985,6 +2008,8 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 		desc->des2 = tmp&0xffffffff;
+ 		priv->tx_skbuff_dma[entry].buf = tmp;
+ 		priv->hw->desc->prepare_tx_desc(desc, 1, nopaged_len, csum_insertion, priv->mode);
++		wmb();
++		pkt_num=1;
+ 	} else {
+ 		desc = first;
+ 		entry_new = priv->hw->ring->jumbo_frm(priv, skb, csum_insertion);
+@@ -1998,6 +2023,10 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 			else
+ 				desc = priv->dma_tx + entry;
+ 		}
++		if ( skb_headlen(skb) > (BUF_SIZE_4KiB + BUF_SIZE_2KiB)  )
++			pkt_num=2;
++		else
++			pkt_num=1;
+ 	}
+ 
+ 	for (i = 0; i < nfrags; i++) {
+@@ -2049,10 +2078,16 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 	priv->hw->desc->set_tx_owner(first);
+ 	wmb();
+ 
+-	priv->cur_tx++;
++#ifdef	CONFIG_ARCH_LM2
++	if ( stmmac_tx_avail(priv) < ((priv->dma_tx_size / 10)*1) ) {
++#ifdef	LM2_DEBUG
++		printk(KERN_ERR "%s: Send Buffer 1/10\n");
++#endif
++		stmmac_tx_clean(priv);
++	}
++#endif	/* CONFIG_ARCH_LM2 */
+ 
+ 	if (unlikely(stmmac_tx_avail(priv) <= (MAX_SKB_FRAGS + 1))) {
+-		TX_DBG("%s: stop transmitted packets\n", __func__);
+ #ifdef	LM2_DEBUG
+ 		printk(KERN_ERR "%s: stop transmitted packets\n", __func__);
+ #endif
+@@ -2072,6 +2107,7 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 		skb_tx_timestamp(skb);
+ 
+ 	priv->hw->dma->enable_dma_transmission(priv->ioaddr);
++	priv->cur_tx += pkt_num;
+ 
+ 	spin_unlock(&priv->tx_lock);
+ 	return NETDEV_TX_OK;
+-- 
+1.7.1
+

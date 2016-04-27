@@ -1,0 +1,314 @@
+From a7298ff72450886069d61e9f850954401976b4ae Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Thu, 5 Mar 2015 22:01:35 +0900
+Subject: [PATCH 1/1] pcie and uart 0 delete
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/kernel/bios32.c                   |    5 ++-
+ arch/arm/mach-lm2/lm2.c                    |    6 +++-
+ drivers/net/ethernet/intel/e1000e/netdev.c |    5 ++-
+ drivers/net/ethernet/intel/e1000e/phy.c    |   38 +++++++++++++++++----------
+ drivers/pci/pci.c                          |   17 +++++++++---
+ drivers/pci/setup-bus.c                    |   10 ++++---
+ drivers/pci/setup-res.c                    |    4 ++-
+ 7 files changed, 55 insertions(+), 30 deletions(-)
+
+diff --git a/arch/arm/kernel/bios32.c b/arch/arm/kernel/bios32.c
+index 371f089..8823831 100644
+--- a/arch/arm/kernel/bios32.c
++++ b/arch/arm/kernel/bios32.c
+@@ -638,7 +638,7 @@ int pcibios_enable_device(struct pci_dev *dev, int mask)
+ 	u16 cmd, old_cmd;
+ 	int idx;
+ 	struct resource *r;
+-
++printk(KERN_ERR "<<<<< %s Entry\n",__FUNCTION__);
+ 	pci_read_config_word(dev, PCI_COMMAND, &cmd);
+ 	old_cmd = cmd;
+ 	for (idx = 0; idx < 6; idx++) {
+@@ -663,12 +663,13 @@ int pcibios_enable_device(struct pci_dev *dev, int mask)
+ 	 */
+ 	if ((dev->class >> 16) == PCI_BASE_CLASS_BRIDGE)
+ 		cmd |= PCI_COMMAND_IO | PCI_COMMAND_MEMORY;
+-
++	cmd |= PCI_COMMAND_IO;	/* yamano for intel cardfor intel card */
+ 	if (cmd != old_cmd) {
+ 		printk("PCI: enabling device %s (%04x -> %04x)\n",
+ 		       pci_name(dev), old_cmd, cmd);
+ 		pci_write_config_word(dev, PCI_COMMAND, cmd);
+ 	}
++printk(KERN_ERR ">>>>> %s Exit\n",__FUNCTION__);
+ 	return 0;
+ }
+ 
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index afc5870..a0609ff 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -140,6 +140,7 @@ static	struct	plat_serial8250_port	lm2_serial_resource[]={
+ 		.iotype		= UPIO_MEM,
+ 		.flags		= UPF_SKIP_TEST,
+ 	},
++#if 0
+ 	{
+ //		.membase	= LM2_UART_0_BASE,
+ 		.mapbase	= LM2_UART_0_BASE,
+@@ -149,6 +150,7 @@ static	struct	plat_serial8250_port	lm2_serial_resource[]={
+ 		.iotype		= UPIO_MEM,
+ 		.flags		= UPF_SKIP_TEST,
+ 	},
++#endif	/* yamano serial remove for AMP vxWorks used */
+ 	{},
+ };
+ static struct platform_device lm2_serial_device = {
+@@ -334,8 +336,8 @@ static struct resource lm2_pcie_resource[]={
+ //               .start  = LM2_IRQ_PCIE_BUS,
+ //               .end    = LM2_IRQ_PCIE_BUS,
+                .flags  = IORESOURCE_IRQ,
+-               .start  = LM2_IRQ_PCIE1,
+-               .end    = LM2_IRQ_PCIE1,
++               .start  = LM2_IRQ_PCIE1-1,
++               .end    = LM2_IRQ_PCIE1-1,
+        },
+ };
+ 
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index 63bc5ee..380d8bd 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -6499,6 +6499,7 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 	u16 eeprom_data = 0;
+ 	u16 eeprom_apme_mask = E1000_EEPROM_APME;
+ 
++printk(KERN_ERR "###>>> %s Entry\n",__FUNCTION__);
+ 	if (ei->flags2 & FLAG2_DISABLE_ASPM_L0S)
+ 		aspm_disable_flag = PCIE_LINK_STATE_L0S;
+ 	if (ei->flags2 & FLAG2_DISABLE_ASPM_L1)
+@@ -6569,9 +6570,9 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 
+ 	mmio_start = pci_resource_start(pdev, 0);
+ 	mmio_len = pci_resource_len(pdev, 0);
+-
+ 	err = -EIO;
+ 	adapter->hw.hw_addr = ioremap(mmio_start, mmio_len);
++printk(KERN_ERR "pci resource start : 0x%llx len : 0x%x vart : 0x%xn",mmio_start,mmio_len,i*adapter->hw.hw_addr);
+ 	if (!adapter->hw.hw_addr)
+ 		goto err_ioremap;
+ 
+@@ -6794,7 +6795,7 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 
+ 	if (pci_dev_run_wake(pdev))
+ 		pm_runtime_put_noidle(&pdev->dev);
+-
++printk(KERN_ERR "###<<< %s Exit\n",__FUNCTION__);
+ 	return 0;
+ 
+ err_register:
+diff --git a/drivers/net/ethernet/intel/e1000e/phy.c b/drivers/net/ethernet/intel/e1000e/phy.c
+index be4d7c1..c3305d2 100644
+--- a/drivers/net/ethernet/intel/e1000e/phy.c
++++ b/drivers/net/ethernet/intel/e1000e/phy.c
+@@ -1750,7 +1750,7 @@ s32 e1000e_phy_has_link_generic(struct e1000_hw *hw, u32 iterations,
+ {
+ 	s32 ret_val = 0;
+ 	u16 i, phy_status;
+-
++printk(KERN_ERR " $$$ <<< %s Entry iterations %d usec = %d\n",__FUNCTION__,iterations,usec_interval);
+ 	for (i = 0; i < iterations; i++) {
+ 		/* Some PHYs require the MII_BMSR register to be read
+ 		 * twice due to the link bit being sticky.  No harm doing
+@@ -1779,6 +1779,7 @@ s32 e1000e_phy_has_link_generic(struct e1000_hw *hw, u32 iterations,
+ 	}
+ 
+ 	*success = (i < iterations);
++printk(KERN_ERR " $$$ >>>  %s Exit phy status = %x\n",__FUNCTION__,phy_status);
+ 
+ 	return ret_val;
+ }
+@@ -1907,47 +1908,55 @@ s32 e1000e_get_phy_info_m88(struct e1000_hw *hw)
+ 	s32  ret_val;
+ 	u16 phy_data;
+ 	bool link;
+-
++printk(KERN_ERR " $$$ <<< %s Entry \n",__FUNCTION__);
+ 	if (phy->media_type != e1000_media_type_copper) {
++printk(KERN_ERR " $$$ >>> %s media type Exit \n",__FUNCTION__);
+ 		e_dbg("Phy info is only valid for copper media\n");
+ 		return -E1000_ERR_CONFIG;
+ 	}
+ 
+ 	ret_val = e1000e_phy_has_link_generic(hw, 1, 0, &link);
+-	if (ret_val)
++	if (ret_val){
++printk(KERN_ERR " $$$ >>> %s link generic Exit \n",__FUNCTION__);
+ 		return ret_val;
+-
++}
+ 	if (!link) {
++printk(KERN_ERR " $$$ >>> %s No link up Exit \n",__FUNCTION__);
+ 		e_dbg("Phy info is only valid if link is up\n");
+ 		return -E1000_ERR_CONFIG;
+ 	}
+ 
+ 	ret_val = e1e_rphy(hw, M88E1000_PHY_SPEC_CTRL, &phy_data);
+-	if (ret_val)
++	if (ret_val){
++printk(KERN_ERR " $$$ >>> %s M88E1000 PHY CTRL Exit \n",__FUNCTION__);
+ 		return ret_val;
+-
++}
+ 	phy->polarity_correction = !!(phy_data &
+ 				      M88E1000_PSCR_POLARITY_REVERSAL);
+ 
+ 	ret_val = e1000_check_polarity_m88(hw);
+-	if (ret_val)
++	if (ret_val){
++printk(KERN_ERR " $$$ >>> %s check_poly Exit \n",__FUNCTION__);
+ 		return ret_val;
+-
++}
+ 	ret_val = e1e_rphy(hw, M88E1000_PHY_SPEC_STATUS, &phy_data);
+-	if (ret_val)
++	if (ret_val){
++printk(KERN_ERR " $$$ >>> %s M88E1000_PHY STATUS Exit \n",__FUNCTION__);
+ 		return ret_val;
+-
++}
+ 	phy->is_mdix = !!(phy_data & M88E1000_PSSR_MDIX);
+ 
+ 	if ((phy_data & M88E1000_PSSR_SPEED) == M88E1000_PSSR_1000MBS) {
+ 		ret_val = hw->phy.ops.get_cable_length(hw);
+-		if (ret_val)
++		if (ret_val){
++printk(KERN_ERR " $$$ >>> %s get_cable_length Exit \n",__FUNCTION__);
+ 			return ret_val;
+-
++}
+ 		ret_val = e1e_rphy(hw, MII_STAT1000, &phy_data);
+-		if (ret_val)
++		if (ret_val){
++printk(KERN_ERR " $$$ >>> %s ele_rphy Exit \n",__FUNCTION__);
+ 			return ret_val;
+-
++}
+ 		phy->local_rx = (phy_data & LPA_1000LOCALRXOK)
+ 		    ? e1000_1000t_rx_status_ok : e1000_1000t_rx_status_not_ok;
+ 
+@@ -1959,6 +1968,7 @@ s32 e1000e_get_phy_info_m88(struct e1000_hw *hw)
+ 		phy->local_rx = e1000_1000t_rx_status_undefined;
+ 		phy->remote_rx = e1000_1000t_rx_status_undefined;
+ 	}
++printk(KERN_ERR " $$$ >>> %s Exit \n",__FUNCTION__);
+ 
+ 	return ret_val;
+ }
+diff --git a/drivers/pci/pci.c b/drivers/pci/pci.c
+index 0667d2e..d079eb2 100644
+--- a/drivers/pci/pci.c
++++ b/drivers/pci/pci.c
+@@ -1121,18 +1121,24 @@ static int do_pci_enable_device(struct pci_dev *dev, int bars)
+ 	int err;
+ 	u16 cmd;
+ 	u8 pin;
+-
++printk(KERN_ERR "<<<< %s Entry\n",__FUNCTION__);
+ 	err = pci_set_power_state(dev, PCI_D0);
+-	if (err < 0 && err != -EIO)
++	if (err < 0 && err != -EIO){
++printk(KERN_ERR ">>>> %s EIO error Exit\n",__FUNCTION__);
+ 		return err;
++	}
+ 	err = pcibios_enable_device(dev, bars);
+-	if (err < 0)
++	if (err < 0){
++printk(KERN_ERR ">>>> %s pcibios error Exit\n",__FUNCTION__);
+ 		return err;
++	}
+ 	pci_fixup_device(pci_fixup_enable, dev);
+ 
+-	if (dev->msi_enabled || dev->msix_enabled)
+-		return 0;
++	if (dev->msi_enabled || dev->msix_enabled){
++printk(KERN_ERR ">>>> %s MSI Enable Exit\n",__FUNCTION__);
+ 
++		return 0;
++	}
+ 	pci_read_config_byte(dev, PCI_INTERRUPT_PIN, &pin);
+ 	if (pin) {
+ 		pci_read_config_word(dev, PCI_COMMAND, &cmd);
+@@ -1140,6 +1146,7 @@ static int do_pci_enable_device(struct pci_dev *dev, int bars)
+ 			pci_write_config_word(dev, PCI_COMMAND,
+ 					      cmd & ~PCI_COMMAND_INTX_DISABLE);
+ 	}
++printk(KERN_ERR ">>>> %s Exit\n",__FUNCTION__);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/pci/setup-bus.c b/drivers/pci/setup-bus.c
+index e6a9dc4..d083772 100644
+--- a/drivers/pci/setup-bus.c
++++ b/drivers/pci/setup-bus.c
+@@ -660,17 +660,18 @@ static void pci_bridge_check_ranges(struct pci_bus *bus)
+ 	u32 pmem;
+ 	struct pci_dev *bridge = bus->self;
+ 	struct resource *b_res;
+-
++printk(KERN_ERR "<<<< %s Entry \n",__FUNCTION__);
+ 	b_res = &bridge->resource[PCI_BRIDGE_RESOURCES];
+ 	b_res[1].flags |= IORESOURCE_MEM;
+-
++#if 0	/* yamanodesbug */
+ 	pci_read_config_word(bridge, PCI_IO_BASE, &io);
+ 	if (!io) {
+ 		pci_write_config_word(bridge, PCI_IO_BASE, 0xf0f0);
+ 		pci_read_config_word(bridge, PCI_IO_BASE, &io);
+  		pci_write_config_word(bridge, PCI_IO_BASE, 0x0);
+- 	}
+- 	if (io)
++ 	} 	/* yamano debug li,jie advice I/O fail */
++// 	if (io)
++#endif
+ 		b_res[0].flags |= IORESOURCE_IO;
+ 	/*  DECchip 21050 pass 2 errata: the bridge may miss an address
+ 	    disconnect boundary by one PCI data phase.
+@@ -706,6 +707,7 @@ static void pci_bridge_check_ranges(struct pci_bus *bus)
+ 		pci_write_config_dword(bridge, PCI_PREF_BASE_UPPER32,
+ 				       mem_base_hi);
+ 	}
++printk(KERN_ERR ">>>> %s Exit \n",__FUNCTION__);
+ }
+ 
+ /* Helper function for sizing routines: find first available
+diff --git a/drivers/pci/setup-res.c b/drivers/pci/setup-res.c
+index 620680e..8204258 100644
+--- a/drivers/pci/setup-res.c
++++ b/drivers/pci/setup-res.c
+@@ -325,7 +325,7 @@ int pci_enable_resources(struct pci_dev *dev, int mask)
+ 
+ 	pci_read_config_word(dev, PCI_COMMAND, &cmd);
+ 	old_cmd = cmd;
+-
++printk(KERN_ERR "<<<< %s Entry\n",__FUNCTION__);
+ 	for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+ 		if (!(mask & (1 << i)))
+ 			continue;
+@@ -341,6 +341,7 @@ int pci_enable_resources(struct pci_dev *dev, int mask)
+ 		if (!r->parent) {
+ 			dev_err(&dev->dev, "device not available "
+ 				"(can't reserve %pR)\n", r);
++printk(KERN_ERR ">>>> %s Error Exit\n",__FUNCTION__);
+ 			return -EINVAL;
+ 		}
+ 
+@@ -355,5 +356,6 @@ int pci_enable_resources(struct pci_dev *dev, int mask)
+ 			 old_cmd, cmd);
+ 		pci_write_config_word(dev, PCI_COMMAND, cmd);
+ 	}
++printk(KERN_ERR ">>>> %s Exit\n",__FUNCTION__);
+ 	return 0;
+ }
+-- 
+1.7.1
+

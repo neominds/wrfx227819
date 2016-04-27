@@ -1,0 +1,77 @@
+From 524b8b16150efab78aade117475526b341c19ea2 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Sat, 14 Feb 2015 22:27:44 +0900
+Subject: [PATCH 1/1] added pcie card check
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/pci/pcie/synopsys_pcie.c |   29 ++++++++++++++++++++++++-----
+ 1 files changed, 24 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index f35e6cb..3c3d332 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -934,10 +934,10 @@ static void synopsys_pcie_enable_interrupts(struct pcie_port *pp)
+ 	return;
+ }
+ 
+-static void synopsys_pcie_host_init(struct pcie_port *pp)
++static int  synopsys_pcie_host_init(struct pcie_port *pp)
+ {
+ 	struct pcie_port_info *config = &pp->config;
+-	u32 val;
++	u32 val,result,wait_loop;
+ 	u64	adr_base;
+ 	void __iomem *resetgen_base  = pp->resetgen_base;
+ 	void __iomem *pciewrap_base  = pp->pciewrap_base;
+@@ -1023,7 +1023,23 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ //	val &= PCIE1_MISC_CTRL__PIOS_CONV_SEL__INV_MASK;
+ //	val |= (0x1 << PCIE1_MISC_CTRL__PIOS_CONV_SEL__SHIFT);
+ //	synopsys_writel(resetgen_base + PCIE1_MISC_CTRL, val);
+-	while(synopsys_readl(pciewrap_base + PCIE1_MISC_STAT) != PCIE1_MISC_STAT__GDA_PAB_DL_UP__MASK){};
++	result = 0;
++	wait_loop=0;
++	val = synopsys_readl(pciewrap_base + PCIE1_MISC_STAT);
++	while(val != PCIE1_MISC_STAT__GDA_PAB_DL_UP__MASK){
++		if(wait_loop > 1000){
++			result = 1;
++			break;
++		}
++		msleep(10);
++		wait_loop++;
++		val = synopsys_readl(pciewrap_base + PCIE1_MISC_STAT);
++		smp_wmb();
++	};
++	if(result != 0){
++		dev_err(pp->dev, "PCIe can't Data link Up\n");
++		return	-1;
++	}
+ //
+ //	adr_base = 0x400000000ULL;
+ //	conFig = ioremap(adr_base, 0x10000000);
+@@ -1038,6 +1054,7 @@ out:
+ #ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "synopsys_pcie_host_init:%x End\n",pciegen3_base1);
+ #endif
++	return	0;
+ }
+ 
+ static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+@@ -1112,8 +1129,10 @@ static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+ 	pp->root_bus_nr = 0;
+ 
+ 	spin_lock_init(&pp->conf_lock);
+-	synopsys_pcie_host_init(pp);
+-
++	ret = synopsys_pcie_host_init(pp);
++	if(ret != 0){
++		return	-ENODEV;
++	}
+ #ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "add_pcie_port: End\n");
+ #endif
+-- 
+1.7.1
+

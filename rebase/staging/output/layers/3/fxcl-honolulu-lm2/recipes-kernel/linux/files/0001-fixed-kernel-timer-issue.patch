@@ -1,0 +1,124 @@
+From d2cddb0f6e9c706882cef0878ffb571fffa21e37 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:22:48 +0900
+Subject: [PATCH 077/170] 0001-fixed-kernel-timer-issue
+
+
+diff --git a/arch/arm/plat-waikiki/clock.c b/arch/arm/plat-waikiki/clock.c
+index ca194fc..15b33c1 100644
+--- a/arch/arm/plat-waikiki/clock.c
++++ b/arch/arm/plat-waikiki/clock.c
+@@ -31,10 +31,10 @@ EXPORT_SYMBOL(clk_disable);
+ 
+ unsigned long clk_get_rate(struct clk *clk)
+ {
+-#if 0
++#if 1
+ 	return clk->rate;
+ #else
+-	return	100;
++	return	300;
+ #endif
+ }
+ EXPORT_SYMBOL(clk_get_rate);
+@@ -42,7 +42,7 @@ EXPORT_SYMBOL(clk_get_rate);
+ long clk_round_rate(struct clk *clk, unsigned long rate)
+ {
+ 	long ret = -EIO;
+-#if 0
++#if 1
+ 	if (clk->ops && clk->ops->round)
+ 		ret = clk->ops->round(clk, rate);
+ #endif
+@@ -53,7 +53,7 @@ EXPORT_SYMBOL(clk_round_rate);
+ int clk_set_rate(struct clk *clk, unsigned long rate)
+ {
+ 	int ret = -EIO;
+-#if 0
++#if 1
+ 	if (clk->ops && clk->ops->set)
+ 		ret = clk->ops->set(clk, rate);
+ #endif
+@@ -63,19 +63,19 @@ EXPORT_SYMBOL(clk_set_rate);
+ 
+ long icst_clk_round(struct clk *clk, unsigned long rate)
+ {
+-#if 0
++#if 1
+ 	struct icst_vco vco;
+ 	vco = icst_hz_to_vco(clk->params, rate);
+ 	return icst_hz(clk->params, vco);
+ #else
+-	return	100;
++	return	10;
+ #endif
+ }
+ EXPORT_SYMBOL(icst_clk_round);
+ 
+ int icst_clk_set(struct clk *clk, unsigned long rate)
+ {
+-#if 0
++#if 1
+ 	struct icst_vco vco;
+ 
+ 	vco = icst_hz_to_vco(clk->params, rate);
+diff --git a/arch/arm/plat-waikiki/time.c b/arch/arm/plat-waikiki/time.c
+index 504d939..74e2cae 100644
+--- a/arch/arm/plat-waikiki/time.c
++++ b/arch/arm/plat-waikiki/time.c
+@@ -23,7 +23,7 @@
+ #include <linux/time.h>
+ #include <linux/irq.h>
+ #include <asm/mach/time.h>
+-
++#include <asm/sched_clock.h>
+ /*
+  * We would use TIMER0 and TIMER1 as clockevent and clocksource.
+  * Timer0 and Timer1 both belong to same gpt block in cpu subbsystem. Further
+@@ -65,6 +65,13 @@ static void clockevent_set_mode(enum clock_event_mode mode,
+ static int clockevent_next_event(unsigned long evt,
+ 				 struct clock_event_device *clk_event_dev);
+ 
++static	unsigned int	ticks_per_jiffy;
++
++static	u32	lm2_read_sched_clock(void)
++{
++	return	readl(HTCNTR_L(clksrc_base));
++}
++
+ /*
+  * Clock source driver (kernel timer)
+  */
+@@ -80,6 +87,7 @@ void	lm2_clocksource_init(__iomem void *gpt_base)
+ 	/* 
+  	 * of_clk_init and clocksource_of_init with flattend device tree
+  	 */
++	ticks_per_jiffy = (SYSCLK + HZ/2) /HZ;
+ 
+ 	/* Timer stop (initialize) */
+ 	writel(HTCTLR_STOP,HTCTLR(clksrc_base));
+@@ -93,17 +101,19 @@ void	lm2_clocksource_init(__iomem void *gpt_base)
+ 	/* rate culculate */
+ 	tick_rate = SYSCLK / PRESCALE;
+ 
+-	/* register the clocksource */
++	/* register the clocksource tick_rate */
+ 	result = clocksource_mmio_init(HTCNTR_L(clksrc_base),"system_timer",tick_rate,
+ 		200, 32, clocksource_mmio_readl_up);
+ 
++	setup_sched_clock(lm2_read_sched_clock,32,tick_rate);
++
+ //	if(result != 0){
+ //		lm2_printk(0xfc000000,"clocksource error \n");
+ //	}
+ }
+ 
+ static struct clock_event_device clkevt = {
+-	.name = "tmr0",
++	.name = "tmr4",
+ 	.features = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT,
+ 	.set_mode = clockevent_set_mode,
+ 	.set_next_event = clockevent_next_event,
+-- 
+1.7.1
+

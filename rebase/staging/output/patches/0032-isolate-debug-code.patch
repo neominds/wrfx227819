@@ -1,0 +1,22 @@
+From 862c3af4ae707335a8088493560a1a56a21c3b08 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:21:52 +0900
+Subject: [PATCH 033/170] 0032-isolate-debug-code
+
+
+diff --git a/arch/arm/mach-lm2/sata.c b/arch/arm/mach-lm2/sata.c
+index e87a454..acb249d 100644
+--- a/arch/arm/mach-lm2/sata.c
++++ b/arch/arm/mach-lm2/sata.c
+@@ -69,7 +69,7 @@ static	struct platform_device lm2_sata_device = {
+ 	.name	= "ahci",
+ 	.id	= -1,
+ 	.dev	= {
+-		.platform_data	= &lm2_sata_pdata,
++//		.platform_data	= &lm2_sata_pdata,
+ 		.dma_mask	= &lm2_sata_dmamask,
+ 		.coherent_dma_mask	= DMA_BIT_MASK(64),
+ 	},
+-- 
+1.7.1
+

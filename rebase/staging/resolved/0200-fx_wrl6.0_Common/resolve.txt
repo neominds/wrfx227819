@@ -1,0 +1,11 @@
+CONFLICT (content): Merge conflict in drivers/Kconfig
+CONFLICT (content): Merge conflict in drivers/Makefile
+Rebase failed at 0200-fx_wrl6.0_Common
+
+
+Kconfig
+added fxmodule entries, retained powercap entry from rcpl27
+
+Makefile
+added fxmodule entries, retained powercap entry from rcpl27
+/EOT

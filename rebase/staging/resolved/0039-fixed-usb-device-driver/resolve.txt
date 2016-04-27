@@ -1,0 +1,16 @@
+Merging in 0039-fixed-usb-device-driver from br12_42 to br27_42 -new is br27_43
+CONFLICT (content): Merge conflict in drivers/Kconfig
+
+drivers/Kconfig
+=>
+
+Conflicts are because of 
+<<<<<<< HEAD
+source "drivers/powercap/Kconfig"
+=======
+source "drivers/phy/Kconfig"
+>>>>>>> br12_42
+
+Selected both are retained as it is
+
+/EOT

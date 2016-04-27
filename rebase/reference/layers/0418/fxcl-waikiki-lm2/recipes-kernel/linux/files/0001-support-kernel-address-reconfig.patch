@@ -1,0 +1,154 @@
+From b46030ad6342a0cf6b2ad44398c881365ca9fc8f Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Thu, 22 Jan 2015 18:02:33 +0900
+Subject: [PATCH 1/1] support kernel address reconfig
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/boot/compressed/head.S             |   54 +++++++++++++++++++++++++++
+ arch/arm/kernel/setup.c                     |    4 +-
+ arch/arm/mach-lm2/include/mach/uncompress.h |    4 +-
+ arch/arm/mm/proc-v7-3level.S                |    2 +-
+ 4 files changed, 60 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/boot/compressed/head.S b/arch/arm/boot/compressed/head.S
+index b348794..a842434 100644
+--- a/arch/arm/boot/compressed/head.S
++++ b/arch/arm/boot/compressed/head.S
+@@ -679,6 +679,48 @@ __setup_mmu:	sub	r3, r4, #16384		@ Page directory size
+ 		mov	pc, lr
+ ENDPROC(__setup_mmu)
+ 
++#ifdef CONFIG_ARM_LPAE
++__setup_mmu_lpae:
++/*
++ * Create MMU table for LPAE at top of zImage.
++ * There area has some code. But, there are no longer used at this point.
++ */
++		mov	r3, pc
++		bic	r3, r3, #0x0ff
++		bic	r3, r3, #0xf00		@ r3 = top of zImage
++
++/*
++ * Create MMU table as below
++ *   V:0000_0000-3fff_ffff  =>  P:08_0000_0000-08_3fff_ffff ATTR3(Cacheable)
++ *   V:4000_0000-7fff_ffff  =>  P:08_4000_0000-08_7fff_ffff ATTR3(Cacheable)
++ *   V:8000_0000-bfff_ffff  =>  P:08_8000_0000-08_bfff_ffff ATTR3(Cacheable)
++ *   V:c000_0000-ffff_ffff  =>  P:00_0000_0000-00_3fff_ffff ATTR0(NonCacheable)
++ *
++ * This code still uses MAIR0,1 that are set at bootloader
++ */
++		mov	r2, r3
++
++		ldr	r0, =0x70d
++		mov	r1, #8			@ r1:r0 = 0x8_0000_070d
++		strd	r0, r1, [r2], #8
++
++		add	r0, r0, #0x40000000	@ r1:r0 = 0x8_4000_070d
++		strd	r0, r1, [r2], #8
++
++		add	r0, r0, #0x40000000	@ r1:r0 = 0x8_8000_070d
++		strd	r0, r1, [r2], #8
++
++		ldr	r0, =0x401
++		mov	r1, #0
++		strd	r0, r1, [r2], #8
++
++	@ r3 = Top of MMU table (return value)
++
++		mov	pc, lr
++		.pool
++ENDPROC(__setup_mmu_lpae)
++#endif
++
+ @ Enable unaligned access on v6, to allow better code generation
+ @ for the decompressor C code:
+ __armv6_mmu_cache_on:
+@@ -720,7 +762,11 @@ __armv7_mmu_cache_on:
+ 		mrc	p15, 0, r11, c0, c1, 4	@ read ID_MMFR0
+ 		tst	r11, #0xf		@ VMSA
+ 		movne	r6, #CB_BITS | 0x02	@ !XN
++#ifdef CONFIG_ARM_LPAE
++		blne	__setup_mmu_lpae
++#else
+ 		blne	__setup_mmu
++#endif
+ 		mov	r0, #0
+ 		mcr	p15, 0, r0, c7, c10, 4	@ drain write buffer
+ 		tst	r11, #0xf		@ VMSA
+@@ -753,6 +799,14 @@ __armv7_mmu_cache_on:
+ 		mcrne	p15, 0, r1, c3, c0, 0	@ load domain access control
+ 		mcrne   p15, 0, r6, c2, c0, 2   @ load ttb control
+ #endif	/* yamano */
++#if 1	/* fx */
++		beq	1f
++		mov	r1, #8
++		mcrr	p15, 0, r3, r1, c2	@ set TTB 0 (64bit)
++		mov	r1, #0
++		mcr	p15, 0, r1, c8, c7, 0	@ flush I,D TLBs
++1:
++#endif
+ #endif
+ #if 1	/* yamano */
+ 		mcr	p15, 0, r0, c7, c5, 4	@ ISB
+diff --git a/arch/arm/kernel/setup.c b/arch/arm/kernel/setup.c
+index e76e077..4953cff 100644
+--- a/arch/arm/kernel/setup.c
++++ b/arch/arm/kernel/setup.c
+@@ -866,7 +866,7 @@ putstr(UART_BASE, buf);
+ #endif
+ 	parse_early_param();
+ 
+-#if 1	/* ohkuma */
++#if 0	/* ohkuma */
+ sprintf(buf,"##2 meminfo.nr_banks=%d\n",meminfo.nr_banks);
+ putstr(UART_BASE, buf);
+ sprintf(buf,"##2 meminfo.bank[0].highmem =%d\n",meminfo.bank[0].highmem);
+@@ -887,7 +887,7 @@ putstr(UART_BASE, buf);
+ //putstr(UART_BASE,"parse_early_param\n");
+ 	sort(&meminfo.bank, meminfo.nr_banks, sizeof(meminfo.bank[0]), meminfo_cmp, NULL);
+ 	sanity_check_meminfo();
+-#if 1	/* ohkuma */
++#if 0	/* ohkuma */
+ sprintf(buf,"##3 meminfo.nr_banks=%d\n",meminfo.nr_banks);
+ putstr(UART_BASE, buf);
+ sprintf(buf,"##3 meminfo.bank[0].highmem =%d\n",meminfo.bank[0].highmem);
+diff --git a/arch/arm/mach-lm2/include/mach/uncompress.h b/arch/arm/mach-lm2/include/mach/uncompress.h
+index ea28c1f..e5ce558 100644
+--- a/arch/arm/mach-lm2/include/mach/uncompress.h
++++ b/arch/arm/mach-lm2/include/mach/uncompress.h
+@@ -21,6 +21,8 @@
+ #define AMBA_UART_DR(base)	(*(volatile unsigned char *)((base) + 0x10))
+ #define AMBA_UART_LSR(base)	(*(volatile unsigned char *)((base) + 0x15))
+ 
++#define VIRT_OFFSET 0xc0000000
++
+ #define UART_BASE	0x10009000
+ #define	UART_BASE_0	0x040b0000
+ #define	UART_BASE_1	0x04160000
+@@ -33,7 +35,7 @@
+ 
+ static unsigned long get_uart_base(void)
+ {
+-	return	UART_BASE_1;
++	return	UART_BASE_1 + VIRT_OFFSET;
+ }
+ 
+ /*
+diff --git a/arch/arm/mm/proc-v7-3level.S b/arch/arm/mm/proc-v7-3level.S
+index 534a022..25ab716 100644
+--- a/arch/arm/mm/proc-v7-3level.S
++++ b/arch/arm/mm/proc-v7-3level.S
+@@ -47,7 +47,7 @@
+ #  define rpgdh	r0
+ #endif
+ 
+-/*#define	TTBL0_OFF*/
++/* #define	TTBL0_OFF */ /* Supported SMP */
+ /*
+  * cpu_v7_switch_mm(pgd_phys, tsk)
+  *
+-- 
+1.7.1
+

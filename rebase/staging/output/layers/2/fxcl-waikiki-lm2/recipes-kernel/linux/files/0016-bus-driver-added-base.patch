@@ -1,0 +1,351 @@
+From 971d74f518a4b4242d3b4affe172060c5e1d5b51 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:46:07 +0900
+Subject: [PATCH 017/169] 0016-bus-driver-added-base
+
+
+diff --git a/drivers/i2c/busses/i2c-lm2.c b/drivers/i2c/busses/i2c-lm2.c
+new file mode 100644
+index 0000000..26e3a61
+--- /dev/null
++++ b/drivers/i2c/busses/i2c-lm2.c
+@@ -0,0 +1,336 @@
++/*
++ * i2c - I2C like a EEPROM driver for the waikiki board
++ *
++ * Copyright 2014 Wind River Systems, Inc.
++ *
++ * This file is licensed under the terms of the GNU General Public
++ * License version 2. This program is licensed "as is" without any
++ * warranty of any kind, whether express or implied.
++ *
++ */
++
++#include <linux/completion.h>
++#include <linux/delay.h>
++#include <linux/err.h>
++#include <linux/i2c.h>
++#include <linux/init.h>
++#include <linux/interrupt.h>
++#include <linux/ioport.h>
++#include <linux/platform_device.h>
++#include <linux/slab.h>
++#include <linux/io.h>
++#include <linux/module.h>
++
++/* register offsets */
++#define	EMSR		0x0100	/* EEPROM Mode Setting Register		*/
++#define	ESAR		0x0104	/* EEPROM Slave Address Register	*/
++#define	EWAR		0x0108	/* EEPROM Word Address Register		*/
++#define	EDSTR		0x0118	/* EEPROM Data Status Register		*/
++#define	ESTR		0x011C	/* EEPROM Status Register		*/
++#define	EECR		0x0120	/* EEPROM Error Clear Register		*/
++#define	EWWT		0x0124	/* EEPROM Wait Timer Register		*/
++#define	EDR1		0x0140	/* EEPROM Read/Write Data Register 1	*/
++
++/* Misc Interrupt status / Mask register bit */
++#define	MISC_INT_STS	0x0040
++#define	MISC_INT_MASK	0x0044
++#define	MISC_INT_CLEAR	0x0048	/* ??? */
++
++
++#define	E2P_ACK_ERR	0x00000020
++#define	E2P_TRANS_COMP	0x00000010
++#define	E2P_TRANS_DONE	1
++
++#define	DEVICE_TYPE	0x000000a0	/* X24CXX */
++
++#define REGSIZE		0xC0
++
++#define DATA_SIZE	32		/* data registers */
++
++struct lm2_i2c_eeprom {
++	struct i2c_adapter	adap;
++	void __iomem 	*iobase;	/* self register base		*/
++	void __iomem	*miscbase;	/* interupt status in CIP	*/
++	struct i2c_msg	*msg;		/* transfer data message	*/
++	u32		addr;		/* buffer index */
++	int		flags;		/* mode flags			*/
++	int		status;		/* status 			*/
++	int		irq;		/* irq				*/
++	struct completion	xfer_done;
++	struct resource *ioarea;	/* save resource data		*/
++};
++
++/*
++ * Interrupt handler
++ */
++static irqreturn_t lm2_i2c_irq(int irq, void *ptr)
++{
++	struct lm2_i2c_eeprom *id = ptr;
++	struct i2c_msg *msg = id->msg;
++	char *data = msg->buf;
++	unsigned long msr, fsr, fier, len, stat;
++
++	stat = readl(id->miscbase+MISC_INT_STS);
++
++	/* need error interrupt ? */
++	id->status = E2P_TRANS_DONE;
++	/* ToDo: error handling or something */
++finish:
++	stat &= E2P_TRANS_COMP;
++	writel(id->miscbase+MISC_INT_CLEAR,stat);
++
++	complete(&id->xfer_done);
++
++	return IRQ_HANDLED;
++}
++
++
++/* prepare and start a master receive operation */
++static void lm2_i2c_mrecv(struct lm2_i2c_eeprom *id)
++{
++	int len;
++
++	/* set the slave addr reg; otherwise xmit wont work! */
++	writel(id->msg->addr,id->iobase+ESAR);
++
++	/* set address */
++	writel(id->addr, id->iobase+EWAR);
++
++	/* start read */
++	writel(0x01,id->iobase+ESTR);
++
++}
++
++/* prepare and start a master send operation */
++static void lm2_i2c_msend(struct lm2_i2c_eeprom *id)
++{
++	int	len;
++	u32	val;
++	int	cnt;
++
++	/* set transfer byte to EMSR */
++	/* only 1byte mode */
++	/* don't touch clk */
++
++	len = id->msg->len;
++	len &= 0x1f;
++	val = readl(id->iobase+EMSR);
++	val = val | (len <<14);
++	writel(val, id->iobase+EMSR);
++
++	/* set the slave addr reg; otherwise xmit wont work! */
++	writel(id->msg->addr,id->iobase+ESAR);
++
++	/* set address */
++	writel(id->addr, id->iobase+EWAR);
++	cnt = 0;
++	/* set data */
++	while (len) {
++		writel(id->msg->buf, id->iobase+EDR1+cnt);
++		len--;
++		(id->msg->buf)++;
++		cnt++;
++	}
++	/* transfer start */
++
++	writel(0x02,id->iobase+ESTR);
++}
++
++static inline int lm2_i2c_busy_check(struct lm2_i2c_eeprom *id)
++{
++	u32	result;
++	result = readl(id->iobase+ESTR);
++	result &= 0x01;
++	return result;
++}
++
++static int lm2_i2c_master_xfer(struct i2c_adapter *adap,
++				  struct i2c_msg *msgs,
++				  int num)
++{
++	struct lm2_i2c_eeprom *id = adap->algo_data;
++	int i, retr;
++	struct	i2c_msg	dat;
++	u32	length;
++
++
++	if (lm2_i2c_busy_check(id)) {
++		dev_err(&adap->dev, "sh7760-i2c%d: bus busy!\n", adap->nr);
++		return -EBUSY;
++	}
++	length = msgs->len;
++	id->addr =0;
++	while (length) {
++		if(length >32 )	dat.len=32;
++		dat.len=length;
++		length = length - dat.len;
++		dat.buf = &msgs->buf[id->addr];
++		id->status = 0;
++		id->msg = &dat;
++
++		/* setup synchronize */
++		init_completion(&id->xfer_done);
++
++		if (msgs->flags & I2C_M_RD)
++			lm2_i2c_mrecv(id);	/* recv */
++		else
++			lm2_i2c_msend(id);	/* send */
++
++		/* transfer complete wait for isr */
++		wait_for_completion(&id->xfer_done);
++
++		if (id->status == 0) {
++			num = -EIO;
++			break;
++		}
++
++		if(msgs->flags & I2C_M_RD) {
++			int	i=0;
++			while(id->msg->len) {
++				msgs->buf[id->addr+i] = (char)readl(id->iobase+EDR1+i);
++				id->msg->len--;
++				i++;
++			}
++		}
++		id->addr = id->addr + id->msg->len;
++	}
++
++	id->msg = NULL;
++	id->flags = 0;
++	id->status = 0;
++
++	return	num;
++}
++
++static u32 lm2_i2c_func(struct i2c_adapter *adap)
++{
++	return I2C_FUNC_I2C;
++}
++
++static const struct i2c_algorithm lm2_i2c_algo = {
++	.master_xfer	= lm2_i2c_master_xfer,
++	.functionality	= lm2_i2c_func,
++};
++
++static int lm2_i2c_probe(struct platform_device *pdev)
++{
++	struct lm2_i2c_platdata	*pd;
++	struct resource		*res;
++	struct resource		*misc_res;
++	struct lm2_i2c_eeprom	*id;
++	int 	ret;
++
++	/* sanity check */
++	/* 2 iomem 1 irq */
++	if(pdev->num_resources < 3){
++		dev_err(&pdev->dev,"no resource data\n");
++		return	-ENODEV;
++	}
++	/* get clock data */
++	pd = dev_get_platdata(&pdev->dev);
++	if (!pd) {
++		dev_err(&pdev->dev, "no platform_data!\n");
++		ret = -ENODEV;
++		goto out0;
++	}
++
++	/* driver info */
++	id = kzalloc(sizeof(struct lm2_i2c_eeprom), GFP_KERNEL);
++	if (!id) {
++		dev_err(&pdev->dev, "no mem for private data\n");
++		ret = -ENOMEM;
++		goto out0;
++	}
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!res) {
++		dev_err(&pdev->dev, "no mmio resources\n");
++		ret = -ENODEV;
++		goto out1;
++	}
++
++	id->ioarea = request_mem_region(res->start, REGSIZE, pdev->name);
++	if (!id->ioarea) {
++		dev_err(&pdev->dev, "mmio already reserved\n");
++		ret = -EBUSY;
++		goto out1;
++	}
++
++	misc_res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
++	id->iobase = ioremap(misc_res->start, REGSIZE);
++	if (!id->iobase) {
++		dev_err(&pdev->dev, "cannot ioremap\n");
++		ret = -ENODEV;
++		goto out2;
++	}
++
++	id->irq = platform_get_irq(pdev, 0);
++
++	id->adap.nr = pdev->id;
++	id->adap.algo = &lm2_i2c_algo;
++	id->adap.class = I2C_CLASS_SPD;
++	id->adap.retries = 3;
++	id->adap.algo_data = id;
++	id->adap.dev.parent = &pdev->dev;
++	snprintf(id->adap.name, sizeof(id->adap.name),
++		"LM2 I2C at %08lx", (unsigned long)res->start);
++
++	if (request_irq(id->irq, lm2_i2c_irq, 0,
++			"lm2-i2c", id)) {
++		dev_err(&pdev->dev, "cannot get irq %d\n", id->irq);
++		ret = -EBUSY;
++		goto out3;
++	}
++
++	ret = i2c_add_numbered_adapter(&id->adap);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "reg adap failed: %d\n", ret);
++		goto out4;
++	}
++
++	platform_set_drvdata(pdev, id);
++
++
++	return 0;
++
++out4:
++	free_irq(id->irq, id);
++out3:
++	iounmap(id->iobase);
++out2:
++	release_resource(id->ioarea);
++	kfree(id->ioarea);
++out1:
++	kfree(id);
++out0:
++	return ret;
++}
++
++static int lm2_i2c_remove(struct platform_device *pdev)
++{
++	struct lm2_i2c_eeprom *id = platform_get_drvdata(pdev);
++
++	i2c_del_adapter(&id->adap);
++	free_irq(id->irq, id);
++	iounmap(id->iobase);
++	iounmap(id->miscbase);
++	release_resource(id->ioarea);
++	kfree(id->ioarea);
++	kfree(id);
++
++	return 0;
++}
++
++static struct platform_driver lm2_i2c_drv = {
++	.driver	= {
++		.name	= "lm2-eeprom",
++		.owner	= THIS_MODULE,
++	},
++	.probe		= lm2_i2c_probe,
++	.remove		= lm2_i2c_remove,
++};
++
++module_platform_driver(lm2_i2c_drv);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("LM2 EEPROM driver");
+-- 
+1.7.1
+

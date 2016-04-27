@@ -1,0 +1,140 @@
+From 8d883eea7da75bf2876ddc8688d37bf7472024f1 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:24:38 +0900
+Subject: [PATCH 162/170] 0207-PCIe_B0_Board_Ready
+
+
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 868dacc..e24a237 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -28,6 +28,7 @@
+ #undef	PCIE_IRQ_USE
+ #undef	DMA_USE
+ #define MEM_SIZE_1M
++#undef	PORT_ALL_RESET
+ 
+ #define	PCIE_PORT1	1
+ #define	PCIE_PORT2	2
+@@ -386,6 +387,10 @@ static void synopsys_pcie_assert_pipe_reset(struct pcie_port *pp)
+ #endif
+ 	regVal  = synopsys_readl(pciewrap_base + PCIE_PHY_RST_CTRL);
+ 	regVal &= PCIE_PHY_RST_CTRL__PIPE0_RESET_N__INV_MASK;
++#ifdef	PORT_ALL_RESET
++	regVal &= PCIE_PHY_RST_CTRL__PIPE1_RESET_N__INV_MASK;
++	regVal &= PCIE_PHY_RST_CTRL__PIPE2_RESET_N__INV_MASK;
++#endif
+ 	synopsys_writel(pciewrap_base + PCIE_PHY_RST_CTRL, regVal);
+ 
+ #ifdef	DEBUG_TRACE
+@@ -401,16 +406,29 @@ static void synopsys_pcie_assert_gpex_reset(struct pcie_port *pp)
+ #ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "%s : Entry\n",__FUNCTION__);
+ #endif
+-	if( rc_num == 1 || ep_num == 1 || nu_num == 1 ) {
+-		regVal  = synopsys_readl(pciewrap_base + PCIE1_SW_RST);
+-		regVal |= PCIE1_SW_RST__PERST_N__MASK;
+-		regVal &=(PCIE1_SW_RST__PAB_N__INV_MASK  &
+-			  PCIE1_SW_RST__AMBA_N__INV_MASK &
+-			  PCIE1_SW_RST__PBUS_N__INV_MASK &
+-			  PCIE1_SW_RST__LINK_N__INV_MASK);
+-		synopsys_writel(pciewrap_base + PCIE1_SW_RST, regVal);
+-	}
++	regVal  = synopsys_readl(pciewrap_base + PCIE1_SW_RST);
++	regVal |= PCIE1_SW_RST__PERST_N__MASK;
++	regVal &=(PCIE1_SW_RST__PAB_N__INV_MASK  &
++		  PCIE1_SW_RST__AMBA_N__INV_MASK &
++		  PCIE1_SW_RST__PBUS_N__INV_MASK &
++		  PCIE1_SW_RST__LINK_N__INV_MASK);
++	synopsys_writel(pciewrap_base + PCIE1_SW_RST, regVal);
+ 
++#ifdef	PORT_ALL_RESET
++	regVal  = synopsys_readl(pciewrap_base + PCIE2_SW_RST);
++	regVal &=(PCIE2_SW_RST__PAB_N__INV_MASK  &
++		  PCIE2_SW_RST__AMBA_N__INV_MASK &
++		  PCIE2_SW_RST__PBUS_N__INV_MASK &
++		  PCIE2_SW_RST__LINK_N__INV_MASK);
++	synopsys_writel(pciewrap_base + PCIE2_SW_RST, regVal);
++
++	regVal  = synopsys_readl(pciewrap_base + PCIE3_SW_RST);
++	regVal &=(PCIE3_SW_RST__PAB_N__INV_MASK  &
++		  PCIE3_SW_RST__AMBA_N__INV_MASK &
++		  PCIE3_SW_RST__PBUS_N__INV_MASK &
++		  PCIE3_SW_RST__LINK_N__INV_MASK);
++	synopsys_writel(pciewrap_base + PCIE3_SW_RST, regVal);
++#endif
+ #ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "%s : Exit\n",__FUNCTION__);
+ #endif
+@@ -706,7 +724,11 @@ static int synopsys_pcie_establish_link(struct pcie_port *pp)
+ 	
+ 	/* Use on-chip reference clock (PHY_REF_ALT_CLK) */
+ 	val  = synopsys_readl(pciewrap_base + PCIE_PHY_CLK_CTRL);
++#if 1	/* A0/B0 Change */
++	val |= PCIE_PHY_CLK_CTRL__PHY_REF_USE_PAD__MASK;
++#else
+ 	val &= ~PCIE_PHY_CLK_CTRL__PHY_REF_USE_PAD__MASK;
++#endif
+ 	synopsys_writel(pciewrap_base + PCIE_PHY_CLK_CTRL, val);
+ 
+ 	/* Enable clock for Endpoint 1, but not the unused endpoints */
+@@ -899,7 +921,6 @@ static int  synopsys_pcie_host_init(struct pcie_port *pp)
+ 	dev_err(pp->dev, "synopsys_pcie_host_init: Start\n");
+ #endif
+ 
+-
+ 	/* PCIE core resets from RSTGEN default to asserted, deassert them now */
+ 	val = synopsys_readl(resetgen_base + RSTGENSWRSTSTATIC10);
+ 	val &= 0xff0fffff;
+@@ -1117,48 +1138,6 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 		return -ENOMEM;
+ 	}
+ 
+-#if 0	/* TEST */
+-	{
+-		void __iomem *base;
+-		u32	tmp;
+-		base = ioremap_nocache(0x04060000, 0xe000);
+-		printk(KERN_ERR "CCI_COR      : 0x%08x\n", readl(base + 0x0000));
+-		printk(KERN_ERR "CCI_SCR      : 0x%08x\n", readl(base + 0x0004));
+-		printk(KERN_ERR "CCI_SECACC   : 0x%08x\n", readl(base + 0x0008));
+-		printk(KERN_ERR "CCI_STATUS   : 0x%08x\n", readl(base + 0x000c));
+-		printk(KERN_ERR "CCI_PMR      : 0x%08x\n", readl(base + 0x0100));
+-
+-		printk(KERN_ERR "CCI_SNOOP_S0 : 0x%08x\n", readl(base + 0x1000));
+-		printk(KERN_ERR "CCI_SHROV_S0 : 0x%08x\n", readl(base + 0x1004));
+-		printk(KERN_ERR "CCI_RQOSOV_S0: 0x%08x\n", readl(base + 0x1100));
+-		printk(KERN_ERR "CCI_WQOSOV_S0: 0x%08x\n", readl(base + 0x1104));
+-		printk(KERN_ERR "CCI_QOSCTL_S0: 0x%08x\n", readl(base + 0x110c));
+-		printk(KERN_ERR "CCI_MAXOT_S0 : 0x%08x\n", readl(base + 0x1110));	// 0e->10
+-		printk(KERN_ERR "CCI_REGTGT_S0: 0x%08x\n", readl(base + 0x1130));
+-		printk(KERN_ERR "CCI_QOSSCL_S0: 0x%08x\n", readl(base + 0x1134));
+-		printk(KERN_ERR "CCI_QOSRNG_S0: 0x%08x\n", readl(base + 0x1138));
+-
+-		printk(KERN_ERR "PeripheralID4: 0x%08x\n", readl(base + 0x0fd0));
+-		printk(KERN_ERR "PeripheralID5: 0x%08x\n", readl(base + 0x0fd4));
+-		printk(KERN_ERR "PeripheralID6: 0x%08x\n", readl(base + 0x0fd8));
+-		printk(KERN_ERR "PeripheralID7: 0x%08x\n", readl(base + 0x0fdc));
+-		printk(KERN_ERR "PeripheralID0: 0x%08x\n", readl(base + 0x0fe0));
+-		printk(KERN_ERR "PeripheralID1: 0x%08x\n", readl(base + 0x0fe4));
+-		printk(KERN_ERR "PeripheralID2: 0x%08x\n", readl(base + 0x0fe8));
+-		printk(KERN_ERR "PeripheralID3: 0x%08x\n", readl(base + 0x0fec));
+-		printk(KERN_ERR "Component ID0: 0x%08x\n", readl(base + 0x0ff0));
+-		printk(KERN_ERR "Component ID1: 0x%08x\n", readl(base + 0x0ff4));
+-		printk(KERN_ERR "Component ID2: 0x%08x\n", readl(base + 0x0ff8));
+-		printk(KERN_ERR "Component ID3: 0x%08x\n", readl(base + 0x0ffc));
+-//		writel( 0x1, base + 0x0008);
+-//		printk(KERN_ERR "CCI_SECACC   : 0x%08x\n", readl(base + 0x0008));
+-		writel( 0x3, base + 0x1000);
+-		while (readl(base + 0x100c) & 0x1);
+-
+-		printk(KERN_ERR "CCI_SNOOP_S0 : 0x%08x\n", readl(base + 0x1000));
+-		iounmap(base);
+-	}
+-#endif
+ 	pp->dev = &pdev->dev;
+ 
+ 	/* Configureation resource */
+-- 
+1.7.1
+

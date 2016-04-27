@@ -1,0 +1,225 @@
+From 4a0a7d2bc563d412c6a4a149a55cc78e82129582 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Sat, 27 Dec 2014 16:10:35 +0900
+Subject: [PATCH 1/1] added driver fix and support
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mach-lm2/Makefile            |    1 +
+ arch/arm/mach-lm2/core.h              |    3 ++
+ arch/arm/mach-lm2/include/mach/irqs.h |    6 +++-
+ arch/arm/mach-lm2/lm2.c               |    4 +++
+ arch/arm/mach-lm2/usb.c               |    6 ++++
+ arch/arm/mach-lm2/xspi.c              |   46 +++++++++++++++++++++++++++++++++
+ arch/arm/plat-waikiki/time.c          |    6 +---
+ drivers/spi/xspi.c                    |   15 +++++++---
+ 8 files changed, 77 insertions(+), 10 deletions(-)
+ create mode 100644 arch/arm/mach-lm2/xspi.c
+
+diff --git a/arch/arm/mach-lm2/Makefile b/arch/arm/mach-lm2/Makefile
+index 9e6400c..0478781 100644
+--- a/arch/arm/mach-lm2/Makefile
++++ b/arch/arm/mach-lm2/Makefile
+@@ -6,3 +6,4 @@ obj-y					:= lm2.o usb.o
+ obj-$(CONFIG_SMP)			+= platsmp.o
+ obj-$(CONFIG_SATA_AHCI_PLATFORM)	+= sata.o
+ obj-$(CONFIG_MMC_SDHCI_PLTFM)		+= sdhci.o
++obj-$(CONFIG_SPI_XSPI)			+= xspi.o
+diff --git a/arch/arm/mach-lm2/core.h b/arch/arm/mach-lm2/core.h
+index 7ee0c4a..3432744 100644
+--- a/arch/arm/mach-lm2/core.h
++++ b/arch/arm/mach-lm2/core.h
+@@ -29,4 +29,7 @@ void vexpress_dt_smp_map_io(void);
+ extern	int	lm2_sata_register(void);
+ extern	int	lm2_usb_register(void);
+ extern	int	lm2_sdhci_init(void);
++#ifdef	CONFIG_SPI_XSPI
++extern	int	lm2_xspi_register(void);
++#endif	/* CONFIG_SPI_XSPI */
+ #endif
+diff --git a/arch/arm/mach-lm2/include/mach/irqs.h b/arch/arm/mach-lm2/include/mach/irqs.h
+index 97c9066..7bb3d30 100644
+--- a/arch/arm/mach-lm2/include/mach/irqs.h
++++ b/arch/arm/mach-lm2/include/mach/irqs.h
+@@ -28,7 +28,11 @@
+ #define	LM2_IRQ_TIMER_4		(LM2_IRQ_BASE + 8)
+ #define	LM2_IRQ_TIMER_5		(LM2_IRQ_BASE + 9)
+ #define	LM2_IRQ_TIMER_6		(LM2_IRQ_BASE + 10)
+-
++#define	LM2_IRQ_OPT		(LM2_IRQ_BASE + 11)
++#define	LM2_IRQ_SPI_0		(LM2_IRQ_BASE + 12)
++#define	LM2_IRQ_SPI_1		(LM2_IRQ_BASE + 13)
++#define	LM2_IRQ_SPI_2		(LM2_IRQ_BASE + 14)
++#define	LM2_IRQ_SPI_3		(LM2_IRQ_BASE + 15)
+ #define	LM2_IRQ_GMACK_WAKE	(LM2_IRQ_BASE + 93)
+ #define	LM2_IRQ_GMACK_STAT	(LM2_IRQ_BASE + 94)
+ #define	LM2_IRQ_GMAC_A2P	(LM2_IRQ_BASE + 95)
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index bcd77ec..c57878d 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -375,6 +375,10 @@ static void __init lm2_init(void)
+ 	platform_device_register(&lm2_rtc_device);
+ 	platform_device_register(&lm2_i2c_device);
+ 	platform_device_register(&lm2_wdt_device);
++#ifdef	CONFIG_SPI_XSPI
++	lm2_xspi_register();
++#endif	/* CONFIG_SPI_XSPI */
++
+ }
+ 
+ MACHINE_START(LM2, "FujiXerox Waikiki")
+diff --git a/arch/arm/mach-lm2/usb.c b/arch/arm/mach-lm2/usb.c
+index 381eb10..12a4206 100644
+--- a/arch/arm/mach-lm2/usb.c
++++ b/arch/arm/mach-lm2/usb.c
+@@ -10,6 +10,7 @@
+ /* general include */
+ #include <linux/kernel.h>
+ #include <linux/module.h>
++#include <linux/printk.h>
+ #include <linux/device.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/dma-contiguous.h>
+@@ -128,6 +129,11 @@ static	struct platform_device lm2_usb_devs_device = {
+ int	__init	lm2_usb_register(void)
+ {
+ 	int	result;
++	void __iomem	*ptr;
++
++	ptr= ioremap(LM2_USB2_PHY,0x500);
++	printk(KERN_WARNING "USB Register Device %x PHY address",ptr);
++
+ 	result = platform_device_register(&lm2_usb_host_device);
+ 	result = platform_device_register(&lm2_usb_devs_device);
+ 	return	result;
+diff --git a/arch/arm/mach-lm2/xspi.c b/arch/arm/mach-lm2/xspi.c
+new file mode 100644
+index 0000000..6132ced
+--- /dev/null
++++ b/arch/arm/mach-lm2/xspi.c
+@@ -0,0 +1,46 @@
++/*
++ * xspi.c - xspi driver register stub
++ * Copyright (C) Wind River Systems, Inc.
++ *
++ */
++#include <linux/kernel.h>
++#include <linux/platform_device.h>
++#include <linux/module.h>
++
++#include "mach/irqs.h"
++#include "mach/motherboard.h"
++
++static	struct resource	lm2_xspi_resource[] = {
++	{
++		.start	= LM2_XSPI_0_BASE,
++		.end	= LM2_XSPI_0_BASE + 0x100,
++		.flags	= IORESOURCE_MEM,
++	},
++	{
++		.start	= LM2_IRQ_SPI_0,
++		.end	= LM2_IRQ_SPI_0,
++		.flags	= IORESOURCE_IRQ,
++	},
++};
++
++static	struct platform_device	lm2_xspi_device = {
++	.name	= "xspi",
++	.id	= -1,
++	.num_resources	= ARRAY_SIZE( lm2_xspi_resource ),
++	.resource	= lm2_xspi_resource,
++};
++
++static	struct platform_device lm2_spidev_device = {
++	.name	= "spidev",
++	.id	= -1,
++};
++
++int	__init lm2_xspi_register(void)
++{
++	int	result;
++
++	result = platform_device_register( &lm2_xspi_device );
++	result = platform_device_register( &lm2_spidev_device );
++	return	result;
++}
++
+diff --git a/arch/arm/plat-waikiki/time.c b/arch/arm/plat-waikiki/time.c
+index 0ea6173..1c093ef 100644
+--- a/arch/arm/plat-waikiki/time.c
++++ b/arch/arm/plat-waikiki/time.c
+@@ -124,7 +124,6 @@ static void clockevent_set_mode(enum clock_event_mode mode,
+ 	switch (mode) {
+ 	case CLOCK_EVT_MODE_PERIODIC:
+ 		writel((SYSCLK/DIVISOR), LOAD(clkevt_base));
+-lm2_printk(0xfc000000,"clockevent_set_mode:MODE PERIODIC\n");
+ 		val = readl( CTLR(clkevt_base));
+ /*		val |= CTLR_START | CTLR_CONTINOUS | CTLR_LOAD;*/
+ 		val = CTLR_START | CTLR_LOAD;
+@@ -132,7 +131,6 @@ lm2_printk(0xfc000000,"clockevent_set_mode:MODE PERIODIC\n");
+ 
+ 		break;
+ 	case CLOCK_EVT_MODE_ONESHOT:
+-lm2_printk(0xfc000000,"clockevent_set_mode:MODE ONESHOT\n");
+ //		val = readl(CTLR(clkevt_base));
+ //		val &= ~CTLR_CONTINOUS;
+ 		val = CTLR_START | CTLR_LOAD; 
+@@ -274,8 +272,8 @@ void __init lm2_setup_of_timer(void)
+ 		goto err_prepare_enable_clk;
+ 	}
+ 
+-	spear_clockevent_init(irq);
+-	spear_clocksource_init();
++	lm2_clockevent_init(irq, gpt_base);
++	lm2_clocksource_init(gpt_base);
+ 
+ 	return;
+ 
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index ebeb950..29a1ab5 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -205,7 +205,11 @@ static int xspi_probe(struct platform_device *pdev)
+ 	else
+ 		clk_prepare_enable(xspi->clk);
+ #endif
++#if 1
++	xspi->irq = platform_get_irq(pdev, 0);
++#else
+ 	xspi->irq = irq_of_parse_and_map(pdev->dev.of_node,0);
++#endif
+ 	if(xspi->irq <= 0){
+ 		dev_err(&pdev->dev, "could no get IRQ\n");
+ 		goto out_master_put;
+@@ -215,20 +219,21 @@ static int xspi_probe(struct platform_device *pdev)
+ 	clk_prepare_enable(xspi->clk);
+ #endif	/* yamano debug */
+ 
+-	err = request_irq(xspi->irq, xspi_interrupt, 0, dev_name(&pdev->dev), master);
++	err = request_irq(xspi->irq, xspi_interrupt, 0, "xspi", master);
+ 	if(err){
+ 		dev_err(&pdev->dev, "could not register IRQ\n");
+ 		goto out_master_put;
+ 	}
+ 
++	dev_info(&pdev->dev, "XSPI I/O %x IRQ %d \n",xspi->reg_base,xspi->irq);
+ 	/* initialize hardware set up */
+ 	/* CS0 :SRAM,FRAM,MRAM */
+-	xspi_wr(xspi->reg_base, SPI_CLK0, 0x00002020); /* SPI mode 0 300MHz/32 */
+-	xspi_wr(xspi->reg_base, SPI_CFG, 0x80000000);
++	xspi_wr(xspi, SPI_CLK0, 0x00002020); /* SPI mode 0 300MHz/32 */
++	xspi_wr(xspi, SPI_CFG, 0x80000000);
+ 
+ 	/* CS1 : CPLD */
+-	xspi_wr(xspi->reg_base, SPI_CLK1, 0x40002020); /* SPI mode 0 300MHz/64 */
+-	xspi_wr(xspi->reg_base, SPI_CFG+4, 0xc00000e0);
++	xspi_wr(xspi, SPI_CLK1, 0x40002020); /* SPI mode 0 300MHz/64 */
++	xspi_wr(xspi, SPI_CFG + 4, 0xc00000e0);
+ 
+ 	err = spi_register_master(master);
+ 	if(err){
+-- 
+1.7.1
+

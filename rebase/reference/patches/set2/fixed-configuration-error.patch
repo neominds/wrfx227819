@@ -1,0 +1,28 @@
+From e729355d45358df02fd395913c592574ccde8916 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Wed, 17 Dec 2014 09:58:59 +0900
+Subject: [PATCH 1/1] fixed configuration error
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mach-lm2/lm2.c |    2 ++
+ 1 files changed, 2 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 057b113..63341eb 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -362,7 +362,9 @@ static void __init lm2_init(void)
+ 	lm2_sata_register();
+ #endif	/* CONFIG_SATA_AHCI_PLATFORM */
+ 	lm2_usb_register();
++#ifdef	CONFIG_MMC_SDHCI_PLTFM
+         lm2_sdhci_init();
++#endif
+ 
+ 	platform_device_register(&lm2_gpio_device);
+ 	platform_device_register(&lm2_rtc_device);
+-- 
+1.7.1
+

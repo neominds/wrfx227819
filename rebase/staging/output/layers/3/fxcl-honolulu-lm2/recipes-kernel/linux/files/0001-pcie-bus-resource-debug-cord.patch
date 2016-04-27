@@ -1,0 +1,305 @@
+From 8665ea7f2acee0ee903c551f22a08f1e4b446514 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:23:22 +0900
+Subject: [PATCH 103/170] 0001-pcie-bus-resource-debug-cord
+
+
+diff --git a/arch/arm/kernel/bios32.c b/arch/arm/kernel/bios32.c
+index f690a5b..371f089 100644
+--- a/arch/arm/kernel/bios32.c
++++ b/arch/arm/kernel/bios32.c
+@@ -147,10 +147,15 @@ static void pci_fixup_quatro(struct pci_dev *dev)
+ 	int i;
+ printk(KERN_ERR "pci fixup function for quatro\n");
+ 	if (dev->devfn == 0) {
++//		dev->resource[0].flags = IORESOURCE_MEM;
++//		dev->resource[1].flags = IORESOURCE_IO;
+ //		dev->class &= 0x060000;
+ //		dev->class = 0x060000;
+ //		dev->class |= PCI_CLASS_BRIDGE_HOST << 8;
+ 		for (i = 0; i < PCI_NUM_RESOURCES; i++) {
++//printk(KERN_ERR " dev->resource[%d].start = %llx\n",i,dev->resource[i].start);
++//printk(KERN_ERR " dev->resource[%d].end = %llx\n",i,dev->resource[i].end);
++//printk(KERN_ERR " dev->resource[%d].flags = %x\n",i,dev->resource[i].flags);
+ 			dev->resource[i].start = 0;
+ 			dev->resource[i].end   = 0;
+ 			dev->resource[i].flags = 0;
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 8f20217..afc5870 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -331,9 +331,11 @@ static struct resource lm2_pcie_resource[]={
+                .flags  = IORESOURCE_MEM,
+        },
+        {	/* host bridge interrput */
+-               .start  = LM2_IRQ_PCIE_BUS,
+-               .end    = LM2_IRQ_PCIE_BUS,
++//               .start  = LM2_IRQ_PCIE_BUS,
++//               .end    = LM2_IRQ_PCIE_BUS,
+                .flags  = IORESOURCE_IRQ,
++               .start  = LM2_IRQ_PCIE1,
++               .end    = LM2_IRQ_PCIE1,
+        },
+ };
+ 
+diff --git a/drivers/pci/bus.c b/drivers/pci/bus.c
+index 0924c36..3ee554d 100644
+--- a/drivers/pci/bus.c
++++ b/drivers/pci/bus.c
+@@ -57,6 +57,7 @@ void pci_bus_add_resource(struct pci_bus *bus, struct resource *res,
+ {
+ 	struct pci_bus_resource *bus_res;
+ 
++printk(KERN_ERR "##### %s resource add to bus \n",__FUNCTION__);
+ 	bus_res = kzalloc(sizeof(struct pci_bus_resource), GFP_KERNEL);
+ 	if (!bus_res) {
+ 		dev_err(&bus->dev, "can't add %pR resource\n", res);
+@@ -126,7 +127,7 @@ pci_bus_alloc_resource(struct pci_bus *bus, struct resource *res,
+ 	int i, ret = -ENOMEM;
+ 	struct resource *r;
+ 	resource_size_t max = -1;
+-printk(KERN_ERR " ### %s : Entry bus->number = %x\n",__FUNCTION__,bus->number);
++printk(KERN_ERR " ### %s : Entry %x bus->number = %x\n",__FUNCTION__,bus,bus->number);
+ 	type_mask |= IORESOURCE_IO | IORESOURCE_MEM;
+ 
+ 	/* don't allocate too high if the pref mem doesn't support 64bit*/
+@@ -136,16 +137,25 @@ printk(KERN_ERR " ### %s : Entry bus->number = %x\n",__FUNCTION__,bus->number);
+ 	pci_bus_for_each_resource(bus, r, i) {
+ 		if (!r)
+ 			continue;
++printk(KERN_ERR "resource start = 0x%llx\n",r->start);
++printk(KERN_ERR "resource end   = 0x%llx\n",r->end);
++printk(KERN_ERR "resource flags = 0x%x\n",r->flags);
++
+ 
+ 		/* type_mask must match */
+-		if ((res->flags ^ r->flags) & type_mask)
++		if ((res->flags ^ r->flags) & type_mask){
++printk(KERN_ERR "----- type mismatch %x : %x : %x\n",res->flags,r->flags,type_mask);
++printk(KERN_ERR "----- res start %llx : r start %llx \n",res->start,r->start);
+ 			continue;
++		}
+ 
+ 		/* We cannot allocate a non-prefetching resource
+ 		   from a pre-fetching area */
+ 		if ((r->flags & IORESOURCE_PREFETCH) &&
+-		    !(res->flags & IORESOURCE_PREFETCH))
++		    !(res->flags & IORESOURCE_PREFETCH)){
++printk(KERN_ERR "----- non prefetch \n");
+ 			continue;
++		}
+ 
+ 		/* Ok, try it out.. */
+ printk(KERN_ERR " ### %s : resource allocate\n",__FUNCTION__);
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index f2111e9..87ee995 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -180,8 +180,14 @@ printk(KERN_ERR "sys->io_offset :0x%llx\n",sys->io_offset);
+ 	sys->io_offset  = 0x410000000ULL - 0x10100000ULL;
+ printk(KERN_ERR "print offset mem = 0x%llx\n",sys->mem_offset);
+ printk(KERN_ERR "print offset io = 0x%llx\n",sys->io_offset);
+-	pci_add_resource_offset(&sys->resources, &pp->config[0].mem, sys->mem_offset);
++	if(request_resource(&iomem_resource,&pp->config[0].io)){
++		printk(KERN_ERR " iomem io resource reqest error \n");
++	}
+ 	pci_add_resource_offset(&sys->resources, &pp->config[0].io, sys->io_offset);
++	if(request_resource(&iomem_resource,&pp->config[0].mem)){
++		printk(KERN_ERR " iomem memory resource reqest error \n");
++	}
++	pci_add_resource_offset(&sys->resources, &pp->config[0].mem, sys->mem_offset);
+ 	
+ #ifdef	DEBUG_CALLBACK
+ 	dev_err(pp->dev, "##### %s : End\n",__FUNCTION__);
+@@ -259,7 +265,7 @@ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int
+ //	dev_err(pp->dev, " 0x%8.8lx : 0x%8.8lx\n", pcieconf_base, val);
+ out:
+ 	if(debugFlag == 1){
+-		dev_err(pp->dev, "root read access %x : %x\n",where, *val);
++//		dev_err(pp->dev, "root read access %x : %x\n",where, *val);
+ 		if(where == 8)
+ 			*val = 0x06040000;
+ 	}
+@@ -305,7 +311,7 @@ static int synopsys_pcie_wr_conf(struct pci_bus *bus, u32 devfn,
+ 		if(devfn != 0)	return	PCIBIOS_DEVICE_NOT_FOUND;
+ //		dev_err(pp->dev, "Root write access");
+ 		pcieconf_base = (void __iomem *)((u32)pp->pciegen3_base1 + where);
+-		dev_err(pp->dev, "Root write access %x : %x",where,val);
++//		dev_err(pp->dev, "Root write access %x : %x",where,val);
+ 	}
+ //	dev_err(pp->dev, " 0x%8.8lx : 0x%8.8x\n", pcieconf_base, val);
+ 	if(size == 1)
+@@ -676,10 +682,11 @@ static void synopsys_pcie_AxiToPexInit(struct pcie_port *pp, int which)
+ 
+ 		// - window 1
+ 		//   - MEM access
+-		//   - 3 MB
++		//   - 1 MB
+ 		//   - axi side is not where dependent
+ 		//   - pex side is where dependent
+-		synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL1,      0x00030005);
++	//	synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL1,      0x00030005);
++		synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL1,      0x00100005);
+ 		synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE1,  0x04000000);
+ 		synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE1X, 0x00000004);
+ 		synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL1, 0x10000000);
+@@ -750,6 +757,7 @@ static void synopsys_pcie_PexToAxiInitRc(struct pcie_port *pp, int which)
+ 			/* INT A Enable */
+ 			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_INT_MISC_EN, 0x00000020);
+ 			break;
++#if 0
+ 		case 2: 
+ 			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_PIO_CTRL0, ENABLE_PORT);
+ 			// window 0
+@@ -758,7 +766,7 @@ static void synopsys_pcie_PexToAxiInitRc(struct pcie_port *pp, int which)
+ 			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE0X,  AXI_ADDR_H_DDR);
+ 			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL0, PEX_ADDR_L_PCIE2_DDR_RC); // NOTE special _RC suffix
+ 			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH0, PEX_ADDR_H_PCIE2_DDR_RC); // NOTE special _RC suffix
+-#if 0
++
+ 			// window 1
+ 			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_CTRL1,      PAB_PEX_AMAP_CTRL1);
+ 			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  AXI_ADDR_SP);
+@@ -774,7 +782,6 @@ static void synopsys_pcie_PexToAxiInitRc(struct pcie_port *pp, int which)
+ 			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  0x00000000); // not applicable
+ 			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL3, PEX_ADDR_L_PCIE2_MSI_RC); // NOTE special _RC suffix
+ 			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH3, PEX_ADDR_H_PCIE2_MSI_RC); // NOTE special _RC suffix
+-#endif
+ 			break;
+ 		case 3: 
+ 			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_PIO_CTRL0, ENABLE_PORT);
+@@ -784,7 +791,7 @@ static void synopsys_pcie_PexToAxiInitRc(struct pcie_port *pp, int which)
+ 			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE0X,  AXI_ADDR_H_DDR);
+ 			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL0, PEX_ADDR_L_PCIE3_DDR);
+ 			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH0, PEX_ADDR_H_PCIE3_DDR);
+-#if 0
++
+ 			// window 1
+ 			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_CTRL1,      PAB_PEX_AMAP_CTRL1);
+ 			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  AXI_ADDR_SP);
+@@ -800,8 +807,9 @@ static void synopsys_pcie_PexToAxiInitRc(struct pcie_port *pp, int which)
+ 			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  0x00000000); // not applicable
+ 			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL3, PEX_ADDR_L_PCIE3_MSI);
+ 			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH3, PEX_ADDR_H_PCIE3_MSI);
+-#endif
++
+ 			break;
++#endif
+ 		default:
+ 			dev_err(pp->dev, "synopsys_pcie_PexToAxiInitRc: which is %d Error\n",which);
+ 			break;
+@@ -952,8 +960,8 @@ static void exynos_pcie_clear_irq_pulse(struct pcie_port *pp)
+ 	void __iomem *resetgen_base  = pp->resetgen_base;
+ 	
+ 	synopsys_writel(resetgen_base + PCIE1_INT_CLR, PCIE1_INT_CLR__PERST_N_PIN__MASK | PCIE1_INT_CLR__GDA_PAB__MASK);
+-	synopsys_writel(resetgen_base + PCIE1_INT_CLR, PCIE2_INT_CLR__PERST_N_PIN__MASK | PCIE2_INT_CLR__GDA_PAB__MASK);
+-	synopsys_writel(resetgen_base + PCIE1_INT_CLR, PCIE3_INT_CLR__PERST_N_PIN__MASK | PCIE3_INT_CLR__GDA_PAB__MASK);
++//	synopsys_writel(resetgen_base + PCIE1_INT_CLR, PCIE2_INT_CLR__PERST_N_PIN__MASK | PCIE2_INT_CLR__GDA_PAB__MASK);
++//	synopsys_writel(resetgen_base + PCIE1_INT_CLR, PCIE3_INT_CLR__PERST_N_PIN__MASK | PCIE3_INT_CLR__GDA_PAB__MASK);
+ 	return;
+ }
+ 
+@@ -964,8 +972,8 @@ static void synopsys_pcie_enable_irq_pulse(struct pcie_port *pp)
+ 
+ 	/* enable INTX interrupt */
+ 	synopsys_writel(resetgen_base + PCIE1_INT_EN, PCIE1_INT_EN__PERST_N_PIN__MASK | PCIE1_INT_EN__GDA_PAB__MASK);
+-	synopsys_writel(resetgen_base + PCIE2_INT_EN, PCIE2_INT_EN__PERST_N_PIN__MASK | PCIE2_INT_EN__GDA_PAB__MASK);
+-	synopsys_writel(resetgen_base + PCIE3_INT_EN, PCIE3_INT_EN__PERST_N_PIN__MASK | PCIE3_INT_EN__GDA_PAB__MASK);
++//	synopsys_writel(resetgen_base + PCIE2_INT_EN, PCIE2_INT_EN__PERST_N_PIN__MASK | PCIE2_INT_EN__GDA_PAB__MASK);
++//	synopsys_writel(resetgen_base + PCIE3_INT_EN, PCIE3_INT_EN__PERST_N_PIN__MASK | PCIE3_INT_EN__GDA_PAB__MASK);
+ 	return;
+ }
+ 
+@@ -1095,6 +1103,7 @@ static int  synopsys_pcie_host_init(struct pcie_port *pp)
+ 
+ 	/* host bridge interrupt routing enable */
+ 	synopsys_writel(pciewrap_base + PCIE_INT_EN, 0x00000001);
++	synopsys_pcie_enable_interrupts(pp);
+ out:
+ #ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "synopsys_pcie_host_init:%x End\n",pciegen3_base1);
+@@ -1253,6 +1262,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	pp->config[0].io.end   = 0x41000FFFFULL;
+ 	pp->config[0].io.flags = IORESOURCE_IO;
+ 	pp->config[0].io_size = resource_size(&pp->config[0].io);
++	printk(KERN_ERR "I/O size %x \n",pp->config[0].io_size);
+ //	pp->config[0].io_bus_addr	= 0x410000000ULL;
+ 	pp->mem.name	= "Memory";
+ 	pp->mem.start	= 0x404000000ULL;
+@@ -1265,6 +1275,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	pp->config[0].mem.end  	= 0x4040fffffULL;
+ 	pp->config[0].mem.flags = IORESOURCE_MEM;
+ 	pp->config[0].mem_size = resource_size(&pp->config[0].mem);
++	printk(KERN_ERR "Memory size %x \n",pp->config[0].mem_size);
+ //	pp->config[0].mem_bus_addr	= 0x400000000ULL;
+ 
+ 	pp->config[0].irq = LM2_IRQ_PCIE1;	/* device interrupt by port */
+diff --git a/drivers/pci/probe.c b/drivers/pci/probe.c
+index 0e825b0..dcd4e2c 100644
+--- a/drivers/pci/probe.c
++++ b/drivers/pci/probe.c
+@@ -1832,21 +1832,24 @@ int pci_bus_insert_busn_res(struct pci_bus *b, int bus, int bus_max)
+ 	res->end = bus_max;
+ 	res->flags = IORESOURCE_BUS;
+ 
+-	if (!pci_is_root_bus(b))
++	if (!pci_is_root_bus(b)){	/* yamano debug */
++		printk(KERN_ERR "root bus\n");
+ 		parent_res = &b->parent->busn_res;
+-	else {
++	} else {
++		printk(KERN_ERR "not root bus\n");
+ 		parent_res = get_pci_domain_busn_res(pci_domain_nr(b));
+ 		res->flags |= IORESOURCE_PCI_FIXED;
+ 	}
+ 
+ 	conflict = insert_resource_conflict(parent_res, res);
+ 
+-	if (conflict)
++	if (conflict){
++printk(KERN_ERR " ### %s resource insert conflict \n",__FUNCTION__);
+ 		dev_printk(KERN_DEBUG, &b->dev,
+ 			   "busn_res: can not insert %pR under %s%pR (conflicts with %s %pR)\n",
+ 			    res, pci_is_root_bus(b) ? "domain " : "",
+ 			    parent_res, conflict->name, conflict);
+-
++	}
+ 	return conflict == NULL;
+ }
+ 
+@@ -1868,6 +1871,7 @@ printk( KERN_ERR "res->end =%llx\n",res->end);
+ printk( KERN_ERR "res->flags =%x\n",res->flags);
+ 
+ 	size = bus_max - res->start + 1;
++res->start=0;
+ 	ret = adjust_resource(res, res->start, size);
+ //	dev_printk(KERN_DEBUG, &b->dev,
+ 	printk(KERN_ERR "busn_res: %pR end %s updated to %02x\n",
+@@ -1878,9 +1882,9 @@ printk(KERN_ERR " ## %s : instert busn_res\n",__FUNCTION__);
+ 
+ 		pci_bus_insert_busn_res(b, res->start, res->end);
+ 	}	/* yamano debug */
+-printk(KERN_ERR "Information\n");
+-printk(KERN_ERR "parent : %x \n",b->parent);
+-printk(KERN_ERR "resource : %x \n",b->resources);
++//printk(KERN_ERR "Information\n");
++//printk(KERN_ERR "parent : %x \n",b->parent);
++//printk(KERN_ERR "resource : %x \n",b->resources);
+ 
+ printk(KERN_ERR " ## %s ;Exit bus->resources = %x\n",__FUNCTION__,b->busn_res);
+ 	return ret;
+diff --git a/drivers/pci/setup-res.c b/drivers/pci/setup-res.c
+index 5e412af..6518264 100644
+--- a/drivers/pci/setup-res.c
++++ b/drivers/pci/setup-res.c
+@@ -232,6 +232,7 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
+ 		 * But a prefetching area can handle a non-prefetching
+ 		 * window (it will just not perform as well).
+ 		 */
++printk( KERN_ERR " $$$ %s : re-allocating\n",__FUNCTION__);
+ 		ret = pci_bus_alloc_resource(bus, res, size, align, min, 0,
+ 					     pcibios_align_resource, dev);
+ 	}
+-- 
+1.7.1
+

@@ -1,0 +1,589 @@
+From 503cc40dd6a1b458130f437245544fa57cf7e8ec Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:22:01 +0900
+Subject: [PATCH 040/170] 0037-SDHCI-Driver-support-fix
+
+
+diff --git a/arch/arm/mach-lm2/Makefile b/arch/arm/mach-lm2/Makefile
+index f399e17..9e6400c 100644
+--- a/arch/arm/mach-lm2/Makefile
++++ b/arch/arm/mach-lm2/Makefile
+@@ -5,3 +5,4 @@
+ obj-y					:= lm2.o usb.o
+ obj-$(CONFIG_SMP)			+= platsmp.o
+ obj-$(CONFIG_SATA_AHCI_PLATFORM)	+= sata.o
++obj-$(CONFIG_MMC_SDHCI_PLTFM)		+= sdhci.o
+diff --git a/arch/arm/mach-lm2/core.h b/arch/arm/mach-lm2/core.h
+index cd7a7bd..7ee0c4a 100644
+--- a/arch/arm/mach-lm2/core.h
++++ b/arch/arm/mach-lm2/core.h
+@@ -28,4 +28,5 @@ void vexpress_dt_smp_map_io(void);
+  */
+ extern	int	lm2_sata_register(void);
+ extern	int	lm2_usb_register(void);
++extern	int	lm2_sdhci_init(void);
+ #endif
+diff --git a/arch/arm/mach-lm2/include/mach/motherboard.h b/arch/arm/mach-lm2/include/mach/motherboard.h
+index 7bcdd97..3628dfd 100644
+--- a/arch/arm/mach-lm2/include/mach/motherboard.h
++++ b/arch/arm/mach-lm2/include/mach/motherboard.h
+@@ -57,8 +57,8 @@
+ #define	LM2_GMAC_BASE		(LM2_REGS_0 + 0x00410000)
+ #define	LM2_USB3		(LM2_REGS_0 + 0x00500000)
+ #define	LM2_USB2		(LM2_REGS_0 + 0x00600000)
+-#define LM2_SDIO0_BASE          (LM2_REGS_0 + 0x00440200)       /* SD0 slot1 */
+-#define LM2_SDIO1_BASE          (LM2_REGS_0 + 0x00450100)       /* SD1 slot0 */
++#define LM2_SDIO0_BASE		(LM2_REGS_0 + 0x00440000)
++#define LM2_SDIO1_BASE		(LM2_REGS_0 + 0x00450000)
+ #define LM2_GPFSYS_BASE         (LM2_REGS_0 + 0x00050000)
+ 
+ /*
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 84d4237..bcd77ec 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -233,49 +233,6 @@ static	struct platform_device	lm2_gpio_device = {
+ };
+ 
+ /*
+- *  * SDIO
+- *   */
+-static struct resource lm2_sdhci0_resources[] = {
+-        [0] = {
+-                .start  = LM2_SDIO0_BASE,
+-                .end    = LM2_SDIO0_BASE + 0x100,
+-                .flags  = IORESOURCE_MEM,
+-        },
+-        [1] = {
+-                .start  = LM2_IRQ_SDIO_0_STAT,
+-                .end    = LM2_IRQ_SDIO_0_STAT,
+-                .flags  = IORESOURCE_IRQ,
+-        },
+-};
+-
+-static struct platform_device lm2_sdhci0_device = {
+-        .name           = "sdhci-lm2",
+-        .id             = 0,
+-        .num_resources  = ARRAY_SIZE(lm2_sdhci0_resources),
+-        .resource       = lm2_sdhci0_resources,
+-};
+-
+-static struct resource lm2_sdhci1_resources[] = {
+-        [0] = {
+-                .start  = LM2_SDIO1_BASE,
+-                .end    = LM2_SDIO1_BASE + 0x100,
+-                .flags  = IORESOURCE_MEM,
+-        },
+-        [1] = {
+-                .start  = LM2_IRQ_SDIO_1_STAT,
+-                .end    = LM2_IRQ_SDIO_1_STAT,
+-                .flags  = IORESOURCE_IRQ,
+-        },
+-};
+-
+-static struct platform_device lm2_sdhci1_device = {
+-        .name           = "sdhci-lm2",
+-        .id             = 1,
+-        .num_resources  = ARRAY_SIZE(lm2_sdhci1_resources),
+-        .resource       = lm2_sdhci1_resources,
+-};
+-
+-/*
+  * RTC
+  */
+ static  struct resource lm2_rtc_resource[] ={
+@@ -338,35 +295,6 @@ static	struct platform_device lm2_i2c_device = {
+ 	.num_resources	= ARRAY_SIZE(lm2_i2c_resource),
+ };
+ 
+-void __init lm2_sdhci_init(void)
+-{
+-//      void __iomem *virt_addr;
+-
+-	/* SDIO0 HRS0(slot1) */
+-//      virt_addr = ioremap(0x00440000,0x100);
+-//      writel(0x00000000, virt_addr + 0x20); /* SDIO0_HRS8 (SDIO0_SRS16_1=>0x40) */
+-//      writel(0x00000000, virt_addr + 0x24); /* SDIO0_HRS9 (SDIO0_SRS17_1=>0x44) */
+-//      writel(0x00000000, virt_addr + 0x28); /* SDIO0_HRS10(SDIO0_SRS18_1=>0x48) */
+-//      writel(0x80480004, virt_addr + 0x70); /* SDIO0_HRS28(SDIO0_SRS24_1=>0x60) */
+-//      writel(0x00000000, virt_addr + 0x74); /* SDIO0_HRS29(SDIO0_SRS25_1=>0x64) */
+-//      writel(0x00000000, virt_addr + 0x78); /* SDIO0_HRS30(SDIO0_SRS26_1=>0x68) */
+-//      writel(0x00000000, virt_addr + 0x7c); /* SDIO0_HRS31(SDIO0_SRS27_1=>0x6c) */
+-//      iounmap(virt_addr);
+-//      platform_device_register(&lm2_sdhci0_device);
+-
+-	/* SDIO1 HRS0(slot0) */
+-//      virt_addr = ioremap(0x00450000,0x100);
+-//      writel(0x00000000, virt_addr + 0x10); /* SDIO0_HRS4 (SDIO0_SRS16_0=>0x40) */
+-//      writel(0x00000000, virt_addr + 0x14); /* SDIO0_HRS5 (SDIO0_SRS17_0=>0x44) */
+-//      writel(0x00000000, virt_addr + 0x18); /* SDIO0_HRS6 (SDIO0_SRS18_0=>0x48) */
+-//      writel(0x80000002, virt_addr + 0x60); /* SDIO0_HRS24(SDIO0_SRS24_0=>0x60) */
+-//      writel(0x00000000, virt_addr + 0x64); /* SDIO0_HRS25(SDIO0_SRS25_0=>0x64) */
+-//      writel(0x00000000, virt_addr + 0x68); /* SDIO0_HRS26(SDIO0_SRS26_0=>0x68) */
+-//      writel(0x00000000, virt_addr + 0x6c); /* SDIO0_HRS27(SDIO0_SRS27_0=>0x6c) */
+-//      iounmap(virt_addr);
+-	platform_device_register(&lm2_sdhci1_device);
+-}
+-
+ static void __init lm2_init_early(void)
+ {
+ 	lm2_printk(0xfc000000,"lm2_init_early\n");
+diff --git a/arch/arm/mach-lm2/sdhci.c b/arch/arm/mach-lm2/sdhci.c
+new file mode 100644
+index 0000000..5fe7268
+--- /dev/null
++++ b/arch/arm/mach-lm2/sdhci.c
+@@ -0,0 +1,75 @@
++/*
++ * sdhci.c - LM2-Waikiki board USB Interface platform
++ * Copyright 2014 Wind River Systems,Inc.
++ * j.w.
++ */
++/*
++ * revision:
++ * 0.0	initial base on SDHCI driver
++ */
++/* general include */
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/device.h>
++#include <linux/dma-mapping.h>
++#include <linux/dma-contiguous.h>
++#include <linux/platform_device.h>
++#include <linux/of_address.h>
++#include <linux/of_fdt.h>
++#include <linux/of_irq.h>
++#include <linux/of_platform.h>
++
++#include <mach/irqs.h>
++#include <mach/motherboard.h>
++
++/*
++ * 
++ */
++
++static u64 sdio_dmamask = DMA_BIT_MASK(64);
++static struct resource lm2_sdhci0_resources[] = {
++	[0] = {
++		.start  = LM2_SDIO0_BASE + 0x100,       /* slot0 */
++		.end    = LM2_SDIO0_BASE + 0x200,
++		.flags  = IORESOURCE_MEM,
++	},
++	[1] = {
++		.start  = LM2_IRQ_SDIO_0_STAT,
++		.end    = LM2_IRQ_SDIO_0_STAT,
++		.flags  = IORESOURCE_IRQ,
++	},
++};
++static struct platform_device lm2_sdhci0_device = {
++	.name           = "sdhci-lm2",
++	.id             = 0,
++	.dev		= {
++				.dma_mask = &sdio_dmamask,
++				.coherent_dma_mask = DMA_BIT_MASK(64),
++			  },
++	.num_resources  = ARRAY_SIZE(lm2_sdhci0_resources),
++	.resource       = lm2_sdhci0_resources,
++};
++static struct resource lm2_sdhci1_resources[] = {
++	[0] = {
++		.start  = LM2_SDIO1_BASE + 0x200,       /* slot1 */
++		.end    = LM2_SDIO1_BASE + 0x300,
++		.flags  = IORESOURCE_MEM,
++	},
++	[1] = {
++		.start  = LM2_IRQ_SDIO_1_STAT,
++		.end    = LM2_IRQ_SDIO_1_STAT,
++		.flags  = IORESOURCE_IRQ,
++	},
++};
++static struct platform_device lm2_sdhci1_device = {
++	.name           = "sdhci-lm2",
++	.id             = 1,
++	.num_resources  = ARRAY_SIZE(lm2_sdhci1_resources),
++	.resource       = lm2_sdhci1_resources,
++};
++
++void __init lm2_sdhci_init(void)
++{
++	platform_device_register(&lm2_sdhci0_device);
++//	platform_device_register(&lm2_sdhci1_device);
++}
+diff --git a/drivers/mmc/host/Kconfig b/drivers/mmc/host/Kconfig
+index 2f93549..5150452 100644
+--- a/drivers/mmc/host/Kconfig
++++ b/drivers/mmc/host/Kconfig
+@@ -170,6 +170,7 @@ config MMC_SDHCI_LM2
+ 	tristate "SDHCI support on the LM2 SoC"
+ 	depends on ARCH_LM2
+ 	depends on MMC_SDHCI_PLTFM
++	select MMC_SDHCI_IO_ACCESSORS
+ 	help
+ 	  This selects the SDHCI support for CNS3xxx System-on-Chip devices.
+ 
+diff --git a/drivers/mmc/host/sdhci-lm2.c b/drivers/mmc/host/sdhci-lm2.c
+index 2e0070c..5cd96e5 100644
+--- a/drivers/mmc/host/sdhci-lm2.c
++++ b/drivers/mmc/host/sdhci-lm2.c
+@@ -12,9 +12,14 @@
+ #include <linux/module.h>
+ #include "sdhci-pltfm.h"
+ 
++#define LM2_GPFSYS_BASE         0x04050000
++#define LM2_OVLSYS_BASE         0x04090000
++#define LM2_SDIO0_BASE          0x04440000
++#define LM2_SDIO1_BASE          0x04450000
++
+ static unsigned int sdhci_lm2_get_max_clk(struct sdhci_host *host)
+ {
+-	return 89000000;	/* SDMCLK=89MHz */
++	return 177780000/2;	/* 177.78MHz/2 */
+ }
+ 
+ static void sdhci_lm2_set_clock(struct sdhci_host *host, unsigned int clock)
+@@ -23,7 +28,6 @@ static void sdhci_lm2_set_clock(struct sdhci_host *host, unsigned int clock)
+ 	int div = 1;
+ 	u16 clk=0;
+ 	unsigned long timeout;
+-	unsigned int get_clk;
+ 
+ 	if (clock == host->clock)
+ 		return;
+@@ -35,21 +39,22 @@ static void sdhci_lm2_set_clock(struct sdhci_host *host, unsigned int clock)
+ 
+ 	host->clock = clock;
+ 
+-#if 0
+-	if (host->max_clk / div > clock) {
+-		div = 0x01;
+-	} else {
++	dev_dbg(dev, "baseClk: %dHz, targetClk: %dHz.\n",host->max_clk, host->clock);
++	sdhci_writew(host, 0x000e, SDHCI_TIMEOUT_CONTROL);
++	if (host->clock >= host->max_clk) {
+ 		div = 0x00;
++	} else {
++		div = host->max_clk / ( 2 * host->clock);
++		if ( host->max_clk % ( 2 * host->clock )) {
++			++div;
++		}
+ 	}
+-	dev_dbg(dev, "desired SD clock: %d, actual: %d\n",clock, host->max_clk / div);
+ 	
+-	clk  = div<<SDHCI_DIVIDER_SHIFT;	/* SDCLKFS=0x001 89MHz/2=45MHz*/
+-#endif
+-	clk  = SDHCI_PROG_CLOCK_MODE;
++	clk  = (div&0x00ff)<<8 | (div&0x0300)>>2;
+ 	clk |= SDHCI_CLOCK_INT_EN;		/* 0x01 */
+ 	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+ 
+-	timeout = 20;
++	timeout = 120;
+ 	while (!((clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL))
+ 			& SDHCI_CLOCK_INT_STABLE)) {
+ 		if (timeout == 0) {
+@@ -60,25 +65,190 @@ static void sdhci_lm2_set_clock(struct sdhci_host *host, unsigned int clock)
+ 		mdelay(1);
+ 	}
+ 
+-	clk |= SDHCI_CLOCK_CARD_EN;	/* 0x04 */
++	clk |= SDHCI_CLOCK_CARD_EN;		/* 0x04 */
+ 	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
++	dev_dbg(dev, "SD clock: %dHz, div: 0x%x 0x%02x->%04x write.\n",clock, div, SDHCI_CLOCK_CONTROL,clk);
++
++	mdelay(2);
++}
++
++static int sdhci_lm2_buswidth(struct sdhci_host *host, int bus_width)
++{
++	struct device *dev = mmc_dev(host->mmc);
++        u32 ctrl;
++
++        ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
++	if ((host->mmc->caps & MMC_CAP_8_BIT_DATA) &&
++	    (bus_width == MMC_BUS_WIDTH_8)) {
++                ctrl &= ~SDHCI_CTRL_4BITBUS;
++                ctrl |= SDHCI_CTRL_8BITBUS;
++		dev_dbg(dev, "buswidth: 8bit\n");
++	} else {
++		ctrl &= ~SDHCI_CTRL_8BITBUS;
++		if (bus_width == MMC_BUS_WIDTH_4) {
++			ctrl |= SDHCI_CTRL_4BITBUS;
++			dev_dbg(dev, "buswidth: 4bit\n");
++		} else {
++			ctrl &= ~SDHCI_CTRL_4BITBUS;
++			dev_dbg(dev, "buswidth: 1bit\n");
++		}
++	}
++        sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
++        return 0;
++}
++static void sdhci_lm2_platform_init(struct sdhci_host *host)
++{
++	void __iomem *virt_addr;
++	u32     val;
++
++	/***************/
++	/* SDIO 0 init */
++	/***************/
++
++	/* GPF-SYS(0x288:SDIOPWRCTRL) */
++	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x280 ,0x10);
++	val  = readl(virt_addr + 0x8);
++	val  = (val & 0xffffff8e);
++	val |= 0x0071;				/* SDIO0S0_PWR_EN */
++	writel(val, virt_addr + 0x8);		/* SDIO Low Dropout Regulator Output : */
++	iounmap(virt_addr);
++
++	/*  OVL-SYS(0x24:SYS_OVLCTL6) */
++	virt_addr = ioremap(LM2_OVLSYS_BASE, 0x30);
++	val  = readl(virt_addr + 0x24);
++	val  = (val & 0x88ffffff);
++	val |= 0x11000000;			/* Input is "SD0S0CMDI"; output is "SD0S0CMDO" */
++						/* Output is "SD0S0CLK" */
++	writel(val, virt_addr + 0x24);		/* SDIO Low Dropout Regulator Output : */
++
++	/*  OVL-SYS(0x28:SYS_OVLCTL7) */
++	val  = 0x00441111;
++	writel(val, virt_addr + 0x28);		/* SDIO Low Dropout Regulator Output : */
++	iounmap(virt_addr);
++
++	/* SDIO0 HRS2 */
++	virt_addr = ioremap(LM2_SDIO0_BASE + 0x08,0x4);
++	writel(0x00000004, virt_addr);		/* SDIO0_HRS2  DMA Burst=4  */
++	iounmap(virt_addr);
++
++	/* GPF-SYS(0x280:SDIO0_EXTCTL) */
++	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x280 ,0x10);
++	val = readl(virt_addr + 0x0);
++	val = (val & 0xfffffff3) | 0x4;
++	writel(val, virt_addr + 0x0);
++	iounmap(virt_addr);
++
++	/* GPF-SYS(0x1B4:SDIO0ADBCTL) */
++	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x1b4 ,0x10);
++	writel(0x00000081, virt_addr + 0x0);	/* SDIO0ADB Control register */
++	iounmap(virt_addr);
++
++	/***************/
++	/* SDIO 1 init */
++	/***************/
++
++	/* GPF-SYS(0x288) */
++//	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x280 ,0x10);
++//	val  = readl(virt_addr + 0x8);
++//	val  = (val & 0xffff8eff);
++//	val |= 0x7100;				/* SDIO1S0_PWR_EN */
++//	writel(val, virt_addr + 0x8);		/* SDIO Low Dropout Regulator Output : */
++//	iounmap(virt_addr);
++
++	/* SDIO1 HRS2 */
++//	virt_addr = ioremap(LM2_SDIO1_BASE + 0x08,0x4);
++//	writel(0x00000004, virt_addr);		/* SDIO1_HRS2  DMA Burst=4  */
++//	pr_err("SDIO1_HRS2 0x8: 0x%08x\n",readl(virt_addr));
++//	iounmap(virt_addr);
++
++	/* GPF-SYS(0x280) */
++//	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x280 ,0x10);
++//	val = readl(virt_addr + 0x4);
++//	val = (val & 0xfffffff3) | 0x4;
++//	writel(val, virt_addr + 0x4);
++//	iounmap(virt_addr);
++
++	/* GPF-SYS(0x1B4:SDIO0ADBCTL) */
++//	virt_addr = ioremap(LM2_GPFSYS_BASE + 0x1b4 ,0x10);
++//	writel(0x00000081, virt_addr + 0x4);	/* SDIO0ADB Control register */
++//	iounmap(virt_addr);
++
++
++}
++static u8 sdhci_lm2_read_b(struct sdhci_host *host, int reg)
++{
++	u16 res;
++	u8  rtn;
++	volatile u16 *ptr;
++	if ( (reg&0x01) == 0 ) {
++		ptr = host->ioaddr + reg;
++		res = readw(ptr);
++		rtn = (u8)(res&0x00ff);
++	} else {
++		ptr = host->ioaddr + (reg - 1);
++		res = readw(ptr);
++		rtn = (u8)((res&0xff00)>>8);
++	}
++	return rtn;
++}
++static u16 sdhci_lm2_read_w(struct sdhci_host *host, int reg)
++{
++	volatile u16 *ptr = host->ioaddr + reg;
++	return readw(ptr);
++}
++static u32 sdhci_lm2_read_l(struct sdhci_host *host, int reg)
++{
++	volatile u32 *ptr = host->ioaddr + reg;
++	return readl(ptr);
++}
++static void sdhci_lm2_write_b(struct sdhci_host *host, u8 val, int reg)
++{
++	u16 res;
++	u16 wdt;
++	volatile u16 *ptr;
++	if ( (reg&0x01) == 0 ) {
++		ptr = host->ioaddr + reg;
++		res = readw(ptr);
++		wdt = (res&0xff00) | val;
++	} else {
++		ptr = host->ioaddr + (reg - 1);
++		res = readw(ptr);
++		wdt = (res&0x00ff) | (val<<8);
++	}
++	writew(wdt, ptr);
++	barrier();
++}
++static void sdhci_lm2_write_w(struct sdhci_host *host, u16 val, int reg)
++{
++	volatile u16 *ptr = host->ioaddr + reg;
++	writew(val, ptr);
++	barrier();
++}
++static void sdhci_lm2_write_l(struct sdhci_host *host, u32 val, int reg)
++{
++	volatile u32 *ptr = host->ioaddr + reg;
++	writel(val, ptr);
++	barrier();
+ }
+ 
+ static const struct sdhci_ops sdhci_lm2_ops = {
+-	.get_max_clock	= sdhci_lm2_get_max_clk,
+-	.set_clock	= sdhci_lm2_set_clock,
++	.get_max_clock	    = sdhci_lm2_get_max_clk,
++	.set_clock	    = sdhci_lm2_set_clock,
++	.platform_bus_width = sdhci_lm2_buswidth,
++	.platform_init      = sdhci_lm2_platform_init,
++	.read_b             = sdhci_lm2_read_b,
++	.read_w             = sdhci_lm2_read_w,
++	.read_l             = sdhci_lm2_read_l,
++	.write_b            = sdhci_lm2_write_b,
++	.write_w            = sdhci_lm2_write_w,
++	.write_l            = sdhci_lm2_write_l,
+ };
+ 
+ static const struct sdhci_pltfm_data sdhci_lm2_pdata = {
+ 	.ops = &sdhci_lm2_ops,
+ 	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN |
+-		  SDHCI_QUIRK_NONSTANDARD_CLOCK,
+-//	.quirks = SDHCI_QUIRK_BROKEN_DMA |
+-//		  SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK |
+-//		  SDHCI_QUIRK_INVERTED_WRITE_PROTECT |
+-//		  SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN,
+-//		  SDHCI_QUIRK_BROKEN_TIMEOUT_VAL |
+-//		  SDHCI_QUIRK_NONSTANDARD_CLOCK,
++		  SDHCI_QUIRK_NONSTANDARD_CLOCK |
++		  SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK,
+ };
+ 
+ static int sdhci_lm2_probe(struct platform_device *pdev)
+diff --git a/drivers/mmc/host/sdhci-pltfm.c b/drivers/mmc/host/sdhci-pltfm.c
+index e7762e5..4456e48 100644
+--- a/drivers/mmc/host/sdhci-pltfm.c
++++ b/drivers/mmc/host/sdhci-pltfm.c
+@@ -200,6 +200,7 @@ void sdhci_pltfm_free(struct platform_device *pdev)
+ 	iounmap(host->ioaddr);
+ 	release_mem_region(iomem->start, resource_size(iomem));
+ 	sdhci_free_host(host);
++	platform_set_drvdata(pdev, NULL);       /* add */
+ }
+ EXPORT_SYMBOL_GPL(sdhci_pltfm_free);
+ 
+diff --git a/drivers/mmc/host/sdhci.c b/drivers/mmc/host/sdhci.c
+index 6ea7d41..8c66ecf 100644
+--- a/drivers/mmc/host/sdhci.c
++++ b/drivers/mmc/host/sdhci.c
+@@ -77,6 +77,20 @@ static void sdhci_runtime_pm_bus_off(struct sdhci_host *host)
+ }
+ #endif
+ 
++#if 1	/* LM2 */
++static void sdhci_lm2_extadr_set(struct sdhci_host *host, u8 extadr)
++{
++	void __iomem *virt_addr;
++
++	if ( host->irq == (32 + 99) ) {
++		virt_addr = ioremap(0x040501b4,0x4);
++	} else {
++		virt_addr = ioremap(0x040501b8,0x4);
++	}
++	writel( (extadr&0xf)<<4 | 0x1, virt_addr);
++	iounmap(virt_addr);
++}
++#endif
+ static void sdhci_dumpregs(struct sdhci_host *host)
+ {
+ 	pr_debug(DRIVER_NAME ": =========== REGISTER DUMP (%s)===========\n",
+@@ -831,8 +845,13 @@ static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_command *cmd)
+ 				WARN_ON(1);
+ 				host->flags &= ~SDHCI_REQ_USE_DMA;
+ 			} else {
++#if 1  /* LM2 */
++				sdhci_writel(host, (host->adma_addr&0xffffffff), SDHCI_ADMA_ADDRESS);
++				sdhci_lm2_extadr_set(host, (host->adma_addr>>32)&0xf );
++#else
+ 				sdhci_writel(host, host->adma_addr,
+ 					SDHCI_ADMA_ADDRESS);
++#endif
+ 			}
+ 		} else {
+ 			int sg_cnt;
+@@ -851,8 +870,16 @@ static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_command *cmd)
+ 				host->flags &= ~SDHCI_REQ_USE_DMA;
+ 			} else {
+ 				WARN_ON(sg_cnt != 1);
++#if 1	/* LM2 */
++				{
++					u64 val = sg_dma_address(data->sg);
++					sdhci_writel(host, (val&0xffffffff), SDHCI_DMA_ADDRESS);
++					sdhci_lm2_extadr_set(host, (val>>32)&0xf );
++				}
++#else
+ 				sdhci_writel(host, sg_dma_address(data->sg),
+ 					SDHCI_DMA_ADDRESS);
++#endif
+ 			}
+ 		}
+ 	}
+@@ -2370,7 +2397,11 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
+ 		 * some controllers are faulty, don't trust them.
+ 		 */
+ 		if (intmask & SDHCI_INT_DMA_END) {
++#if 1	/* LM2 */
++			u64 dmastart, dmanow;
++#else
+ 			u32 dmastart, dmanow;
++#endif
+ 			dmastart = sg_dma_address(host->data->sg);
+ 			dmanow = dmastart + host->data->bytes_xfered;
+ 			/*
+@@ -2384,7 +2415,12 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
+ 				" next 0x%08x\n",
+ 				mmc_hostname(host->mmc), dmastart,
+ 				host->data->bytes_xfered, dmanow);
++#if 1	/* LM2 */
++			sdhci_writel(host, (dmanow&0xffffffff), SDHCI_DMA_ADDRESS);
++			sdhci_lm2_extadr_set(host, (dmanow>>32)&0xf );
++#else
+ 			sdhci_writel(host, dmanow, SDHCI_DMA_ADDRESS);
++#endif
+ 		}
+ 
+ 		if (intmask & SDHCI_INT_DATA_END) {
+@@ -2845,6 +2881,8 @@ int sdhci_add_host(struct sdhci_host *host)
+ 				"buffers. Falling back to standard DMA.\n",
+ 				mmc_hostname(mmc));
+ 			host->flags &= ~SDHCI_USE_ADMA;
++			host->adma_desc = NULL;
++			host->align_buffer = NULL;
+ 		}
+ 	}
+ 
+-- 
+1.7.1
+

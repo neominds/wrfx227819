@@ -1,0 +1,3316 @@
+From 7b958a0312babbd9b5c8968d773da7fae6ad64db Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:46:23 +0900
+Subject: [PATCH 029/169] 0028-usbd-dwc3-driver-update
+
+
+diff --git a/arch/arm/mach-lm2/usb.c b/arch/arm/mach-lm2/usb.c
+index b5abba7..f5ee31a 100644
+--- a/arch/arm/mach-lm2/usb.c
++++ b/arch/arm/mach-lm2/usb.c
+@@ -27,12 +27,22 @@
+  * resource 1 : USB Host
+  * resource 2 : USB Device
+  */
+-static	struct resource lm2_usb2_phy_resource[] ={
++static	struct resource lm2_usbh_phy_resource[] ={
+ 	{
+ 		.start	= LM2_USB2_PHY,
+ 		.end	= LM2_USB2_PHY + 0x500,
+ 		.flags	= IORESOURCE_MEM,
+ 	},
++};
++
++static	struct platform_device lm2_usbh_phy_device = {
++	.name	= "usb-phy",
++	.id	= -1,
++	.num_resources	= ARRAY_SIZE(lm2_usbh_phy_resource),
++	.resource	= lm2_usbh_phy_resource,
++};
++
++static	struct resource lm2_usbd_phy_resource[] ={
+ 	{
+ 		.start	= LM2_USB3_PHY,
+ 		.end	= LM2_USB3_PHY + 0x500,
+@@ -40,53 +50,71 @@ static	struct resource lm2_usb2_phy_resource[] ={
+ 	},
+ };
+ 
+-static	struct platform_device lm2_usb2_phy_device = {
+-	.name	= "keystone-usbphy",
++static	struct platform_device lm2_usbd_phy_device = {
++	.name	= "usb-phy",
+ 	.id	= -1,
+-	.num_resources	= ARRAY_SIZE(lm2_usb2_phy_resource),
+-	.resource	= lm2_usb2_phy_resource,
++	.num_resources	= ARRAY_SIZE(lm2_usbd_phy_resource),
++	.resource	= lm2_usbd_phy_resource,
+ };
+ 
+-static	struct resource	lm2_usb2_resource[] = {
++
++static	struct resource	lm2_usbh_resource[] = {
+ 	{
+-		.name	= "dwc3",
+ 		.start	= LM2_USB2,
+ 		.end	= LM2_USB2 + 0x10000,
+ 		.flags	= IORESOURCE_MEM,
+ 	},
+ 	{
+-		.name	= "host irq",
+ 		.start	= LM2_IRQ_USB_HOST,
+ 		.end	= LM2_IRQ_USB_HOST,
+ 		.flags	= IORESOURCE_IRQ,
+ 	},
+ };
+ 
+-static  u64     lm2_usb_dmamask = DMA_BIT_MASK(64);
++static  u64     lm2_usbh_dmamask = DMA_BIT_MASK(64);
+ 
+ static	struct platform_device lm2_usb_host_device = {
+-	.name	= "dwc3",
++	.name	= "xhci-hcd",
+ 	.id	= -1,
+-	.num_resources	= ARRAY_SIZE(lm2_usb2_resource),
+-	.resource	= lm2_usb2_resource,
++	.num_resources	= ARRAY_SIZE(lm2_usbh_resource),
++	.resource	= lm2_usbh_resource,
+ 	.dev	= {
+-                .dma_mask       = &lm2_usb_dmamask,
++                .dma_mask       = &lm2_usbh_dmamask,
+                 .coherent_dma_mask      = DMA_BIT_MASK(64),
+ 	},
+ };
+ 
++static	struct resource	lm2_usbd_resource[] = {
++	{
++		.start	= LM2_USB3,
++		.end	= LM2_USB3 + 0x10000,
++		.flags	= IORESOURCE_MEM,
++	},
++	{
++		.start	= LM2_IRQ_USB3_DEV,
++		.end	= LM2_IRQ_USB3_DEV,
++		.flags	= IORESOURCE_IRQ,
++	},
++};
++
++static  u64     lm2_usbd_dmamask = DMA_BIT_MASK(64);
++
++static	struct platform_device lm2_usb_devs_device = {
++	.name	= "dwc3",
++	.id	= -1,
++	.num_resources	= ARRAY_SIZE(lm2_usbd_resource),
++	.resource	= lm2_usbd_resource,
++	.dev	= {
++                .dma_mask       = &lm2_usbd_dmamask,
++                .coherent_dma_mask      = DMA_BIT_MASK(64),
++	},
++};
+ 
+ int	__init	lm2_usb_register(void)
+ {
+ 	int	result;
+-#if 0
+-	usb_bind_phy("dwc3",0,"usb-phy");
+-#endif
+-	result = platform_device_register(&lm2_usb2_phy_device);
+ 	result = platform_device_register(&lm2_usb_host_device);
+-#if 0
+ 	if(result != 0)
+ 		result = platform_device_register(&lm2_usb_devs_device);
+-#endif
+ 	return	result;
+ }
+diff --git a/drivers/usb/Kconfig b/drivers/usb/Kconfig
+index d9c48f3..7a35a33 100644
+--- a/drivers/usb/Kconfig
++++ b/drivers/usb/Kconfig
+@@ -55,6 +55,7 @@ config USB_ARCH_HAS_EHCI
+ # some non-PCI HCDs implement xHCI
+ config USB_ARCH_HAS_XHCI
+ 	boolean
++	default y if ARCH_LM2
+ 	default PCI
+ 
+ menuconfig USB_SUPPORT
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index eb78a3e..992dd7f 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -53,16 +53,18 @@
+ #include <linux/usb/otg.h>
+ #include <linux/usb/ch9.h>
+ #include <linux/usb/gadget.h>
++#include <linux/usb/of.h>
++#include <linux/usb/otg.h>
++
+ 
++#include "platform_data.h"
+ #include "core.h"
+ #include "gadget.h"
+ #include "io.h"
+ 
+ #include "debug.h"
+ 
+-static char *maximum_speed = "super";
+-module_param(maximum_speed, charp, 0);
+-MODULE_PARM_DESC(maximum_speed, "Maximum supported speed.");
++extern	enum usb_device_speed of_usb_get_maximum_speed(struct device_node *np);
+ 
+ /* -------------------------------------------------------------------------- */
+ 
+@@ -83,6 +85,7 @@ void dwc3_set_mode(struct dwc3 *dwc, u32 mode)
+ int dwc3_core_soft_reset(struct dwc3 *dwc)
+ {
+ 	u32		reg;
++	int		ret;
+ 
+ 	/* Before Resetting PHY, put Core in Reset */
+ 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+@@ -101,6 +104,15 @@ int dwc3_core_soft_reset(struct dwc3 *dwc)
+ 
+ 	usb_phy_init(dwc->usb2_phy);
+ 	usb_phy_init(dwc->usb3_phy);
++	ret = phy_init(dwc->usb2_generic_phy);
++	if (ret < 0)
++		return ret;
++
++	ret = phy_init(dwc->usb3_generic_phy);
++	if (ret < 0) {
++		phy_exit(dwc->usb2_generic_phy);
++		return ret;
++	}
+ 	mdelay(100);
+ 
+ 	/* Clear USB3 PHY reset */
+@@ -237,7 +249,7 @@ int dwc3_event_buffers_setup(struct dwc3 *dwc)
+ 		dwc3_writel(dwc->regs, DWC3_GEVNTADRHI(n),
+ 				upper_32_bits(evt->dma));
+ 		dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(n),
+-				evt->length & 0xffff);
++				DWC3_GEVNTSIZ_SIZE(evt->length));
+ 		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(n), 0);
+ 	}
+ 
+@@ -256,11 +268,96 @@ static void dwc3_event_buffers_cleanup(struct dwc3 *dwc)
+ 
+ 		dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(n), 0);
+ 		dwc3_writel(dwc->regs, DWC3_GEVNTADRHI(n), 0);
+-		dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(n), 0);
++		dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(n), DWC3_GEVNTSIZ_INTMASK
++				| DWC3_GEVNTSIZ_SIZE(0));
+ 		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(n), 0);
+ 	}
+ }
+ 
++static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
++{
++	if (!dwc->has_hibernation)
++		return 0;
++
++	if (!dwc->nr_scratch)
++		return 0;
++
++	dwc->scratchbuf = kmalloc_array(dwc->nr_scratch,
++			DWC3_SCRATCHBUF_SIZE, GFP_KERNEL);
++	if (!dwc->scratchbuf)
++		return -ENOMEM;
++
++	return 0;
++}
++
++static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
++{
++	dma_addr_t scratch_addr;
++	u32 param;
++	int ret;
++
++	if (!dwc->has_hibernation)
++		return 0;
++
++	if (!dwc->nr_scratch)
++		return 0;
++
++	 /* should never fall here */
++	if (!WARN_ON(dwc->scratchbuf))
++		return 0;
++
++	scratch_addr = dma_map_single(dwc->dev, dwc->scratchbuf,
++			dwc->nr_scratch * DWC3_SCRATCHBUF_SIZE,
++			DMA_BIDIRECTIONAL);
++	if (dma_mapping_error(dwc->dev, scratch_addr)) {
++		dev_err(dwc->dev, "failed to map scratch buffer\n");
++		ret = -EFAULT;
++		goto err0;
++	}
++
++	dwc->scratch_addr = scratch_addr;
++
++	param = lower_32_bits(scratch_addr);
++
++	ret = dwc3_send_gadget_generic_command(dwc,
++			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_LO, param);
++	if (ret < 0)
++		goto err1;
++
++	param = upper_32_bits(scratch_addr);
++
++	ret = dwc3_send_gadget_generic_command(dwc,
++			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_HI, param);
++	if (ret < 0)
++		goto err1;
++
++	return 0;
++
++err1:
++	dma_unmap_single(dwc->dev, dwc->scratch_addr, dwc->nr_scratch *
++			DWC3_SCRATCHBUF_SIZE, DMA_BIDIRECTIONAL);
++
++err0:
++	return ret;
++}
++
++static void dwc3_free_scratch_buffers(struct dwc3 *dwc)
++{
++	if (!dwc->has_hibernation)
++		return;
++
++	if (!dwc->nr_scratch)
++		return;
++
++	 /* should never fall here */
++	if (!WARN_ON(dwc->scratchbuf))
++		return;
++
++	dma_unmap_single(dwc->dev, dwc->scratch_addr, dwc->nr_scratch *
++			DWC3_SCRATCHBUF_SIZE, DMA_BIDIRECTIONAL);
++	kfree(dwc->scratchbuf);
++}
++
+ static void dwc3_core_num_eps(struct dwc3 *dwc)
+ {
+ 	struct dwc3_hwparams	*parms = &dwc->hwparams;
+@@ -296,6 +393,7 @@ static void dwc3_cache_hwparams(struct dwc3 *dwc)
+ static int dwc3_core_init(struct dwc3 *dwc)
+ {
+ 	unsigned long		timeout;
++	u32			hwparams4 = dwc->hwparams.hwparams4;
+ 	u32			reg;
+ 	int			ret;
+ 
+@@ -325,7 +423,9 @@ static int dwc3_core_init(struct dwc3 *dwc)
+ 		cpu_relax();
+ 	} while (true);
+ 
+-	dwc3_core_soft_reset(dwc);
++	ret = dwc3_core_soft_reset(dwc);
++	if (ret)
++		goto err0;
+ 
+ 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+ 	reg &= ~DWC3_GCTL_SCALEDOWN_MASK;
+@@ -333,8 +433,30 @@ static int dwc3_core_init(struct dwc3 *dwc)
+ 
+ 	switch (DWC3_GHWPARAMS1_EN_PWROPT(dwc->hwparams.hwparams1)) {
+ 	case DWC3_GHWPARAMS1_EN_PWROPT_CLK:
++		/**
++		 * WORKAROUND: DWC3 revisions between 2.10a and 2.50a have an
++		 * issue which would cause xHCI compliance tests to fail.
++		 *
++		 * Because of that we cannot enable clock gating on such
++		 * configurations.
++		 *
++		 * Refers to:
++		 *
++		 * STAR#9000588375: Clock Gating, SOF Issues when ref_clk-Based
++		 * SOF/ITP Mode Used
++		 */
++		if ((dwc->dr_mode == USB_DR_MODE_HOST ||
++				dwc->dr_mode == USB_DR_MODE_OTG) &&
++				(dwc->revision >= DWC3_REVISION_210A &&
++				dwc->revision <= DWC3_REVISION_250A))
++			reg |= DWC3_GCTL_DSBLCLKGTNG | DWC3_GCTL_SOFITPSYNC;
++		else
+ 		reg &= ~DWC3_GCTL_DSBLCLKGTNG;
+ 		break;
++	case DWC3_GHWPARAMS1_EN_PWROPT_HIB:
++		/* enable hibernation here */
++		dwc->nr_scratch = DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(hwparams4);
++		break;
+ 	default:
+ 		dev_dbg(dwc->dev, "No power optimization available\n");
+ 	}
+@@ -352,33 +474,201 @@ static int dwc3_core_init(struct dwc3 *dwc)
+ 
+ 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+ 
++	ret = dwc3_alloc_scratch_buffers(dwc);
++	if (ret)
++		goto err1;
++
++	ret = dwc3_setup_scratch_buffers(dwc);
++	if (ret)
++		goto err2;
++
+ 	return 0;
+ 
++err2:
++	dwc3_free_scratch_buffers(dwc);
++
++err1:
++	usb_phy_shutdown(dwc->usb2_phy);
++	usb_phy_shutdown(dwc->usb3_phy);
++	phy_exit(dwc->usb2_generic_phy);
++	phy_exit(dwc->usb3_generic_phy);
++
+ err0:
+ 	return ret;
+ }
+ 
+ static void dwc3_core_exit(struct dwc3 *dwc)
+ {
++	dwc3_free_scratch_buffers(dwc);
+ 	usb_phy_shutdown(dwc->usb2_phy);
+ 	usb_phy_shutdown(dwc->usb3_phy);
++	phy_exit(dwc->usb2_generic_phy);
++	phy_exit(dwc->usb3_generic_phy);
++}
++
++static int dwc3_core_get_phy(struct dwc3 *dwc)
++{
++	struct device		*dev = dwc->dev;
++	struct device_node	*node = dev->of_node;
++	int ret;
++
++	if (node) {
++		dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 0);
++		dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 1);
++	} else {
++		dwc->usb2_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
++		dwc->usb3_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB3);
++	}
++
++	if (IS_ERR(dwc->usb2_phy)) {
++		ret = PTR_ERR(dwc->usb2_phy);
++		if (ret == -ENXIO || ret == -ENODEV) {
++			dwc->usb2_phy = NULL;
++		} else if (ret == -EPROBE_DEFER) {
++			return ret;
++		} else {
++			dev_err(dev, "no usb2 phy configured\n");
++			return ret;
++		}
++	}
++
++	if (IS_ERR(dwc->usb3_phy)) {
++		ret = PTR_ERR(dwc->usb3_phy);
++		if (ret == -ENXIO || ret == -ENODEV) {
++			dwc->usb3_phy = NULL;
++		} else if (ret == -EPROBE_DEFER) {
++			return ret;
++		} else {
++			dev_err(dev, "no usb3 phy configured\n");
++			return ret;
++		}
++	}
++
++	dwc->usb2_generic_phy = devm_phy_get(dev, "usb2-phy");
++	if (IS_ERR(dwc->usb2_generic_phy)) {
++		ret = PTR_ERR(dwc->usb2_generic_phy);
++		if (ret == -ENOSYS || ret == -ENODEV) {
++			dwc->usb2_generic_phy = NULL;
++		} else if (ret == -EPROBE_DEFER) {
++			return ret;
++		} else {
++			dev_err(dev, "no usb2 phy configured\n");
++			return ret;
++		}
++	}
++
++	dwc->usb3_generic_phy = devm_phy_get(dev, "usb3-phy");
++	if (IS_ERR(dwc->usb3_generic_phy)) {
++		ret = PTR_ERR(dwc->usb3_generic_phy);
++		if (ret == -ENOSYS || ret == -ENODEV) {
++			dwc->usb3_generic_phy = NULL;
++		} else if (ret == -EPROBE_DEFER) {
++			return ret;
++		} else {
++			dev_err(dev, "no usb3 phy configured\n");
++			return ret;
++		}
++	}
++
++	return 0;
++}
++
++static int dwc3_core_init_mode(struct dwc3 *dwc)
++{
++	struct device *dev = dwc->dev;
++	int ret;
++
++	switch (dwc->dr_mode) {
++	case USB_DR_MODE_PERIPHERAL:
++		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_DEVICE);
++		ret = dwc3_gadget_init(dwc);
++		if (ret) {
++			dev_err(dev, "failed to initialize gadget\n");
++			return ret;
++		}
++		break;
++	case USB_DR_MODE_HOST:
++		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_HOST);
++		ret = dwc3_host_init(dwc);
++		if (ret) {
++			dev_err(dev, "failed to initialize host\n");
++			return ret;
++		}
++		break;
++	case USB_DR_MODE_OTG:
++		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_OTG);
++		ret = dwc3_host_init(dwc);
++		if (ret) {
++			dev_err(dev, "failed to initialize host\n");
++			return ret;
++		}
++
++		ret = dwc3_gadget_init(dwc);
++		if (ret) {
++			dev_err(dev, "failed to initialize gadget\n");
++			return ret;
++		}
++		break;
++	default:
++		dev_err(dev, "Unsupported mode of operation %d\n", dwc->dr_mode);
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++static void dwc3_core_exit_mode(struct dwc3 *dwc)
++{
++	switch (dwc->dr_mode) {
++	case USB_DR_MODE_PERIPHERAL:
++		dwc3_gadget_exit(dwc);
++		break;
++	case USB_DR_MODE_HOST:
++		dwc3_host_exit(dwc);
++		break;
++	case USB_DR_MODE_OTG:
++		dwc3_host_exit(dwc);
++		dwc3_gadget_exit(dwc);
++		break;
++	default:
++		/* do nothing */
++		break;
++	}
+ }
+ 
+ #define DWC3_ALIGN_MASK		(16 - 1)
+ 
++static void usbd_hw_reset(void)
++{
++	volatile u8	__iomem	*rstgenswrststatic3;
++	u32 reg;
++
++	rstgenswrststatic3 = ioremap(RSTGENSWRSTSTATIC3, 4);
++	reg = readl(rstgenswrststatic3);
++	reg |= (RSTGENSWRSTSTATIC3__SYS_USSD_VCC__MASK |
++		RSTGENSWRSTSTATIC3__SYS_USSD__MASK);
++	writel(reg, rstgenswrststatic3);
++	udelay(10);
++	reg &= ~(RSTGENSWRSTSTATIC3__SYS_USSD_VCC__MASK |
++		RSTGENSWRSTSTATIC3__SYS_USSD__MASK);
++	writel(reg, rstgenswrststatic3);
++	iounmap(rstgenswrststatic3);
++}
++
+ static int dwc3_probe(struct platform_device *pdev)
+ {
+-	struct device_node	*node = pdev->dev.of_node;
++	struct device		*dev = &pdev->dev;
++	struct dwc3_platform_data *pdata = dev_get_platdata(dev);
++	struct device_node	*node = dev->of_node;
+ 	struct resource		*res;
+ 	struct dwc3		*dwc;
+-	struct device		*dev = &pdev->dev;
+ 
+-	int			ret = -ENOMEM;
++	int			ret;
+ 
+ 	void __iomem		*regs;
+ 	void			*mem;
+ 
+-	u8			mode;
++	usbd_hw_reset();
+ 
+ 	mem = devm_kzalloc(dev, sizeof(*dwc) + DWC3_ALIGN_MASK, GFP_KERNEL);
+ 	if (!mem) {
+@@ -387,6 +677,7 @@ static int dwc3_probe(struct platform_device *pdev)
+ 	}
+ 	dwc = PTR_ALIGN(mem, DWC3_ALIGN_MASK + 1);
+ 	dwc->mem = mem;
++	dwc->dev = dev;
+ 
+ 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+ 	if (!res) {
+@@ -403,95 +694,54 @@ static int dwc3_probe(struct platform_device *pdev)
+ 		dev_err(dev, "missing memory resource\n");
+ 		return -ENODEV;
+ 	}
+-	dwc->xhci_resources[0].start = res->start;
+-	dwc->xhci_resources[0].end = dwc->xhci_resources[0].start +
+-					DWC3_XHCI_REGS_END;
+-	dwc->xhci_resources[0].flags = res->flags;
+-	dwc->xhci_resources[0].name = res->name;
+ 
+-	 /*
+-	  * Request memory region but exclude xHCI regs,
+-	  * since it will be requested by the xhci-plat driver.
+-	  */
+-	res = devm_request_mem_region(dev, res->start + DWC3_GLOBALS_REGS_START,
+-			resource_size(res) - DWC3_GLOBALS_REGS_START,
+-			dev_name(dev));
+-	if (!res) {
+-		dev_err(dev, "can't request mem region\n");
+-		return -ENOMEM;
+-	}
++	if (node) {
++		dwc->maximum_speed = of_usb_get_maximum_speed(node);
+ 
+-	regs = devm_ioremap_nocache(dev, res->start, resource_size(res));
+-	if (!regs) {
+-		dev_err(dev, "ioremap failed\n");
+-		return -ENOMEM;
+-	}
++		dwc->needs_fifo_resize = of_property_read_bool(node, "tx-fifo-resize");
++		dwc->dr_mode = of_usb_get_dr_mode(node);
++	} else if (pdata) {
++		dwc->maximum_speed = pdata->maximum_speed;
+ 
+-	if (node) {
+-		dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 0);
+-		dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 1);
+-	} else {
+-		dwc->usb2_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
+-		dwc->usb3_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB3);
++		dwc->needs_fifo_resize = pdata->tx_fifo_resize;
++		dwc->dr_mode = pdata->dr_mode;
+ 	}
+ 
+-	if (IS_ERR(dwc->usb2_phy)) {
+-		ret = PTR_ERR(dwc->usb2_phy);
++	/* default to superspeed if no maximum_speed passed */
++	if (dwc->maximum_speed == USB_SPEED_UNKNOWN)
++		dwc->maximum_speed = USB_SPEED_SUPER;
+ 
+-		/*
+-		 * if -ENXIO is returned, it means PHY layer wasn't
+-		 * enabled, so it makes no sense to return -EPROBE_DEFER
+-		 * in that case, since no PHY driver will ever probe.
+-		 */
+-		if (ret == -ENXIO)
++	ret = dwc3_core_get_phy(dwc);
++	if (ret)
+ 			return ret;
+ 
+-		dev_err(dev, "no usb2 phy configured\n");
+-		return -EPROBE_DEFER;
+-	}
++	dwc->xhci_resources[0].start = res->start;
++	dwc->xhci_resources[0].end = dwc->xhci_resources[0].start +
++					DWC3_XHCI_REGS_END;
++	dwc->xhci_resources[0].flags = res->flags;
++	dwc->xhci_resources[0].name = res->name;
+ 
+-	if (IS_ERR(dwc->usb3_phy)) {
+-		ret = PTR_ERR(dwc->usb3_phy);
++	res->start += DWC3_GLOBALS_REGS_START;
+ 
+ 		/*
+-		 * if -ENXIO is returned, it means PHY layer wasn't
+-		 * enabled, so it makes no sense to return -EPROBE_DEFER
+-		 * in that case, since no PHY driver will ever probe.
++	 * Request memory region but exclude xHCI regs,
++	 * since it will be requested by the xhci-plat driver.
+ 		 */
+-		if (ret == -ENXIO)
+-			return ret;
+-
+-		dev_err(dev, "no usb3 phy configured\n");
+-		return -EPROBE_DEFER;
+-	}
+-
+-	usb_phy_set_suspend(dwc->usb2_phy, 0);
+-	usb_phy_set_suspend(dwc->usb3_phy, 0);
++	regs = devm_ioremap_resource(dev, res);
++	if (IS_ERR(regs))
++		return PTR_ERR(regs);
+ 
+ 	spin_lock_init(&dwc->lock);
+ 	platform_set_drvdata(pdev, dwc);
+ 
+ 	dwc->regs	= regs;
+ 	dwc->regs_size	= resource_size(res);
+-	dwc->dev	= dev;
+ 
++dev_info(dev,"dma setting\n");
+ 	dev->dma_mask	= dev->parent->dma_mask;
+ 	dev->dma_parms	= dev->parent->dma_parms;
+ 	dma_set_coherent_mask(dev, dev->parent->coherent_dma_mask);
+ 
+-	if (!strncmp("super", maximum_speed, 5))
+-		dwc->maximum_speed = DWC3_DCFG_SUPERSPEED;
+-	else if (!strncmp("high", maximum_speed, 4))
+-		dwc->maximum_speed = DWC3_DCFG_HIGHSPEED;
+-	else if (!strncmp("full", maximum_speed, 4))
+-		dwc->maximum_speed = DWC3_DCFG_FULLSPEED1;
+-	else if (!strncmp("low", maximum_speed, 3))
+-		dwc->maximum_speed = DWC3_DCFG_LOWSPEED;
+-	else
+-		dwc->maximum_speed = DWC3_DCFG_SUPERSPEED;
+-
+-	dwc->needs_fifo_resize = of_property_read_bool(node, "tx-fifo-resize");
+-
+ 	pm_runtime_enable(dev);
+ 	pm_runtime_get_sync(dev);
+ 	pm_runtime_forbid(dev);
+@@ -505,61 +755,39 @@ static int dwc3_probe(struct platform_device *pdev)
+ 		goto err0;
+ 	}
+ 
++	if (IS_ENABLED(CONFIG_USB_DWC3_HOST))
++		dwc->dr_mode = USB_DR_MODE_HOST;
++	else if (IS_ENABLED(CONFIG_USB_DWC3_GADGET))
++		dwc->dr_mode = USB_DR_MODE_PERIPHERAL;
++
++	if (dwc->dr_mode == USB_DR_MODE_UNKNOWN)
++		dwc->dr_mode = USB_DR_MODE_OTG;
++
+ 	ret = dwc3_core_init(dwc);
+ 	if (ret) {
+ 		dev_err(dev, "failed to initialize core\n");
+ 		goto err0;
+ 	}
+ 
+-	ret = dwc3_event_buffers_setup(dwc);
+-	if (ret) {
+-		dev_err(dwc->dev, "failed to setup event buffers\n");
++	usb_phy_set_suspend(dwc->usb2_phy, 0);
++	usb_phy_set_suspend(dwc->usb3_phy, 0);
++	ret = phy_power_on(dwc->usb2_generic_phy);
++	if (ret < 0)
+ 		goto err1;
+-	}
+ 
+-	if (IS_ENABLED(CONFIG_USB_DWC3_HOST))
+-		mode = DWC3_MODE_HOST;
+-	else if (IS_ENABLED(CONFIG_USB_DWC3_GADGET))
+-		mode = DWC3_MODE_DEVICE;
+-	else
+-		mode = DWC3_MODE_DRD;
++	ret = phy_power_on(dwc->usb3_generic_phy);
++	if (ret < 0)
++		goto err_usb2phy_power;
+ 
+-	switch (mode) {
+-	case DWC3_MODE_DEVICE:
+-		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_DEVICE);
+-		ret = dwc3_gadget_init(dwc);
+-		if (ret) {
+-			dev_err(dev, "failed to initialize gadget\n");
+-			goto err2;
+-		}
+-		break;
+-	case DWC3_MODE_HOST:
+-		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_HOST);
+-		ret = dwc3_host_init(dwc);
+-		if (ret) {
+-			dev_err(dev, "failed to initialize host\n");
+-			goto err2;
+-		}
+-		break;
+-	case DWC3_MODE_DRD:
+-		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_OTG);
+-		ret = dwc3_host_init(dwc);
++	ret = dwc3_event_buffers_setup(dwc);
+ 		if (ret) {
+-			dev_err(dev, "failed to initialize host\n");
+-			goto err2;
++		dev_err(dwc->dev, "failed to setup event buffers\n");
++		goto err_usb3phy_power;
+ 		}
+ 
+-		ret = dwc3_gadget_init(dwc);
+-		if (ret) {
+-			dev_err(dev, "failed to initialize gadget\n");
++	ret = dwc3_core_init_mode(dwc);
++	if (ret)
+ 			goto err2;
+-		}
+-		break;
+-	default:
+-		dev_err(dev, "Unsupported mode of operation %d\n", mode);
+-		goto err2;
+-	}
+-	dwc->mode = mode;
+ 
+ 	ret = dwc3_debugfs_init(dwc);
+ 	if (ret) {
+@@ -568,30 +796,25 @@ static int dwc3_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	pm_runtime_allow(dev);
++dev_info(dev,"dwc3 normal registerd\n");
+ 
+ 	return 0;
+ 
+ err3:
+-	switch (mode) {
+-	case DWC3_MODE_DEVICE:
+-		dwc3_gadget_exit(dwc);
+-		break;
+-	case DWC3_MODE_HOST:
+-		dwc3_host_exit(dwc);
+-		break;
+-	case DWC3_MODE_DRD:
+-		dwc3_host_exit(dwc);
+-		dwc3_gadget_exit(dwc);
+-		break;
+-	default:
+-		/* do nothing */
+-		break;
+-	}
++	dwc3_core_exit_mode(dwc);
+ 
+ err2:
+ 	dwc3_event_buffers_cleanup(dwc);
+ 
++err_usb3phy_power:
++	phy_power_off(dwc->usb3_generic_phy);
++
++err_usb2phy_power:
++	phy_power_off(dwc->usb2_generic_phy);
++
+ err1:
++	usb_phy_set_suspend(dwc->usb2_phy, 1);
++	usb_phy_set_suspend(dwc->usb3_phy, 1);
+ 	dwc3_core_exit(dwc);
+ 
+ err0:
+@@ -602,38 +825,25 @@ err0:
+ 
+ static int dwc3_remove(struct platform_device *pdev)
+ {
+-	struct dwc3	*dwc = platform_get_drvdata(pdev);
++	  struct dwc3     *dwc = platform_get_drvdata(pdev);
+ 
+-	dwc3_debugfs_exit(dwc);
+-
+-	switch (dwc->mode) {
+-	case DWC3_MODE_DEVICE:
+-		dwc3_gadget_exit(dwc);
+-		break;
+-	case DWC3_MODE_HOST:
+-		dwc3_host_exit(dwc);
+-		break;
+-	case DWC3_MODE_DRD:
+-		dwc3_host_exit(dwc);
+-		dwc3_gadget_exit(dwc);
+-		break;
+-	default:
+-		/* do nothing */
+-		break;
+-	}
++        dwc3_debugfs_exit(dwc);
++        dwc3_core_exit_mode(dwc);
++        dwc3_event_buffers_cleanup(dwc);
++        dwc3_free_event_buffers(dwc);
+ 
+-	dwc3_event_buffers_cleanup(dwc);
+-	dwc3_free_event_buffers(dwc);
++        usb_phy_set_suspend(dwc->usb2_phy, 1);
++        usb_phy_set_suspend(dwc->usb3_phy, 1);
++        phy_power_off(dwc->usb2_generic_phy);
++        phy_power_off(dwc->usb3_generic_phy);
+ 
+-	usb_phy_set_suspend(dwc->usb2_phy, 1);
+-	usb_phy_set_suspend(dwc->usb3_phy, 1);
++        dwc3_core_exit(dwc);
+ 
+-	dwc3_core_exit(dwc);
++        pm_runtime_put_sync(&pdev->dev);
++        pm_runtime_disable(&pdev->dev);
+ 
+-	pm_runtime_put_sync(&pdev->dev);
+-	pm_runtime_disable(&pdev->dev);
++        return 0;
+ 
+-	return 0;
+ }
+ 
+ #ifdef CONFIG_PM_SLEEP
+@@ -644,12 +854,12 @@ static int dwc3_prepare(struct device *dev)
+ 
+ 	spin_lock_irqsave(&dwc->lock, flags);
+ 
+-	switch (dwc->mode) {
+-	case DWC3_MODE_DEVICE:
+-	case DWC3_MODE_DRD:
++	switch (dwc->dr_mode) {
++	case USB_DR_MODE_PERIPHERAL:
++	case USB_DR_MODE_OTG:
+ 		dwc3_gadget_prepare(dwc);
+ 		/* FALLTHROUGH */
+-	case DWC3_MODE_HOST:
++	case USB_DR_MODE_HOST:
+ 	default:
+ 		dwc3_event_buffers_cleanup(dwc);
+ 		break;
+@@ -667,14 +877,14 @@ static void dwc3_complete(struct device *dev)
+ 
+ 	spin_lock_irqsave(&dwc->lock, flags);
+ 
+-	switch (dwc->mode) {
+-	case DWC3_MODE_DEVICE:
+-	case DWC3_MODE_DRD:
++	dwc3_event_buffers_setup(dwc);
++	switch (dwc->dr_mode) {
++	case USB_DR_MODE_PERIPHERAL:
++	case USB_DR_MODE_OTG:
+ 		dwc3_gadget_complete(dwc);
+ 		/* FALLTHROUGH */
+-	case DWC3_MODE_HOST:
++	case USB_DR_MODE_HOST:
+ 	default:
+-		dwc3_event_buffers_setup(dwc);
+ 		break;
+ 	}
+ 
+@@ -688,12 +898,12 @@ static int dwc3_suspend(struct device *dev)
+ 
+ 	spin_lock_irqsave(&dwc->lock, flags);
+ 
+-	switch (dwc->mode) {
+-	case DWC3_MODE_DEVICE:
+-	case DWC3_MODE_DRD:
++	switch (dwc->dr_mode) {
++	case USB_DR_MODE_PERIPHERAL:
++	case USB_DR_MODE_OTG:
+ 		dwc3_gadget_suspend(dwc);
+ 		/* FALLTHROUGH */
+-	case DWC3_MODE_HOST:
++	case USB_DR_MODE_HOST:
+ 	default:
+ 		/* do nothing */
+ 		break;
+@@ -704,6 +914,8 @@ static int dwc3_suspend(struct device *dev)
+ 
+ 	usb_phy_shutdown(dwc->usb3_phy);
+ 	usb_phy_shutdown(dwc->usb2_phy);
++	phy_exit(dwc->usb2_generic_phy);
++	phy_exit(dwc->usb3_generic_phy);
+ 
+ 	return 0;
+ }
+@@ -712,21 +924,28 @@ static int dwc3_resume(struct device *dev)
+ {
+ 	struct dwc3	*dwc = dev_get_drvdata(dev);
+ 	unsigned long	flags;
++	int		ret;
+ 
+ 	usb_phy_init(dwc->usb3_phy);
+ 	usb_phy_init(dwc->usb2_phy);
+-	msleep(100);
++	ret = phy_init(dwc->usb2_generic_phy);
++	if (ret < 0)
++		return ret;
++
++	ret = phy_init(dwc->usb3_generic_phy);
++	if (ret < 0)
++		goto err_usb2phy_init;
+ 
+ 	spin_lock_irqsave(&dwc->lock, flags);
+ 
+ 	dwc3_writel(dwc->regs, DWC3_GCTL, dwc->gctl);
+ 
+-	switch (dwc->mode) {
+-	case DWC3_MODE_DEVICE:
+-	case DWC3_MODE_DRD:
++	switch (dwc->dr_mode) {
++	case USB_DR_MODE_PERIPHERAL:
++	case USB_DR_MODE_OTG:
+ 		dwc3_gadget_resume(dwc);
+ 		/* FALLTHROUGH */
+-	case DWC3_MODE_HOST:
++	case USB_DR_MODE_HOST:
+ 	default:
+ 		/* do nothing */
+ 		break;
+@@ -739,6 +958,11 @@ static int dwc3_resume(struct device *dev)
+ 	pm_runtime_enable(dev);
+ 
+ 	return 0;
++
++err_usb2phy_init:
++	phy_exit(dwc->usb2_generic_phy);
++
++	return ret;
+ }
+ 
+ static const struct dev_pm_ops dwc3_dev_pm_ops = {
+diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
+index e145006..e19a95f 100644
+--- a/drivers/usb/dwc3/core.h
++++ b/drivers/usb/dwc3/core.h
+@@ -49,12 +49,37 @@
+ 
+ #include <linux/usb/ch9.h>
+ #include <linux/usb/gadget.h>
++#include <linux/usb/otg.h>
++
++#include <linux/phy/phy.h>
++
++#define	USB3_PHY_PHY_RESET__PHY_RESET__MASK	0x00000001
++#define	USB3_PHY_PHY_RESET			0x0440028c
++#define USB3_PHY_pcs_tx_swing_full_OFF 0x00000138
++#define USB3_PHY_pcs_tx_swing_full 0x04400138
++#define USB3_PHY_pcs_tx_swing_full__pcs_tx_swing_full__SHIFT       0
++#define USB3_PHY_pcs_tx_swing_full__pcs_tx_swing_full__WIDTH       7
++#define USB3_PHY_pcs_tx_swing_full__pcs_tx_swing_full__MASK        0x0000007F
++#define USB3_PHY_pcs_tx_swing_full__pcs_tx_swing_full__HW_DEFAULT  0x5D
++
++#define RSTGENSWRSTSTATIC3_OFF    0x00000088
++#define RSTGENSWRSTSTATIC3        0x04010088
++
++#define RSTGENSWRSTSTATIC3__SYS_USSD_VCC__SHIFT       8
++#define RSTGENSWRSTSTATIC3__SYS_USSD_VCC__WIDTH       1
++#define RSTGENSWRSTSTATIC3__SYS_USSD_VCC__MASK        0x00000100
++#define RSTGENSWRSTSTATIC3__SYS_USSD_VCC__HW_DEFAULT  0x1
++#define RSTGENSWRSTSTATIC3__SYS_USSD__SHIFT       7
++#define RSTGENSWRSTSTATIC3__SYS_USSD__WIDTH       1
++#define RSTGENSWRSTSTATIC3__SYS_USSD__MASK        0x00000080
++#define RSTGENSWRSTSTATIC3__SYS_USSD__HW_DEFAULT  0x1
+ 
+ /* Global constants */
+ #define DWC3_EP0_BOUNCE_SIZE	512
+ #define DWC3_ENDPOINTS_NUM	32
+ #define DWC3_XHCI_RESOURCES_NUM	2
+ 
++#define DWC3_SCRATCHBUF_SIZE	4096	/* each buffer is assumed to be 4KiB */
+ #define DWC3_EVENT_SIZE		4	/* bytes */
+ #define DWC3_EVENT_MAX_NUM	64	/* 2 events/endpoint */
+ #define DWC3_EVENT_BUFFERS_SIZE	(DWC3_EVENT_SIZE * DWC3_EVENT_MAX_NUM)
+@@ -176,6 +201,7 @@
+ #define DWC3_GCTL_PRTCAP_OTG	3
+ 
+ #define DWC3_GCTL_CORESOFTRESET		(1 << 11)
++#define DWC3_GCTL_SOFITPSYNC		(1 << 10)
+ #define DWC3_GCTL_SCALEDOWN(n)		((n) << 4)
+ #define DWC3_GCTL_SCALEDOWN_MASK	DWC3_GCTL_SCALEDOWN(3)
+ #define DWC3_GCTL_DISSCRAMBLE		(1 << 3)
+@@ -194,6 +220,10 @@
+ #define DWC3_GTXFIFOSIZ_TXFDEF(n)	((n) & 0xffff)
+ #define DWC3_GTXFIFOSIZ_TXFSTADDR(n)	((n) & 0xffff0000)
+ 
++/* Global Event Size Registers */
++#define DWC3_GEVNTSIZ_INTMASK		(1 << 31)
++#define DWC3_GEVNTSIZ_SIZE(n)		((n) & 0xffff)
++
+ /* Global HWPARAMS1 Register */
+ #define DWC3_GHWPARAMS1_EN_PWROPT(n)	(((n) & (3 << 24)) >> 24)
+ #define DWC3_GHWPARAMS1_EN_PWROPT_NO	0
+@@ -207,7 +237,6 @@
+ #define DWC3_MAX_HIBER_SCRATCHBUFS		15
+ 
+ /* Device Configuration Register */
+-#define DWC3_DCFG_LPM_CAP	(1 << 22)
+ #define DWC3_DCFG_DEVADDR(addr)	((addr) << 3)
+ #define DWC3_DCFG_DEVADDR_MASK	DWC3_DCFG_DEVADDR(0x7f)
+ 
+@@ -432,6 +461,7 @@ struct dwc3_ep {
+ 	const struct usb_ss_ep_comp_descriptor *comp_desc;
+ 	struct dwc3		*dwc;
+ 
++	u32			saved_state;
+ 	unsigned		flags;
+ #define DWC3_EP_ENABLED		(1 << 0)
+ #define DWC3_EP_STALL		(1 << 1)
+@@ -666,10 +696,12 @@ struct dwc3 {
+ 	struct usb_ctrlrequest	*ctrl_req;
+ 	struct dwc3_trb		*ep0_trb;
+ 	void			*ep0_bounce;
++	void			*scratchbuf;
+ 	u8			*setup_buf;
+ 	dma_addr_t		ctrl_req_addr;
+ 	dma_addr_t		ep0_trb_addr;
+ 	dma_addr_t		ep0_bounce_addr;
++	dma_addr_t		scratch_addr;
+ 	struct dwc3_request	ep0_usb_req;
+ 
+ 	/* device lock */
+@@ -689,18 +721,23 @@ struct dwc3 {
+ 	struct usb_phy		*usb2_phy;
+ 	struct usb_phy		*usb3_phy;
+ 
++	struct phy		*usb2_generic_phy;
++	struct phy		*usb3_generic_phy;
++
+ 	void __iomem		*regs;
+ 	size_t			regs_size;
+ 
++	enum usb_dr_mode	dr_mode;
++
+ 	/* used for suspend/resume */
+ 	u32			dcfg;
+ 	u32			gctl;
+ 
++	u32			nr_scratch;
+ 	u32			num_event_buffers;
+ 	u32			u1u2;
+ 	u32			maximum_speed;
+ 	u32			revision;
+-	u32			mode;
+ 
+ #define DWC3_REVISION_173A	0x5533173a
+ #define DWC3_REVISION_175A	0x5533175a
+@@ -718,17 +755,9 @@ struct dwc3 {
+ #define DWC3_REVISION_230A	0x5533230a
+ #define DWC3_REVISION_240A	0x5533240a
+ #define DWC3_REVISION_250A	0x5533250a
+-
+-	unsigned		is_selfpowered:1;
+-	unsigned		three_stage_setup:1;
+-	unsigned		ep0_bounced:1;
+-	unsigned		ep0_expect_in:1;
+-	unsigned		start_config_issued:1;
+-	unsigned		setup_packet_pending:1;
+-	unsigned		delayed_status:1;
+-	unsigned		needs_fifo_resize:1;
+-	unsigned		resize_fifos:1;
+-	unsigned		pullups_connected:1;
++#define DWC3_REVISION_260A	0x5533260a
++#define DWC3_REVISION_270A	0x5533270a
++#define DWC3_REVISION_280A	0x5533280a
+ 
+ 	bool			has_gadget;
+ 	bool			has_xhci;
+@@ -755,6 +784,18 @@ struct dwc3 {
+ 
+ 	u8			test_mode;
+ 	u8			test_mode_nr;
++
++	unsigned		delayed_status:1;
++	unsigned		ep0_bounced:1;
++	unsigned		ep0_expect_in:1;
++	unsigned		has_hibernation:1;
++	unsigned		is_selfpowered:1;
++	unsigned		needs_fifo_resize:1;
++	unsigned		pullups_connected:1;
++	unsigned		resize_fifos:1;
++	unsigned		setup_packet_pending:1;
++	unsigned		start_config_issued:1;
++	unsigned		three_stage_setup:1;
+ };
+ 
+ /* -------------------------------------------------------------------------- */
+@@ -881,6 +922,19 @@ union dwc3_event {
+ 	struct dwc3_event_gevt		gevt;
+ };
+ 
++/**
++ * struct dwc3_gadget_ep_cmd_params - representation of endpoint command
++ * parameters
++ * @param2: third parameter
++ * @param1: second parameter
++ * @param0: first parameter
++ */
++struct dwc3_gadget_ep_cmd_params {
++	u32	param2;
++	u32	param1;
++	u32	param0;
++};
++
+ /*
+  * DWC3 Features to be used as Driver Data
+  */
+@@ -905,15 +959,14 @@ static inline void dwc3_host_exit(struct dwc3 *dwc)
+ { }
+ #endif
+ 
+-#if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
+ int dwc3_gadget_init(struct dwc3 *dwc);
+ void dwc3_gadget_exit(struct dwc3 *dwc);
+-#else
+-static inline int dwc3_gadget_init(struct dwc3 *dwc)
+-{ return 0; }
+-static inline void dwc3_gadget_exit(struct dwc3 *dwc)
+-{ }
+-#endif
++int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode);
++int dwc3_gadget_get_link_state(struct dwc3 *dwc);
++int dwc3_gadget_set_link_state(struct dwc3 *dwc, enum dwc3_link_state state);
++int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
++		unsigned cmd, struct dwc3_gadget_ep_cmd_params *params);
++int dwc3_send_gadget_generic_command(struct dwc3 *dwc, int cmd, u32 param);
+ 
+ /* power management interface */
+ #if !IS_ENABLED(CONFIG_USB_DWC3_HOST)
+diff --git a/drivers/usb/dwc3/ep0.c b/drivers/usb/dwc3/ep0.c
+index 6cd418f..0384dfc 100644
+--- a/drivers/usb/dwc3/ep0.c
++++ b/drivers/usb/dwc3/ep0.c
+@@ -168,6 +168,7 @@ static int __dwc3_gadget_ep0_queue(struct dwc3_ep *dep,
+ 
+ 		direction = !dwc->ep0_expect_in;
+ 		dwc->delayed_status = false;
++		usb_gadget_set_state(&dwc->gadget, USB_STATE_CONFIGURED);
+ 
+ 		if (dwc->ep0state == EP0_STATUS_PHASE)
+ 			__dwc3_ep0_do_control_status(dwc, dwc->eps[direction]);
+@@ -371,7 +372,7 @@ static int dwc3_ep0_handle_status(struct dwc3 *dwc,
+ 		break;
+ 	default:
+ 		return -EINVAL;
+-	};
++	}
+ 
+ 	response_pkt = (__le16 *) dwc->setup_buf;
+ 	*response_pkt = cpu_to_le16(usb_status);
+@@ -491,7 +492,7 @@ static int dwc3_ep0_handle_feature(struct dwc3 *dwc,
+ 
+ 	default:
+ 		return -EINVAL;
+-	};
++	}
+ 
+ 	return 0;
+ }
+@@ -555,6 +556,14 @@ static int dwc3_ep0_set_config(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
+ 		ret = dwc3_ep0_delegate_req(dwc, ctrl);
+ 		/* if the cfg matches and the cfg is non zero */
+ 		if (cfg && (!ret || (ret == USB_GADGET_DELAYED_STATUS))) {
++
++			/*
++			 * only change state if set_config has already
++			 * been processed. If gadget driver returns
++			 * USB_GADGET_DELAYED_STATUS, we will wait
++			 * to change the state on the next usb_ep_queue()
++			 */
++			if (ret == 0)
+ 			usb_gadget_set_state(&dwc->gadget,
+ 					USB_STATE_CONFIGURED);
+ 
+@@ -573,7 +582,7 @@ static int dwc3_ep0_set_config(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
+ 
+ 	case USB_STATE_CONFIGURED:
+ 		ret = dwc3_ep0_delegate_req(dwc, ctrl);
+-		if (!cfg)
++		if (!cfg && !ret)
+ 			usb_gadget_set_state(&dwc->gadget,
+ 					USB_STATE_ADDRESS);
+ 		break;
+@@ -722,7 +731,7 @@ static int dwc3_ep0_std_request(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
+ 		dev_vdbg(dwc->dev, "Forwarding to gadget driver\n");
+ 		ret = dwc3_ep0_delegate_req(dwc, ctrl);
+ 		break;
+-	};
++	}
+ 
+ 	return ret;
+ }
+diff --git a/drivers/usb/dwc3/gadget.c b/drivers/usb/dwc3/gadget.c
+index 051b613..ccd414f 100644
+--- a/drivers/usb/dwc3/gadget.c
++++ b/drivers/usb/dwc3/gadget.c
+@@ -54,6 +54,69 @@
+ #include "gadget.h"
+ #include "io.h"
+ 
++/* 55XX A0 D+ workaround */
++#define WORKAROUDN_55XXA0_DP_ISSUE    (1)
++
++#if WORKAROUDN_55XXA0_DP_ISSUE
++/* 55XX A0 D+ workaround */
++#define USB3_PHY_CR_CAP_ADDR      0x04400200
++#define USB3_PHY_CR_CAP_DATA      0x04400204
++#define USB3_PHY_CR_DATA_IN       0x04400208
++#define USB3_PHY_CR_WRITE         0x04400210
++#define USB3_PHY_CR_ACK           0x04400214
++
++volatile u8	__iomem	*cr_cap_addr;
++volatile u8	__iomem	*cr_cap_data;
++volatile u8	__iomem	*cr_data_in;
++volatile u8	__iomem	*cr_write;
++volatile u8	__iomem	*cr_ack;
++
++void phy_cr_addr(u32 address)
++{
++	writel(address, cr_data_in);
++	writel(0x01, cr_cap_addr);
++	while (readl(cr_ack) == 0x00) {}
++	writel(0x0, cr_cap_addr);
++	while (readl(cr_ack) == 0x01) {}
++}
++
++static void phy_cr_write(u32 addr, u32 value)
++{
++	phy_cr_addr(addr);
++	writel(value, cr_data_in);
++	writel(0x01, cr_cap_data);
++	while (readl(cr_ack) == 0x00) {}
++	writel(0x00, cr_cap_data);
++	while (readl(cr_ack) == 0x01) {}
++	writel(0x01, cr_write);
++	while (readl(cr_ack) == 0x00) {}
++	writel(0x00, cr_write);
++	while (readl(cr_ack) == 0x01) {}
++}
++
++static void phy_dp_pull_up(u8 on, u8 weak)
++{
++	/* NOTE: The enable bits [5:4] cannot be read back. */
++	switch (on)
++	{
++	case 0:
++		/* Deactivate pull-up first */
++		phy_cr_write(0x2014, 0x31);
++		/* Disable override */
++		phy_cr_write(0x2014, 0x00);
++		break;
++	case 1:
++		if (weak)
++			phy_cr_write(0x2014, 0x32);
++		else
++			phy_cr_write(0x2014, 0x30);
++		break;
++	default:
++		break;
++	}
++}
++#endif
++
+ /**
+  * dwc3_gadget_set_test_mode - Enables USB2 Test Modes
+  * @dwc: pointer to our context structure
+@@ -88,6 +151,22 @@ int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode)
+ }
+ 
+ /**
++ * dwc3_gadget_get_link_state - Gets current state of USB Link
++ * @dwc: pointer to our context structure
++ *
++ * Caller should take care of locking. This function will
++ * return the link state on success (>= 0) or -ETIMEDOUT.
++ */
++int dwc3_gadget_get_link_state(struct dwc3 *dwc)
++{
++	u32		reg;
++
++	reg = dwc3_readl(dwc->regs, DWC3_DSTS);
++
++	return DWC3_DSTS_USBLNKST(reg);
++}
++
++/**
+  * dwc3_gadget_set_link_state - Sets USB Link to a particular State
+  * @dwc: pointer to our context structure
+  * @state: the state to put link into
+@@ -191,15 +270,12 @@ int dwc3_gadget_resize_tx_fifos(struct dwc3 *dwc)
+ 	 * improve this algorithm so that we better use the internal
+ 	 * FIFO space
+ 	 */
+-	for (num = 0; num < DWC3_ENDPOINTS_NUM; num++) {
+-		struct dwc3_ep	*dep = dwc->eps[num];
+-		int		fifo_number = dep->number >> 1;
++	for (num = 0; num < dwc->num_in_eps; num++) {
++		/* bit0 indicates direction; 1 means IN ep */
++		struct dwc3_ep	*dep = dwc->eps[(num << 1) | 1];
+ 		int		mult = 1;
+ 		int		tmp;
+ 
+-		if (!(dep->number & 1))
+-			continue;
+-
+ 		if (!(dep->flags & DWC3_EP_ENABLED))
+ 			continue;
+ 
+@@ -228,8 +304,7 @@ int dwc3_gadget_resize_tx_fifos(struct dwc3 *dwc)
+ 		dev_vdbg(dwc->dev, "%s: Fifo Addr %04x Size %d\n",
+ 				dep->name, last_fifo_depth, fifo_size & 0xffff);
+ 
+-		dwc3_writel(dwc->regs, DWC3_GTXFIFOSIZ(fifo_number),
+-				fifo_size);
++		dwc3_writel(dwc->regs, DWC3_GTXFIFOSIZ(num), fifo_size);
+ 
+ 		last_fifo_depth += (fifo_size & 0xffff);
+ 	}
+@@ -306,6 +381,68 @@ static const char *dwc3_gadget_ep_cmd_string(u8 cmd)
+ 	}
+ }
+ 
++static const char *dwc3_gadget_generic_cmd_string(u8 cmd)
++{
++	switch (cmd) {
++	case DWC3_DGCMD_SET_LMP:
++		return "Set LMP";
++	case DWC3_DGCMD_SET_PERIODIC_PAR:
++		return "Set Periodic Parameters";
++	case DWC3_DGCMD_XMIT_FUNCTION:
++		return "Transmit Function Wake Device Notification";
++	case DWC3_DGCMD_SET_SCRATCHPAD_ADDR_LO:
++		return "Set Scratchpad Buffer Array Address Lo";
++	case DWC3_DGCMD_SET_SCRATCHPAD_ADDR_HI:
++		return "Set Scratchpad Buffer Array Address Hi";
++	case DWC3_DGCMD_SELECTED_FIFO_FLUSH:
++		return "Selected FIFO Flush";
++	case DWC3_DGCMD_ALL_FIFO_FLUSH:
++		return "All FIFO Flush";
++	case DWC3_DGCMD_SET_ENDPOINT_NRDY:
++		return "Set Endpoint NRDY";
++	case DWC3_DGCMD_RUN_SOC_BUS_LOOPBACK:
++		return "Run SoC Bus Loopback Test";
++	default:
++		return "UNKNOWN";
++	}
++}
++
++static const char *dwc3_gadget_link_string(enum dwc3_link_state link_state)
++{
++	switch (link_state) {
++	case DWC3_LINK_STATE_U0:
++		return "U0";
++	case DWC3_LINK_STATE_U1:
++		return "U1";
++	case DWC3_LINK_STATE_U2:
++		return "U2";
++	case DWC3_LINK_STATE_U3:
++		return "U3";
++	case DWC3_LINK_STATE_SS_DIS:
++		return "SS.Disabled";
++	case DWC3_LINK_STATE_RX_DET:
++		return "RX.Detect";
++	case DWC3_LINK_STATE_SS_INACT:
++		return "SS.Inactive";
++	case DWC3_LINK_STATE_POLL:
++		return "Polling";
++	case DWC3_LINK_STATE_RECOV:
++		return "Recovery";
++	case DWC3_LINK_STATE_HRESET:
++		return "Hot Reset";
++	case DWC3_LINK_STATE_CMPLY:
++		return "Compliance";
++	case DWC3_LINK_STATE_LPBK:
++		return "Loopback";
++	case DWC3_LINK_STATE_RESET:
++		return "Reset";
++	case DWC3_LINK_STATE_RESUME:
++		return "Resume";
++	default:
++		return "UNKNOWN link state\n";
++	}
++}
++
+ int dwc3_send_gadget_generic_command(struct dwc3 *dwc, int cmd, u32 param)
+ {
+ 	u32		timeout = 500;
+@@ -437,7 +574,7 @@ static int dwc3_gadget_start_config(struct dwc3 *dwc, struct dwc3_ep *dep)
+ static int dwc3_gadget_set_ep_config(struct dwc3 *dwc, struct dwc3_ep *dep,
+ 		const struct usb_endpoint_descriptor *desc,
+ 		const struct usb_ss_ep_comp_descriptor *comp_desc,
+-		bool ignore)
++		bool ignore, bool restore)
+ {
+ 	struct dwc3_gadget_ep_cmd_params params;
+ 
+@@ -456,6 +593,11 @@ static int dwc3_gadget_set_ep_config(struct dwc3 *dwc, struct dwc3_ep *dep,
+ 	if (ignore)
+ 		params.param0 |= DWC3_DEPCFG_IGN_SEQ_NUM;
+ 
++	if (restore) {
++		params.param0 |= DWC3_DEPCFG_ACTION_RESTORE;
++		params.param2 |= dep->saved_state;
++	}
++
+ 	params.param1 = DWC3_DEPCFG_XFER_COMPLETE_EN
+ 		| DWC3_DEPCFG_XFER_NOT_READY_EN;
+ 
+@@ -514,11 +656,13 @@ static int dwc3_gadget_set_xfer_resource(struct dwc3 *dwc, struct dwc3_ep *dep)
+ static int __dwc3_gadget_ep_enable(struct dwc3_ep *dep,
+ 		const struct usb_endpoint_descriptor *desc,
+ 		const struct usb_ss_ep_comp_descriptor *comp_desc,
+-		bool ignore)
++		bool ignore, bool restore)
+ {
+ 	struct dwc3		*dwc = dep->dwc;
+ 	u32			reg;
+-	int			ret = -ENOMEM;
++	int			ret;
++
++	dev_vdbg(dwc->dev, "Enabling %s\n", dep->name);
+ 
+ 	if (!(dep->flags & DWC3_EP_ENABLED)) {
+ 		ret = dwc3_gadget_start_config(dwc, dep);
+@@ -526,7 +670,8 @@ static int __dwc3_gadget_ep_enable(struct dwc3_ep *dep,
+ 			return ret;
+ 	}
+ 
+-	ret = dwc3_gadget_set_ep_config(dwc, dep, desc, comp_desc, ignore);
++	ret = dwc3_gadget_set_ep_config(dwc, dep, desc, comp_desc, ignore,
++			restore);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -565,13 +710,13 @@ static int __dwc3_gadget_ep_enable(struct dwc3_ep *dep,
+ 	return 0;
+ }
+ 
+-static void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum);
++static void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum, bool force);
+ static void dwc3_remove_requests(struct dwc3 *dwc, struct dwc3_ep *dep)
+ {
+ 	struct dwc3_request		*req;
+ 
+ 	if (!list_empty(&dep->req_queued)) {
+-		dwc3_stop_active_transfer(dwc, dep->number);
++		dwc3_stop_active_transfer(dwc, dep->number, true);
+ 
+ 		/* - giveback all requests to gadget driver */
+ 		while (!list_empty(&dep->req_queued)) {
+@@ -679,10 +824,8 @@ static int dwc3_gadget_ep_enable(struct usb_ep *ep,
+ 		dev_err(dwc->dev, "invalid endpoint transfer type\n");
+ 	}
+ 
+-	dev_vdbg(dwc->dev, "Enabling %s\n", dep->name);
+-
+ 	spin_lock_irqsave(&dwc->lock, flags);
+-	ret = __dwc3_gadget_ep_enable(dep, desc, ep->comp_desc, false);
++	ret = __dwc3_gadget_ep_enable(dep, desc, ep->comp_desc, false, false);
+ 	spin_unlock_irqrestore(&dwc->lock, flags);
+ 
+ 	return ret;
+@@ -764,10 +907,6 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
+ 			length, last ? " last" : "",
+ 			chain ? " chain" : "");
+ 
+-	/* Skip the LINK-TRB on ISOC */
+-	if (((dep->free_slot & DWC3_TRB_MASK) == DWC3_TRB_NUM - 1) &&
+-			usb_endpoint_xfer_isoc(dep->endpoint.desc))
+-		dep->free_slot++;
+ 
+ 	trb = &dep->trb_pool[dep->free_slot & DWC3_TRB_MASK];
+ 
+@@ -779,6 +918,10 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
+ 	}
+ 
+ 	dep->free_slot++;
++	/* Skip the LINK-TRB on ISOC */
++	if (((dep->free_slot & DWC3_TRB_MASK) == DWC3_TRB_NUM - 1) &&
++			usb_endpoint_xfer_isoc(dep->endpoint.desc))
++		dep->free_slot++;
+ 
+ 	trb->size = DWC3_TRB_SIZE_LENGTH(length);
+ 	trb->bpl = lower_32_bits(dma);
+@@ -794,9 +937,6 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
+ 			trb->ctrl = DWC3_TRBCTL_ISOCHRONOUS_FIRST;
+ 		else
+ 			trb->ctrl = DWC3_TRBCTL_ISOCHRONOUS;
+-
+-		if (!req->request.no_interrupt && !chain)
+-			trb->ctrl |= DWC3_TRB_CTRL_IOC;
+ 		break;
+ 
+ 	case USB_ENDPOINT_XFER_BULK:
+@@ -811,6 +951,9 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
+ 		BUG();
+ 	}
+ 
++	if (!req->request.no_interrupt && !chain)
++		trb->ctrl |= DWC3_TRB_CTRL_IOC;
++
+ 	if (usb_endpoint_xfer_isoc(dep->endpoint.desc)) {
+ 		trb->ctrl |= DWC3_TRB_CTRL_ISP_IMI;
+ 		trb->ctrl |= DWC3_TRB_CTRL_CSP;
+@@ -1100,7 +1243,7 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
+ 		 */
+ 		if (usb_endpoint_xfer_isoc(dep->endpoint.desc)) {
+ 			if (list_empty(&dep->req_queued)) {
+-				dwc3_stop_active_transfer(dwc, dep->number);
++				dwc3_stop_active_transfer(dwc, dep->number, true);
+ 				dep->flags = DWC3_EP_ENABLED;
+ 			}
+ 			return 0;
+@@ -1130,6 +1273,23 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
+ 		return ret;
+ 	}
+ 
++	/*
++	 * 4. Stream Capable Bulk Endpoints. We need to start the transfer
++	 * right away, otherwise host will not know we have streams to be
++	 * handled.
++	 */
++	if (dep->stream_capable) {
++		int	ret;
++
++		ret = __dwc3_gadget_kick_transfer(dep, 0, true);
++		if (ret && ret != -EBUSY) {
++			struct dwc3	*dwc = dep->dwc;
++
++			dev_dbg(dwc->dev, "%s: failed to kick transfers\n",
++					dep->name);
++		}
++	}
++
+ 	return 0;
+ }
+ 
+@@ -1186,7 +1346,7 @@ static int dwc3_gadget_ep_dequeue(struct usb_ep *ep,
+ 		}
+ 		if (r == req) {
+ 			/* wait until it is processed */
+-			dwc3_stop_active_transfer(dwc, dep->number);
++			dwc3_stop_active_transfer(dwc, dep->number, true);
+ 			goto out1;
+ 		}
+ 		dev_err(dwc->dev, "request %p was not queued to %s\n",
+@@ -1418,7 +1578,7 @@ static int dwc3_gadget_set_selfpowered(struct usb_gadget *g,
+ 	return 0;
+ }
+ 
+-static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
++static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
+ {
+ 	u32			reg;
+ 	u32			timeout = 500;
+@@ -1433,9 +1593,17 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
+ 		if (dwc->revision >= DWC3_REVISION_194A)
+ 			reg &= ~DWC3_DCTL_KEEP_CONNECT;
+ 		reg |= DWC3_DCTL_RUN_STOP;
++
++		if (dwc->has_hibernation)
++			reg |= DWC3_DCTL_KEEP_CONNECT;
++
+ 		dwc->pullups_connected = true;
+ 	} else {
+ 		reg &= ~DWC3_DCTL_RUN_STOP;
++
++		if (dwc->has_hibernation && !suspend)
++			reg &= ~DWC3_DCTL_KEEP_CONNECT;
++
+ 		dwc->pullups_connected = false;
+ 	}
+ 
+@@ -1461,6 +1629,10 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
+ 			? dwc->gadget_driver->function : "no-function",
+ 			is_on ? "connect" : "disconnect");
+ 
++#if WORKAROUDN_55XXA0_DP_ISSUE
++	/* 55XX A0 D+ workaround */
++	phy_dp_pull_up(1, 1);
++#endif
+ 	return 0;
+ }
+ 
+@@ -1473,7 +1645,7 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
+ 	is_on = !!is_on;
+ 
+ 	spin_lock_irqsave(&dwc->lock, flags);
+-	ret = dwc3_gadget_run_stop(dwc, is_on);
++	ret = dwc3_gadget_run_stop(dwc, is_on, false);
+ 	spin_unlock_irqrestore(&dwc->lock, flags);
+ 
+ 	return ret;
+@@ -1529,10 +1701,25 @@ int dwc3_gadget_restart(struct dwc3 *dwc)
+ 	 * STAR#9000525659: Clock Domain Crossing on DCTL in
+ 	 * USB 2.0 Mode
+ 	 */
+-	if (dwc->revision < DWC3_REVISION_220A)
++	if (dwc->revision < DWC3_REVISION_220A) {
+ 		reg |= DWC3_DCFG_SUPERSPEED;
+-	else
+-		reg |= dwc->maximum_speed;
++	} else {
++		switch (dwc->maximum_speed) {
++		case USB_SPEED_LOW:
++			reg |= DWC3_DSTS_LOWSPEED;
++			break;
++		case USB_SPEED_FULL:
++			reg |= DWC3_DSTS_FULLSPEED1;
++			break;
++		case USB_SPEED_HIGH:
++			reg |= DWC3_DSTS_HIGHSPEED;
++			break;
++		case USB_SPEED_SUPER:	/* FALLTHROUGH */
++		case USB_SPEED_UNKNOWN:	/* FALTHROUGH */
++		default:
++			reg |= DWC3_DSTS_SUPERSPEED;
++		}
++	}
+ 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
+ 
+ 	dwc->start_config_issued = false;
+@@ -1541,14 +1728,16 @@ int dwc3_gadget_restart(struct dwc3 *dwc)
+ 	dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(512);
+ 
+ 	dep = dwc->eps[0];
+-	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false);
++	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false,
++			false);
+ 	if (ret) {
+ 		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+ 		goto err0;
+ 	}
+ 
+ 	dep = dwc->eps[1];
+-	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false);
++	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false,
++			false);
+ 	if (ret) {
+ 		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+ 		goto err1;
+@@ -1678,16 +1867,18 @@ static int dwc3_gadget_init_hw_endpoints(struct dwc3 *dwc,
+ 
+ 		dep->dwc = dwc;
+ 		dep->number = epnum;
++		dep->direction = !!direction;
+ 		dwc->eps[epnum] = dep;
+ 
+ 		snprintf(dep->name, sizeof(dep->name), "ep%d%s", epnum >> 1,
+ 				(epnum & 1) ? "in" : "out");
+ 
+ 		dep->endpoint.name = dep->name;
+-		dep->direction = (epnum & 1);
++
++		dev_vdbg(dwc->dev, "initializing %s\n", dep->name);
+ 
+ 		if (epnum == 0 || epnum == 1) {
+-			dep->endpoint.maxpacket = 512;
++			usb_ep_set_maxpacket_limit(&dep->endpoint, 512);
+ 			dep->endpoint.maxburst = 1;
+ 			dep->endpoint.ops = &dwc3_gadget_ep0_ops;
+ 			if (!epnum)
+@@ -1695,7 +1886,7 @@ static int dwc3_gadget_init_hw_endpoints(struct dwc3 *dwc,
+ 		} else {
+ 			int		ret;
+ 
+-			dep->endpoint.maxpacket = 1024;
++			usb_ep_set_maxpacket_limit(&dep->endpoint, 1024);
+ 			dep->endpoint.max_streams = 15;
+ 			dep->endpoint.ops = &dwc3_gadget_ep_ops;
+ 			list_add_tail(&dep->endpoint.ep_list,
+@@ -1886,15 +2077,12 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
+ 			 */
+ 			dep->flags = DWC3_EP_PENDING_REQUEST;
+ 		} else {
+-			dwc3_stop_active_transfer(dwc, dep->number);
++			dwc3_stop_active_transfer(dwc, dep->number, true);
+ 			dep->flags = DWC3_EP_ENABLED;
+ 		}
+ 		return 1;
+ 	}
+ 
+-	if ((event->status & DEPEVT_STATUS_IOC) &&
+-			(trb->ctrl & DWC3_TRB_CTRL_IOC))
+-		return 0;
+ 	return 1;
+ }
+ 
+@@ -2036,7 +2224,25 @@ static void dwc3_disconnect_gadget(struct dwc3 *dwc)
+ 	}
+ }
+ 
+-static void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum)
++static void dwc3_suspend_gadget(struct dwc3 *dwc)
++{
++	if (dwc->gadget_driver && dwc->gadget_driver->suspend) {
++		spin_unlock(&dwc->lock);
++		dwc->gadget_driver->suspend(&dwc->gadget);
++		spin_lock(&dwc->lock);
++	}
++}
++
++static void dwc3_resume_gadget(struct dwc3 *dwc)
++{
++	if (dwc->gadget_driver && dwc->gadget_driver->resume) {
++		spin_unlock(&dwc->lock);
++		dwc->gadget_driver->resume(&dwc->gadget);
++		spin_lock(&dwc->lock);
++	}
++}
++
++static void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum, bool force)
+ {
+ 	struct dwc3_ep *dep;
+ 	struct dwc3_gadget_ep_cmd_params params;
+@@ -2068,7 +2274,8 @@ static void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum)
+ 	 */
+ 
+ 	cmd = DWC3_DEPCMD_ENDTRANSFER;
+-	cmd |= DWC3_DEPCMD_HIPRI_FORCERM | DWC3_DEPCMD_CMDIOC;
++	cmd |= force ? DWC3_DEPCMD_HIPRI_FORCERM : 0;
++	cmd |= DWC3_DEPCMD_CMDIOC;
+ 	cmd |= DWC3_DEPCMD_PARAM(dep->resource_index);
+ 	memset(&params, 0, sizeof(params));
+ 	ret = dwc3_send_gadget_ep_cmd(dwc, dep->number, cmd, &params);
+@@ -2139,34 +2346,11 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
+ 
+ 	dwc->gadget.speed = USB_SPEED_UNKNOWN;
+ 	dwc->setup_packet_pending = false;
+-}
+-
+-static void dwc3_gadget_usb3_phy_suspend(struct dwc3 *dwc, int suspend)
+-{
+-	u32			reg;
+-
+-	reg = dwc3_readl(dwc->regs, DWC3_GUSB3PIPECTL(0));
+-
+-	if (suspend)
+-		reg |= DWC3_GUSB3PIPECTL_SUSPHY;
+-	else
+-		reg &= ~DWC3_GUSB3PIPECTL_SUSPHY;
+-
+-	dwc3_writel(dwc->regs, DWC3_GUSB3PIPECTL(0), reg);
+-}
+ 
+-static void dwc3_gadget_usb2_phy_suspend(struct dwc3 *dwc, int suspend)
+-{
+-	u32			reg;
+-
+-	reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
+-
+-	if (suspend)
+-		reg |= DWC3_GUSB2PHYCFG_SUSPHY;
+-	else
+-		reg &= ~DWC3_GUSB2PHYCFG_SUSPHY;
+-
+-	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
++#if WORKAROUDN_55XXA0_DP_ISSUE
++	/* 55XX A0 D+ workaround */
++	phy_dp_pull_up(1, 1);
++#endif
+ }
+ 
+ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
+@@ -2206,16 +2390,15 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
+ 			dwc3_gadget_disconnect_interrupt(dwc);
+ 	}
+ 
++#if WORKAROUDN_55XXA0_DP_ISSUE
++	if (dwc->gadget.speed == USB_SPEED_UNKNOWN)
++		/* 55XX A0 D+ workaround */
++		phy_dp_pull_up(0, 0);
++#endif
++
+ 	/* after reset -> Default State */
+ 	usb_gadget_set_state(&dwc->gadget, USB_STATE_DEFAULT);
+ 
+-	/* Recent versions support automatic phy suspend and don't need this */
+-	if (dwc->revision < DWC3_REVISION_194A) {
+-		/* Resume PHYs */
+-		dwc3_gadget_usb2_phy_suspend(dwc, false);
+-		dwc3_gadget_usb3_phy_suspend(dwc, false);
+-	}
+-
+ 	if (dwc->gadget.speed != USB_SPEED_UNKNOWN)
+ 		dwc3_disconnect_gadget(dwc);
+ 
+@@ -2259,20 +2442,6 @@ static void dwc3_update_ram_clk_sel(struct dwc3 *dwc, u32 speed)
+ 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+ }
+ 
+-static void dwc3_gadget_phy_suspend(struct dwc3 *dwc, u8 speed)
+-{
+-	switch (speed) {
+-	case USB_SPEED_SUPER:
+-		dwc3_gadget_usb2_phy_suspend(dwc, true);
+-		break;
+-	case USB_SPEED_HIGH:
+-	case USB_SPEED_FULL:
+-	case USB_SPEED_LOW:
+-		dwc3_gadget_usb3_phy_suspend(dwc, true);
+-		break;
+-	}
+-}
+-
+ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
+ {
+ 	struct dwc3_ep		*dep;
+@@ -2346,23 +2515,23 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
+ 		reg |= DWC3_DCTL_HIRD_THRES(12);
+ 
+ 		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+-	}
+-
+-	/* Recent versions support automatic phy suspend and don't need this */
+-	if (dwc->revision < DWC3_REVISION_194A) {
+-		/* Suspend unneeded PHY */
+-		dwc3_gadget_phy_suspend(dwc, dwc->gadget.speed);
++	} else {
++		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
++		reg &= ~DWC3_DCTL_HIRD_THRES_MASK;
++		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+ 	}
+ 
+ 	dep = dwc->eps[0];
+-	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, true);
++	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, true,
++			false);
+ 	if (ret) {
+ 		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+ 		return;
+ 	}
+ 
+ 	dep = dwc->eps[1];
+-	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, true);
++	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, true,
++			false);
+ 	if (ret) {
+ 		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+ 		return;
+@@ -2468,9 +2637,73 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
+ 		}
+ 	}
+ 
++#if WORKAROUDN_55XXA0_DP_ISSUE
++	if ((dwc->gadget.speed != USB_SPEED_SUPER) &&
++		(dwc->gadget.speed != USB_SPEED_UNKNOWN)) {
++		if ((next == DWC3_LINK_STATE_U2) ||
++			(next == DWC3_LINK_STATE_U3) ||
++			(next == DWC3_LINK_STATE_RX_DET)) {
++			/* 55XX A0 D+ workaround */
++			phy_dp_pull_up(1, 1);
++		}
++	}
++	if (next == DWC3_LINK_STATE_SS_DIS) {
++		/* 55XX A0 D+ workaround */
++		phy_dp_pull_up(1, 1);
++	}
++	if ((dwc->gadget.speed == USB_SPEED_FULL) &&
++		(next == DWC3_LINK_STATE_U0)) {
++		/* 55XX A0 D+ workaround */
++		phy_dp_pull_up(1, 1);
++	}
++#endif
++
++	switch (next) {
++	case DWC3_LINK_STATE_U1:
++		if (dwc->speed == USB_SPEED_SUPER)
++			dwc3_suspend_gadget(dwc);
++		break;
++	case DWC3_LINK_STATE_U2:
++	case DWC3_LINK_STATE_U3:
++		dwc3_suspend_gadget(dwc);
++		break;
++	case DWC3_LINK_STATE_RESUME:
++		dwc3_resume_gadget(dwc);
++		break;
++	default:
++		/* do nothing */
++		break;
++	}
++
++	dev_vdbg(dwc->dev, "link change: %s [%d] -> %s [%d]\n",
++			dwc3_gadget_link_string(dwc->link_state),
++			dwc->link_state, dwc3_gadget_link_string(next), next);
++
+ 	dwc->link_state = next;
++}
+ 
+-	dev_vdbg(dwc->dev, "%s link %d\n", __func__, dwc->link_state);
++static void dwc3_gadget_hibernation_interrupt(struct dwc3 *dwc,
++		unsigned int evtinfo)
++{
++	unsigned int is_ss = evtinfo & BIT(4);
++
++	/**
++	 * WORKAROUND: DWC3 revison 2.20a with hibernation support
++	 * have a known issue which can cause USB CV TD.9.23 to fail
++	 * randomly.
++	 *
++	 * Because of this issue, core could generate bogus hibernation
++	 * events which SW needs to ignore.
++	 *
++	 * Refers to:
++	 *
++	 * STAR#9000546576: Device Mode Hibernation: Issue in USB 2.0
++	 * Device Fallback from SuperSpeed
++	 */
++	if (is_ss ^ (dwc->speed == USB_SPEED_SUPER))
++		return;
++
++	/* enter hibernation here */
+ }
+ 
+ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
+@@ -2489,6 +2722,13 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
+ 	case DWC3_DEVICE_EVENT_WAKEUP:
+ 		dwc3_gadget_wakeup_interrupt(dwc);
+ 		break;
++	case DWC3_DEVICE_EVENT_HIBER_REQ:
++		if (dev_WARN_ONCE(dwc->dev, !dwc->has_hibernation,
++					"unexpected hibernation event\n"))
++			break;
++
++		dwc3_gadget_hibernation_interrupt(dwc, event->event_info);
++		break;
+ 	case DWC3_DEVICE_EVENT_LINK_STATUS_CHANGE:
+ 		dwc3_gadget_linksts_change_interrupt(dwc, event->event_info);
+ 		break;
+@@ -2531,24 +2771,18 @@ static void dwc3_process_event_entry(struct dwc3 *dwc,
+ 	}
+ }
+ 
+-static irqreturn_t dwc3_thread_interrupt(int irq, void *_dwc)
++static irqreturn_t dwc3_process_event_buf(struct dwc3 *dwc, u32 buf)
+ {
+-	struct dwc3 *dwc = _dwc;
+-	unsigned long flags;
++	struct dwc3_event_buffer *evt;
+ 	irqreturn_t ret = IRQ_NONE;
+-	int i;
+-
+-	spin_lock_irqsave(&dwc->lock, flags);
+-
+-	for (i = 0; i < dwc->num_event_buffers; i++) {
+-		struct dwc3_event_buffer *evt;
+ 		int			left;
++	u32 reg;
+ 
+-		evt = dwc->ev_buffs[i];
++	evt = dwc->ev_buffs[buf];
+ 		left = evt->count;
+ 
+ 		if (!(evt->flags & DWC3_EVENT_PENDING))
+-			continue;
++		return IRQ_NONE;
+ 
+ 		while (left > 0) {
+ 			union dwc3_event event;
+@@ -2569,23 +2803,43 @@ static irqreturn_t dwc3_thread_interrupt(int irq, void *_dwc)
+ 			evt->lpos = (evt->lpos + 4) % DWC3_EVENT_BUFFERS_SIZE;
+ 			left -= 4;
+ 
+-			dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(i), 4);
++		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(buf), 4);
+ 		}
+ 
+ 		evt->count = 0;
+ 		evt->flags &= ~DWC3_EVENT_PENDING;
+ 		ret = IRQ_HANDLED;
+-	}
++
++	/* Unmask interrupt */
++	reg = dwc3_readl(dwc->regs, DWC3_GEVNTSIZ(buf));
++	reg &= ~DWC3_GEVNTSIZ_INTMASK;
++	dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(buf), reg);
++
++	return ret;
++}
++
++static irqreturn_t dwc3_thread_interrupt(int irq, void *_dwc)
++{
++	struct dwc3 *dwc = _dwc;
++	unsigned long flags;
++	irqreturn_t ret = IRQ_NONE;
++	int i;
++
++	spin_lock_irqsave(&dwc->lock, flags);
++
++	for (i = 0; i < dwc->num_event_buffers; i++)
++		ret |= dwc3_process_event_buf(dwc, i);
+ 
+ 	spin_unlock_irqrestore(&dwc->lock, flags);
+ 
+ 	return ret;
+ }
+ 
+-static irqreturn_t dwc3_process_event_buf(struct dwc3 *dwc, u32 buf)
++static irqreturn_t dwc3_check_event_buf(struct dwc3 *dwc, u32 buf)
+ {
+ 	struct dwc3_event_buffer *evt;
+ 	u32 count;
++	u32 reg;
+ 
+ 	evt = dwc->ev_buffs[buf];
+ 
+@@ -2597,6 +2851,11 @@ static irqreturn_t dwc3_process_event_buf(struct dwc3 *dwc, u32 buf)
+ 	evt->count = count;
+ 	evt->flags |= DWC3_EVENT_PENDING;
+ 
++	/* Mask interrupt */
++	reg = dwc3_readl(dwc->regs, DWC3_GEVNTSIZ(buf));
++	reg |= DWC3_GEVNTSIZ_INTMASK;
++	dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(buf), reg);
++
+ 	return IRQ_WAKE_THREAD;
+ }
+ 
+@@ -2611,7 +2870,7 @@ static irqreturn_t dwc3_interrupt(int irq, void *_dwc)
+ 	for (i = 0; i < dwc->num_event_buffers; i++) {
+ 		irqreturn_t status;
+ 
+-		status = dwc3_process_event_buf(dwc, i);
++		status = dwc3_check_event_buf(dwc, i);
+ 		if (status == IRQ_WAKE_THREAD)
+ 			ret = status;
+ 	}
+@@ -2629,8 +2888,29 @@ static irqreturn_t dwc3_interrupt(int irq, void *_dwc)
+  */
+ int dwc3_gadget_init(struct dwc3 *dwc)
+ {
+-	u32					reg;
+ 	int					ret;
++	volatile u8	__iomem	*reg;
++
++#if WORKAROUDN_55XXA0_DP_ISSUE
++	/* 55XX A0 D+ workaround */
++	cr_cap_addr = ioremap(USB3_PHY_CR_CAP_ADDR, 4);
++	cr_cap_data = ioremap(USB3_PHY_CR_CAP_DATA, 4);
++	cr_data_in = ioremap(USB3_PHY_CR_DATA_IN, 4);
++	cr_write = ioremap(USB3_PHY_CR_WRITE, 4);
++	cr_ack = ioremap(USB3_PHY_CR_ACK, 4);
++#endif
++
++	/* Initialize PHY settings */
++	reg = ioremap(USB3_PHY_pcs_tx_swing_full, 4);
++	writel(0x7D, reg);
++	iounmap(reg);
++
++	/* Reset PHY to take all updated PHY settings */
++	reg = ioremap(USB3_PHY_PHY_RESET, 4);
++	writel(readl(reg) | USB3_PHY_PHY_RESET__PHY_RESET__MASK, reg);
++	udelay(5);
++	writel(0, reg);
++	iounmap(reg);
+ 
+ 	dwc->ctrl_req = dma_alloc_coherent(dwc->dev, sizeof(*dwc->ctrl_req),
+ 			&dwc->ctrl_req_addr, GFP_KERNEL);
+@@ -2672,6 +2952,12 @@ int dwc3_gadget_init(struct dwc3 *dwc)
+ 	dwc->gadget.name		= "dwc3-gadget";
+ 
+ 	/*
++	 * Per databook, DWC3 needs buffer size to be aligned to MaxPacketSize
++	 * on ep out.
++	 */
++	dwc->gadget.quirk_ep_out_aligned_size = true;
++
++	/*
+ 	 * REVISIT: Here we should clear all pending IRQs to be
+ 	 * sure we're starting from a well known location.
+ 	 */
+@@ -2680,28 +2966,16 @@ int dwc3_gadget_init(struct dwc3 *dwc)
+ 	if (ret)
+ 		goto err4;
+ 
+-	reg = dwc3_readl(dwc->regs, DWC3_DCFG);
+-	reg |= DWC3_DCFG_LPM_CAP;
+-	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
+-
+-	/* Enable USB2 LPM and automatic phy suspend only on recent versions */
+-	if (dwc->revision >= DWC3_REVISION_194A) {
+-		dwc3_gadget_usb2_phy_suspend(dwc, false);
+-		dwc3_gadget_usb3_phy_suspend(dwc, false);
+-	}
+-
+ 	ret = usb_add_gadget_udc(dwc->dev, &dwc->gadget);
+ 	if (ret) {
+ 		dev_err(dwc->dev, "failed to register udc\n");
+-		goto err5;
++		goto err4;
+ 	}
+ 
+ 	return 0;
+ 
+-err5:
+-	dwc3_gadget_free_endpoints(dwc);
+-
+ err4:
++	dwc3_gadget_free_endpoints(dwc);
+ 	dma_free_coherent(dwc->dev, DWC3_EP0_BOUNCE_SIZE,
+ 			dwc->ep0_bounce, dwc->ep0_bounce_addr);
+ 
+@@ -2739,12 +3013,23 @@ void dwc3_gadget_exit(struct dwc3 *dwc)
+ 
+ 	dma_free_coherent(dwc->dev, sizeof(*dwc->ctrl_req),
+ 			dwc->ctrl_req, dwc->ctrl_req_addr);
++
++#if WORKAROUDN_55XXA0_DP_ISSUE
++	/* 55XX A0 D+ workaround */
++	iounmap(cr_cap_addr);
++	iounmap(cr_cap_data);
++	iounmap(cr_data_in);
++	iounmap(cr_write);
++	iounmap(cr_ack);
++#endif
+ }
+ 
+ int dwc3_gadget_prepare(struct dwc3 *dwc)
+ {
+-	if (dwc->pullups_connected)
++	if (dwc->pullups_connected) {
+ 		dwc3_gadget_disable_irq(dwc);
++		dwc3_gadget_run_stop(dwc, true, true);
++	}
+ 
+ 	return 0;
+ }
+@@ -2753,7 +3038,7 @@ void dwc3_gadget_complete(struct dwc3 *dwc)
+ {
+ 	if (dwc->pullups_connected) {
+ 		dwc3_gadget_enable_irq(dwc);
+-		dwc3_gadget_run_stop(dwc, true);
++		dwc3_gadget_run_stop(dwc, true, false);
+ 	}
+ }
+ 
+@@ -2776,12 +3061,14 @@ int dwc3_gadget_resume(struct dwc3 *dwc)
+ 	dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(512);
+ 
+ 	dep = dwc->eps[0];
+-	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false);
++	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false,
++			false);
+ 	if (ret)
+ 		goto err0;
+ 
+ 	dep = dwc->eps[1];
+-	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false);
++	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false,
++			false);
+ 	if (ret)
+ 		goto err1;
+ 
+diff --git a/drivers/usb/dwc3/gadget.h b/drivers/usb/dwc3/gadget.h
+index d770ad4..f26523d 100644
+--- a/drivers/usb/dwc3/gadget.h
++++ b/drivers/usb/dwc3/gadget.h
+@@ -75,13 +75,13 @@ struct dwc3;
+ 
+ /* DEPXFERCFG parameter 0 */
+ #define DWC3_DEPXFERCFG_NUM_XFER_RES(n)	((n) & 0xffff)
+-
++#if 0
+ struct dwc3_gadget_ep_cmd_params {
+ 	u32	param2;
+ 	u32	param1;
+ 	u32	param0;
+ };
+-
++#endif
+ /* -------------------------------------------------------------------------- */
+ 
+ #define to_dwc3_request(r)	(container_of(r, struct dwc3_request, request))
+diff --git a/drivers/usb/usb-common.c b/drivers/usb/usb-common.c
+index 675384d..4bd889c 100644
+--- a/drivers/usb/usb-common.c
++++ b/drivers/usb/usb-common.c
+@@ -42,7 +42,7 @@ const char *usb_otg_state_string(enum usb_otg_state state)
+ 	return names[state];
+ }
+ EXPORT_SYMBOL_GPL(usb_otg_state_string);
+-
++#if 0
+ const char *usb_speed_string(enum usb_device_speed speed)
+ {
+ 	static const char *const names[] = {
+@@ -59,6 +59,24 @@ const char *usb_speed_string(enum usb_device_speed speed)
+ 	return names[speed];
+ }
+ EXPORT_SYMBOL_GPL(usb_speed_string);
++#else
++static const char *const speed_names[] = {
++        [USB_SPEED_UNKNOWN] = "UNKNOWN",
++        [USB_SPEED_LOW] = "low-speed",
++        [USB_SPEED_FULL] = "full-speed",
++        [USB_SPEED_HIGH] = "high-speed",
++        [USB_SPEED_WIRELESS] = "wireless",
++        [USB_SPEED_SUPER] = "super-speed",
++};
++
++const char *usb_speed_string(enum usb_device_speed speed)
++{
++        if (speed < 0 || speed >= ARRAY_SIZE(speed_names))
++                speed = USB_SPEED_UNKNOWN;
++        return speed_names[speed];
++}
++EXPORT_SYMBOL_GPL(usb_speed_string);
++#endif
+ 
+ const char *usb_state_string(enum usb_device_state state)
+ {
+@@ -112,6 +130,34 @@ enum usb_dr_mode of_usb_get_dr_mode(struct device_node *np)
+ 	return USB_DR_MODE_UNKNOWN;
+ }
+ EXPORT_SYMBOL_GPL(of_usb_get_dr_mode);
++
++/**
++ *  * of_usb_get_maximum_speed - Get maximum requested speed for a given USB
++ *   * controller.
++ *    * @np: Pointer to the given device_node
++ *     *
++ *      * The function gets the maximum speed string from property "maximum-speed",
++ *       * and returns the corresponding enum usb_device_speed.
++ *        */
++enum usb_device_speed of_usb_get_maximum_speed(struct device_node *np)
++{
++        const char *maximum_speed;
++        int err;
++        int i;
++
++        err = of_property_read_string(np, "maximum-speed", &maximum_speed);
++        if (err < 0)
++                return USB_SPEED_UNKNOWN;
++
++        for (i = 0; i < ARRAY_SIZE(speed_names); i++)
++                if (strcmp(maximum_speed, speed_names[i]) == 0)
++                        return i;
++
++        return USB_SPEED_UNKNOWN;
++}
++EXPORT_SYMBOL_GPL(of_usb_get_maximum_speed);
++
++
+ #endif
+ 
+ MODULE_LICENSE("GPL");
+diff --git a/include/linux/usb/gadget.h b/include/linux/usb/gadget.h
+index 942ef5e..c69fceb 100644
+--- a/include/linux/usb/gadget.h
++++ b/include/linux/usb/gadget.h
+@@ -171,6 +171,7 @@ struct usb_ep {
+ 	const struct usb_ep_ops	*ops;
+ 	struct list_head	ep_list;
+ 	unsigned		maxpacket:16;
++        unsigned                maxpacket_limit:16;
+ 	unsigned		max_streams:16;
+ 	unsigned		mult:2;
+ 	unsigned		maxburst:5;
+@@ -182,6 +183,21 @@ struct usb_ep {
+ /*-------------------------------------------------------------------------*/
+ 
+ /**
++ *  * usb_ep_set_maxpacket_limit - set maximum packet size limit for endpoint
++ *   * @ep:the endpoint being configured
++ *    * @maxpacket_limit:value of maximum packet size limit
++ *     *
++ *      * This function shoud be used only in UDC drivers to initialize endpoint
++ *       * (usually in probe function).
++ *        */
++static inline void usb_ep_set_maxpacket_limit(struct usb_ep *ep,
++                                              unsigned maxpacket_limit)
++{
++        ep->maxpacket_limit = maxpacket_limit;
++        ep->maxpacket = maxpacket_limit;
++}
++
++/**
+  * usb_ep_enable - configure endpoint, making it usable
+  * @ep:the endpoint being configured.  may not be the endpoint named "ep0".
+  *	drivers discover endpoints through the ep_list of a usb_gadget.
+@@ -540,6 +556,8 @@ struct usb_gadget {
+ 	struct device			dev;
+ 	unsigned			out_epnum;
+ 	unsigned			in_epnum;
++
++        unsigned                        quirk_ep_out_aligned_size:1;
+ };
+ #define work_to_gadget(w)	(container_of((w), struct usb_gadget, work))
+ 
+diff --git a/include/linux/usb/gadget.h.orig b/include/linux/usb/gadget.h.orig
+new file mode 100644
+index 0000000..942ef5e
+--- /dev/null
++++ b/include/linux/usb/gadget.h.orig
+@@ -0,0 +1,988 @@
++/*
++ * <linux/usb/gadget.h>
++ *
++ * We call the USB code inside a Linux-based peripheral device a "gadget"
++ * driver, except for the hardware-specific bus glue.  One USB host can
++ * master many USB gadgets, but the gadgets are only slaved to one host.
++ *
++ *
++ * (C) Copyright 2002-2004 by David Brownell
++ * All Rights Reserved.
++ *
++ * This software is licensed under the GNU GPL version 2.
++ */
++
++#ifndef __LINUX_USB_GADGET_H
++#define __LINUX_USB_GADGET_H
++
++#include <linux/device.h>
++#include <linux/errno.h>
++#include <linux/init.h>
++#include <linux/list.h>
++#include <linux/slab.h>
++#include <linux/scatterlist.h>
++#include <linux/types.h>
++#include <linux/workqueue.h>
++#include <linux/usb/ch9.h>
++
++struct usb_ep;
++
++/**
++ * struct usb_request - describes one i/o request
++ * @buf: Buffer used for data.  Always provide this; some controllers
++ *	only use PIO, or don't use DMA for some endpoints.
++ * @dma: DMA address corresponding to 'buf'.  If you don't set this
++ *	field, and the usb controller needs one, it is responsible
++ *	for mapping and unmapping the buffer.
++ * @sg: a scatterlist for SG-capable controllers.
++ * @num_sgs: number of SG entries
++ * @num_mapped_sgs: number of SG entries mapped to DMA (internal)
++ * @length: Length of that data
++ * @stream_id: The stream id, when USB3.0 bulk streams are being used
++ * @no_interrupt: If true, hints that no completion irq is needed.
++ *	Helpful sometimes with deep request queues that are handled
++ *	directly by DMA controllers.
++ * @zero: If true, when writing data, makes the last packet be "short"
++ *     by adding a zero length packet as needed;
++ * @short_not_ok: When reading data, makes short packets be
++ *     treated as errors (queue stops advancing till cleanup).
++ * @complete: Function called when request completes, so this request and
++ *	its buffer may be re-used.  The function will always be called with
++ *	interrupts disabled, and it must not sleep.
++ *	Reads terminate with a short packet, or when the buffer fills,
++ *	whichever comes first.  When writes terminate, some data bytes
++ *	will usually still be in flight (often in a hardware fifo).
++ *	Errors (for reads or writes) stop the queue from advancing
++ *	until the completion function returns, so that any transfers
++ *	invalidated by the error may first be dequeued.
++ * @context: For use by the completion callback
++ * @list: For use by the gadget driver.
++ * @status: Reports completion code, zero or a negative errno.
++ *	Normally, faults block the transfer queue from advancing until
++ *	the completion callback returns.
++ *	Code "-ESHUTDOWN" indicates completion caused by device disconnect,
++ *	or when the driver disabled the endpoint.
++ * @actual: Reports bytes transferred to/from the buffer.  For reads (OUT
++ *	transfers) this may be less than the requested length.  If the
++ *	short_not_ok flag is set, short reads are treated as errors
++ *	even when status otherwise indicates successful completion.
++ *	Note that for writes (IN transfers) some data bytes may still
++ *	reside in a device-side FIFO when the request is reported as
++ *	complete.
++ *
++ * These are allocated/freed through the endpoint they're used with.  The
++ * hardware's driver can add extra per-request data to the memory it returns,
++ * which often avoids separate memory allocations (potential failures),
++ * later when the request is queued.
++ *
++ * Request flags affect request handling, such as whether a zero length
++ * packet is written (the "zero" flag), whether a short read should be
++ * treated as an error (blocking request queue advance, the "short_not_ok"
++ * flag), or hinting that an interrupt is not required (the "no_interrupt"
++ * flag, for use with deep request queues).
++ *
++ * Bulk endpoints can use any size buffers, and can also be used for interrupt
++ * transfers. interrupt-only endpoints can be much less functional.
++ *
++ * NOTE:  this is analogous to 'struct urb' on the host side, except that
++ * it's thinner and promotes more pre-allocation.
++ */
++
++struct usb_request {
++	void			*buf;
++	unsigned		length;
++	dma_addr_t		dma;
++
++	struct scatterlist	*sg;
++	unsigned		num_sgs;
++	unsigned		num_mapped_sgs;
++
++	unsigned		stream_id:16;
++	unsigned		no_interrupt:1;
++	unsigned		zero:1;
++	unsigned		short_not_ok:1;
++
++	void			(*complete)(struct usb_ep *ep,
++					struct usb_request *req);
++	void			*context;
++	struct list_head	list;
++
++	int			status;
++	unsigned		actual;
++};
++
++/*-------------------------------------------------------------------------*/
++
++/* endpoint-specific parts of the api to the usb controller hardware.
++ * unlike the urb model, (de)multiplexing layers are not required.
++ * (so this api could slash overhead if used on the host side...)
++ *
++ * note that device side usb controllers commonly differ in how many
++ * endpoints they support, as well as their capabilities.
++ */
++struct usb_ep_ops {
++	int (*enable) (struct usb_ep *ep,
++		const struct usb_endpoint_descriptor *desc);
++	int (*disable) (struct usb_ep *ep);
++
++	struct usb_request *(*alloc_request) (struct usb_ep *ep,
++		gfp_t gfp_flags);
++	void (*free_request) (struct usb_ep *ep, struct usb_request *req);
++
++	int (*queue) (struct usb_ep *ep, struct usb_request *req,
++		gfp_t gfp_flags);
++	int (*dequeue) (struct usb_ep *ep, struct usb_request *req);
++
++	int (*set_halt) (struct usb_ep *ep, int value);
++	int (*set_wedge) (struct usb_ep *ep);
++
++	int (*fifo_status) (struct usb_ep *ep);
++	void (*fifo_flush) (struct usb_ep *ep);
++};
++
++/**
++ * struct usb_ep - device side representation of USB endpoint
++ * @name:identifier for the endpoint, such as "ep-a" or "ep9in-bulk"
++ * @ops: Function pointers used to access hardware-specific operations.
++ * @ep_list:the gadget's ep_list holds all of its endpoints
++ * @maxpacket:The maximum packet size used on this endpoint.  The initial
++ *	value can sometimes be reduced (hardware allowing), according to
++ *      the endpoint descriptor used to configure the endpoint.
++ * @max_streams: The maximum number of streams supported
++ *	by this EP (0 - 16, actual number is 2^n)
++ * @mult: multiplier, 'mult' value for SS Isoc EPs
++ * @maxburst: the maximum number of bursts supported by this EP (for usb3)
++ * @driver_data:for use by the gadget driver.
++ * @address: used to identify the endpoint when finding descriptor that
++ *	matches connection speed
++ * @desc: endpoint descriptor.  This pointer is set before the endpoint is
++ *	enabled and remains valid until the endpoint is disabled.
++ * @comp_desc: In case of SuperSpeed support, this is the endpoint companion
++ *	descriptor that is used to configure the endpoint
++ *
++ * the bus controller driver lists all the general purpose endpoints in
++ * gadget->ep_list.  the control endpoint (gadget->ep0) is not in that list,
++ * and is accessed only in response to a driver setup() callback.
++ */
++struct usb_ep {
++	void			*driver_data;
++
++	const char		*name;
++	const struct usb_ep_ops	*ops;
++	struct list_head	ep_list;
++	unsigned		maxpacket:16;
++	unsigned		max_streams:16;
++	unsigned		mult:2;
++	unsigned		maxburst:5;
++	u8			address;
++	const struct usb_endpoint_descriptor	*desc;
++	const struct usb_ss_ep_comp_descriptor	*comp_desc;
++};
++
++/*-------------------------------------------------------------------------*/
++
++/**
++ * usb_ep_enable - configure endpoint, making it usable
++ * @ep:the endpoint being configured.  may not be the endpoint named "ep0".
++ *	drivers discover endpoints through the ep_list of a usb_gadget.
++ *
++ * When configurations are set, or when interface settings change, the driver
++ * will enable or disable the relevant endpoints.  while it is enabled, an
++ * endpoint may be used for i/o until the driver receives a disconnect() from
++ * the host or until the endpoint is disabled.
++ *
++ * the ep0 implementation (which calls this routine) must ensure that the
++ * hardware capabilities of each endpoint match the descriptor provided
++ * for it.  for example, an endpoint named "ep2in-bulk" would be usable
++ * for interrupt transfers as well as bulk, but it likely couldn't be used
++ * for iso transfers or for endpoint 14.  some endpoints are fully
++ * configurable, with more generic names like "ep-a".  (remember that for
++ * USB, "in" means "towards the USB master".)
++ *
++ * returns zero, or a negative error code.
++ */
++static inline int usb_ep_enable(struct usb_ep *ep)
++{
++	return ep->ops->enable(ep, ep->desc);
++}
++
++/**
++ * usb_ep_disable - endpoint is no longer usable
++ * @ep:the endpoint being unconfigured.  may not be the endpoint named "ep0".
++ *
++ * no other task may be using this endpoint when this is called.
++ * any pending and uncompleted requests will complete with status
++ * indicating disconnect (-ESHUTDOWN) before this call returns.
++ * gadget drivers must call usb_ep_enable() again before queueing
++ * requests to the endpoint.
++ *
++ * returns zero, or a negative error code.
++ */
++static inline int usb_ep_disable(struct usb_ep *ep)
++{
++	return ep->ops->disable(ep);
++}
++
++/**
++ * usb_ep_alloc_request - allocate a request object to use with this endpoint
++ * @ep:the endpoint to be used with with the request
++ * @gfp_flags:GFP_* flags to use
++ *
++ * Request objects must be allocated with this call, since they normally
++ * need controller-specific setup and may even need endpoint-specific
++ * resources such as allocation of DMA descriptors.
++ * Requests may be submitted with usb_ep_queue(), and receive a single
++ * completion callback.  Free requests with usb_ep_free_request(), when
++ * they are no longer needed.
++ *
++ * Returns the request, or null if one could not be allocated.
++ */
++static inline struct usb_request *usb_ep_alloc_request(struct usb_ep *ep,
++						       gfp_t gfp_flags)
++{
++	return ep->ops->alloc_request(ep, gfp_flags);
++}
++
++/**
++ * usb_ep_free_request - frees a request object
++ * @ep:the endpoint associated with the request
++ * @req:the request being freed
++ *
++ * Reverses the effect of usb_ep_alloc_request().
++ * Caller guarantees the request is not queued, and that it will
++ * no longer be requeued (or otherwise used).
++ */
++static inline void usb_ep_free_request(struct usb_ep *ep,
++				       struct usb_request *req)
++{
++	ep->ops->free_request(ep, req);
++}
++
++/**
++ * usb_ep_queue - queues (submits) an I/O request to an endpoint.
++ * @ep:the endpoint associated with the request
++ * @req:the request being submitted
++ * @gfp_flags: GFP_* flags to use in case the lower level driver couldn't
++ *	pre-allocate all necessary memory with the request.
++ *
++ * This tells the device controller to perform the specified request through
++ * that endpoint (reading or writing a buffer).  When the request completes,
++ * including being canceled by usb_ep_dequeue(), the request's completion
++ * routine is called to return the request to the driver.  Any endpoint
++ * (except control endpoints like ep0) may have more than one transfer
++ * request queued; they complete in FIFO order.  Once a gadget driver
++ * submits a request, that request may not be examined or modified until it
++ * is given back to that driver through the completion callback.
++ *
++ * Each request is turned into one or more packets.  The controller driver
++ * never merges adjacent requests into the same packet.  OUT transfers
++ * will sometimes use data that's already buffered in the hardware.
++ * Drivers can rely on the fact that the first byte of the request's buffer
++ * always corresponds to the first byte of some USB packet, for both
++ * IN and OUT transfers.
++ *
++ * Bulk endpoints can queue any amount of data; the transfer is packetized
++ * automatically.  The last packet will be short if the request doesn't fill it
++ * out completely.  Zero length packets (ZLPs) should be avoided in portable
++ * protocols since not all usb hardware can successfully handle zero length
++ * packets.  (ZLPs may be explicitly written, and may be implicitly written if
++ * the request 'zero' flag is set.)  Bulk endpoints may also be used
++ * for interrupt transfers; but the reverse is not true, and some endpoints
++ * won't support every interrupt transfer.  (Such as 768 byte packets.)
++ *
++ * Interrupt-only endpoints are less functional than bulk endpoints, for
++ * example by not supporting queueing or not handling buffers that are
++ * larger than the endpoint's maxpacket size.  They may also treat data
++ * toggle differently.
++ *
++ * Control endpoints ... after getting a setup() callback, the driver queues
++ * one response (even if it would be zero length).  That enables the
++ * status ack, after transferring data as specified in the response.  Setup
++ * functions may return negative error codes to generate protocol stalls.
++ * (Note that some USB device controllers disallow protocol stall responses
++ * in some cases.)  When control responses are deferred (the response is
++ * written after the setup callback returns), then usb_ep_set_halt() may be
++ * used on ep0 to trigger protocol stalls.  Depending on the controller,
++ * it may not be possible to trigger a status-stage protocol stall when the
++ * data stage is over, that is, from within the response's completion
++ * routine.
++ *
++ * For periodic endpoints, like interrupt or isochronous ones, the usb host
++ * arranges to poll once per interval, and the gadget driver usually will
++ * have queued some data to transfer at that time.
++ *
++ * Returns zero, or a negative error code.  Endpoints that are not enabled
++ * report errors; errors will also be
++ * reported when the usb peripheral is disconnected.
++ */
++static inline int usb_ep_queue(struct usb_ep *ep,
++			       struct usb_request *req, gfp_t gfp_flags)
++{
++	return ep->ops->queue(ep, req, gfp_flags);
++}
++
++/**
++ * usb_ep_dequeue - dequeues (cancels, unlinks) an I/O request from an endpoint
++ * @ep:the endpoint associated with the request
++ * @req:the request being canceled
++ *
++ * if the request is still active on the endpoint, it is dequeued and its
++ * completion routine is called (with status -ECONNRESET); else a negative
++ * error code is returned.
++ *
++ * note that some hardware can't clear out write fifos (to unlink the request
++ * at the head of the queue) except as part of disconnecting from usb.  such
++ * restrictions prevent drivers from supporting configuration changes,
++ * even to configuration zero (a "chapter 9" requirement).
++ */
++static inline int usb_ep_dequeue(struct usb_ep *ep, struct usb_request *req)
++{
++	return ep->ops->dequeue(ep, req);
++}
++
++/**
++ * usb_ep_set_halt - sets the endpoint halt feature.
++ * @ep: the non-isochronous endpoint being stalled
++ *
++ * Use this to stall an endpoint, perhaps as an error report.
++ * Except for control endpoints,
++ * the endpoint stays halted (will not stream any data) until the host
++ * clears this feature; drivers may need to empty the endpoint's request
++ * queue first, to make sure no inappropriate transfers happen.
++ *
++ * Note that while an endpoint CLEAR_FEATURE will be invisible to the
++ * gadget driver, a SET_INTERFACE will not be.  To reset endpoints for the
++ * current altsetting, see usb_ep_clear_halt().  When switching altsettings,
++ * it's simplest to use usb_ep_enable() or usb_ep_disable() for the endpoints.
++ *
++ * Returns zero, or a negative error code.  On success, this call sets
++ * underlying hardware state that blocks data transfers.
++ * Attempts to halt IN endpoints will fail (returning -EAGAIN) if any
++ * transfer requests are still queued, or if the controller hardware
++ * (usually a FIFO) still holds bytes that the host hasn't collected.
++ */
++static inline int usb_ep_set_halt(struct usb_ep *ep)
++{
++	return ep->ops->set_halt(ep, 1);
++}
++
++/**
++ * usb_ep_clear_halt - clears endpoint halt, and resets toggle
++ * @ep:the bulk or interrupt endpoint being reset
++ *
++ * Use this when responding to the standard usb "set interface" request,
++ * for endpoints that aren't reconfigured, after clearing any other state
++ * in the endpoint's i/o queue.
++ *
++ * Returns zero, or a negative error code.  On success, this call clears
++ * the underlying hardware state reflecting endpoint halt and data toggle.
++ * Note that some hardware can't support this request (like pxa2xx_udc),
++ * and accordingly can't correctly implement interface altsettings.
++ */
++static inline int usb_ep_clear_halt(struct usb_ep *ep)
++{
++	return ep->ops->set_halt(ep, 0);
++}
++
++/**
++ * usb_ep_set_wedge - sets the halt feature and ignores clear requests
++ * @ep: the endpoint being wedged
++ *
++ * Use this to stall an endpoint and ignore CLEAR_FEATURE(HALT_ENDPOINT)
++ * requests. If the gadget driver clears the halt status, it will
++ * automatically unwedge the endpoint.
++ *
++ * Returns zero on success, else negative errno.
++ */
++static inline int
++usb_ep_set_wedge(struct usb_ep *ep)
++{
++	if (ep->ops->set_wedge)
++		return ep->ops->set_wedge(ep);
++	else
++		return ep->ops->set_halt(ep, 1);
++}
++
++/**
++ * usb_ep_fifo_status - returns number of bytes in fifo, or error
++ * @ep: the endpoint whose fifo status is being checked.
++ *
++ * FIFO endpoints may have "unclaimed data" in them in certain cases,
++ * such as after aborted transfers.  Hosts may not have collected all
++ * the IN data written by the gadget driver (and reported by a request
++ * completion).  The gadget driver may not have collected all the data
++ * written OUT to it by the host.  Drivers that need precise handling for
++ * fault reporting or recovery may need to use this call.
++ *
++ * This returns the number of such bytes in the fifo, or a negative
++ * errno if the endpoint doesn't use a FIFO or doesn't support such
++ * precise handling.
++ */
++static inline int usb_ep_fifo_status(struct usb_ep *ep)
++{
++	if (ep->ops->fifo_status)
++		return ep->ops->fifo_status(ep);
++	else
++		return -EOPNOTSUPP;
++}
++
++/**
++ * usb_ep_fifo_flush - flushes contents of a fifo
++ * @ep: the endpoint whose fifo is being flushed.
++ *
++ * This call may be used to flush the "unclaimed data" that may exist in
++ * an endpoint fifo after abnormal transaction terminations.  The call
++ * must never be used except when endpoint is not being used for any
++ * protocol translation.
++ */
++static inline void usb_ep_fifo_flush(struct usb_ep *ep)
++{
++	if (ep->ops->fifo_flush)
++		ep->ops->fifo_flush(ep);
++}
++
++
++/*-------------------------------------------------------------------------*/
++
++struct usb_dcd_config_params {
++	__u8  bU1devExitLat;	/* U1 Device exit Latency */
++#define USB_DEFAULT_U1_DEV_EXIT_LAT	0x01	/* Less then 1 microsec */
++	__le16 bU2DevExitLat;	/* U2 Device exit Latency */
++#define USB_DEFAULT_U2_DEV_EXIT_LAT	0x1F4	/* Less then 500 microsec */
++};
++
++
++struct usb_gadget;
++struct usb_gadget_driver;
++
++/* the rest of the api to the controller hardware: device operations,
++ * which don't involve endpoints (or i/o).
++ */
++struct usb_gadget_ops {
++	int	(*get_frame)(struct usb_gadget *);
++	int	(*wakeup)(struct usb_gadget *);
++	int	(*set_selfpowered) (struct usb_gadget *, int is_selfpowered);
++	int	(*vbus_session) (struct usb_gadget *, int is_active);
++	int	(*vbus_draw) (struct usb_gadget *, unsigned mA);
++	int	(*pullup) (struct usb_gadget *, int is_on);
++	int	(*ioctl)(struct usb_gadget *,
++				unsigned code, unsigned long param);
++	void	(*get_config_params)(struct usb_dcd_config_params *);
++	int	(*udc_start)(struct usb_gadget *,
++			struct usb_gadget_driver *);
++	int	(*udc_stop)(struct usb_gadget *,
++			struct usb_gadget_driver *);
++};
++
++/**
++ * struct usb_gadget - represents a usb slave device
++ * @work: (internal use) Workqueue to be used for sysfs_notify()
++ * @ops: Function pointers used to access hardware-specific operations.
++ * @ep0: Endpoint zero, used when reading or writing responses to
++ *	driver setup() requests
++ * @ep_list: List of other endpoints supported by the device.
++ * @speed: Speed of current connection to USB host.
++ * @max_speed: Maximal speed the UDC can handle.  UDC must support this
++ *      and all slower speeds.
++ * @state: the state we are now (attached, suspended, configured, etc)
++ * @sg_supported: true if we can handle scatter-gather
++ * @is_otg: True if the USB device port uses a Mini-AB jack, so that the
++ *	gadget driver must provide a USB OTG descriptor.
++ * @is_a_peripheral: False unless is_otg, the "A" end of a USB cable
++ *	is in the Mini-AB jack, and HNP has been used to switch roles
++ *	so that the "A" device currently acts as A-Peripheral, not A-Host.
++ * @a_hnp_support: OTG device feature flag, indicating that the A-Host
++ *	supports HNP at this port.
++ * @a_alt_hnp_support: OTG device feature flag, indicating that the A-Host
++ *	only supports HNP on a different root port.
++ * @b_hnp_enable: OTG device feature flag, indicating that the A-Host
++ *	enabled HNP support.
++ * @name: Identifies the controller hardware type.  Used in diagnostics
++ *	and sometimes configuration.
++ * @dev: Driver model state for this abstract device.
++ * @out_epnum: last used out ep number
++ * @in_epnum: last used in ep number
++ *
++ * Gadgets have a mostly-portable "gadget driver" implementing device
++ * functions, handling all usb configurations and interfaces.  Gadget
++ * drivers talk to hardware-specific code indirectly, through ops vectors.
++ * That insulates the gadget driver from hardware details, and packages
++ * the hardware endpoints through generic i/o queues.  The "usb_gadget"
++ * and "usb_ep" interfaces provide that insulation from the hardware.
++ *
++ * Except for the driver data, all fields in this structure are
++ * read-only to the gadget driver.  That driver data is part of the
++ * "driver model" infrastructure in 2.6 (and later) kernels, and for
++ * earlier systems is grouped in a similar structure that's not known
++ * to the rest of the kernel.
++ *
++ * Values of the three OTG device feature flags are updated before the
++ * setup() call corresponding to USB_REQ_SET_CONFIGURATION, and before
++ * driver suspend() calls.  They are valid only when is_otg, and when the
++ * device is acting as a B-Peripheral (so is_a_peripheral is false).
++ */
++struct usb_gadget {
++	struct work_struct		work;
++	/* readonly to gadget driver */
++	const struct usb_gadget_ops	*ops;
++	struct usb_ep			*ep0;
++	struct list_head		ep_list;	/* of usb_ep */
++	enum usb_device_speed		speed;
++	enum usb_device_speed		max_speed;
++	enum usb_device_state		state;
++	unsigned			sg_supported:1;
++	unsigned			is_otg:1;
++	unsigned			is_a_peripheral:1;
++	unsigned			b_hnp_enable:1;
++	unsigned			a_hnp_support:1;
++	unsigned			a_alt_hnp_support:1;
++	const char			*name;
++	struct device			dev;
++	unsigned			out_epnum;
++	unsigned			in_epnum;
++};
++#define work_to_gadget(w)	(container_of((w), struct usb_gadget, work))
++
++static inline void set_gadget_data(struct usb_gadget *gadget, void *data)
++	{ dev_set_drvdata(&gadget->dev, data); }
++static inline void *get_gadget_data(struct usb_gadget *gadget)
++	{ return dev_get_drvdata(&gadget->dev); }
++static inline struct usb_gadget *dev_to_usb_gadget(struct device *dev)
++{
++	return container_of(dev, struct usb_gadget, dev);
++}
++
++/* iterates the non-control endpoints; 'tmp' is a struct usb_ep pointer */
++#define gadget_for_each_ep(tmp, gadget) \
++	list_for_each_entry(tmp, &(gadget)->ep_list, ep_list)
++
++
++/**
++ * gadget_is_dualspeed - return true iff the hardware handles high speed
++ * @g: controller that might support both high and full speeds
++ */
++static inline int gadget_is_dualspeed(struct usb_gadget *g)
++{
++	return g->max_speed >= USB_SPEED_HIGH;
++}
++
++/**
++ * gadget_is_superspeed() - return true if the hardware handles superspeed
++ * @g: controller that might support superspeed
++ */
++static inline int gadget_is_superspeed(struct usb_gadget *g)
++{
++	return g->max_speed >= USB_SPEED_SUPER;
++}
++
++/**
++ * gadget_is_otg - return true iff the hardware is OTG-ready
++ * @g: controller that might have a Mini-AB connector
++ *
++ * This is a runtime test, since kernels with a USB-OTG stack sometimes
++ * run on boards which only have a Mini-B (or Mini-A) connector.
++ */
++static inline int gadget_is_otg(struct usb_gadget *g)
++{
++#ifdef CONFIG_USB_OTG
++	return g->is_otg;
++#else
++	return 0;
++#endif
++}
++
++/**
++ * usb_gadget_frame_number - returns the current frame number
++ * @gadget: controller that reports the frame number
++ *
++ * Returns the usb frame number, normally eleven bits from a SOF packet,
++ * or negative errno if this device doesn't support this capability.
++ */
++static inline int usb_gadget_frame_number(struct usb_gadget *gadget)
++{
++	return gadget->ops->get_frame(gadget);
++}
++
++/**
++ * usb_gadget_wakeup - tries to wake up the host connected to this gadget
++ * @gadget: controller used to wake up the host
++ *
++ * Returns zero on success, else negative error code if the hardware
++ * doesn't support such attempts, or its support has not been enabled
++ * by the usb host.  Drivers must return device descriptors that report
++ * their ability to support this, or hosts won't enable it.
++ *
++ * This may also try to use SRP to wake the host and start enumeration,
++ * even if OTG isn't otherwise in use.  OTG devices may also start
++ * remote wakeup even when hosts don't explicitly enable it.
++ */
++static inline int usb_gadget_wakeup(struct usb_gadget *gadget)
++{
++	if (!gadget->ops->wakeup)
++		return -EOPNOTSUPP;
++	return gadget->ops->wakeup(gadget);
++}
++
++/**
++ * usb_gadget_set_selfpowered - sets the device selfpowered feature.
++ * @gadget:the device being declared as self-powered
++ *
++ * this affects the device status reported by the hardware driver
++ * to reflect that it now has a local power supply.
++ *
++ * returns zero on success, else negative errno.
++ */
++static inline int usb_gadget_set_selfpowered(struct usb_gadget *gadget)
++{
++	if (!gadget->ops->set_selfpowered)
++		return -EOPNOTSUPP;
++	return gadget->ops->set_selfpowered(gadget, 1);
++}
++
++/**
++ * usb_gadget_clear_selfpowered - clear the device selfpowered feature.
++ * @gadget:the device being declared as bus-powered
++ *
++ * this affects the device status reported by the hardware driver.
++ * some hardware may not support bus-powered operation, in which
++ * case this feature's value can never change.
++ *
++ * returns zero on success, else negative errno.
++ */
++static inline int usb_gadget_clear_selfpowered(struct usb_gadget *gadget)
++{
++	if (!gadget->ops->set_selfpowered)
++		return -EOPNOTSUPP;
++	return gadget->ops->set_selfpowered(gadget, 0);
++}
++
++/**
++ * usb_gadget_vbus_connect - Notify controller that VBUS is powered
++ * @gadget:The device which now has VBUS power.
++ * Context: can sleep
++ *
++ * This call is used by a driver for an external transceiver (or GPIO)
++ * that detects a VBUS power session starting.  Common responses include
++ * resuming the controller, activating the D+ (or D-) pullup to let the
++ * host detect that a USB device is attached, and starting to draw power
++ * (8mA or possibly more, especially after SET_CONFIGURATION).
++ *
++ * Returns zero on success, else negative errno.
++ */
++static inline int usb_gadget_vbus_connect(struct usb_gadget *gadget)
++{
++	if (!gadget->ops->vbus_session)
++		return -EOPNOTSUPP;
++	return gadget->ops->vbus_session(gadget, 1);
++}
++
++/**
++ * usb_gadget_vbus_draw - constrain controller's VBUS power usage
++ * @gadget:The device whose VBUS usage is being described
++ * @mA:How much current to draw, in milliAmperes.  This should be twice
++ *	the value listed in the configuration descriptor bMaxPower field.
++ *
++ * This call is used by gadget drivers during SET_CONFIGURATION calls,
++ * reporting how much power the device may consume.  For example, this
++ * could affect how quickly batteries are recharged.
++ *
++ * Returns zero on success, else negative errno.
++ */
++static inline int usb_gadget_vbus_draw(struct usb_gadget *gadget, unsigned mA)
++{
++	if (!gadget->ops->vbus_draw)
++		return -EOPNOTSUPP;
++	return gadget->ops->vbus_draw(gadget, mA);
++}
++
++/**
++ * usb_gadget_vbus_disconnect - notify controller about VBUS session end
++ * @gadget:the device whose VBUS supply is being described
++ * Context: can sleep
++ *
++ * This call is used by a driver for an external transceiver (or GPIO)
++ * that detects a VBUS power session ending.  Common responses include
++ * reversing everything done in usb_gadget_vbus_connect().
++ *
++ * Returns zero on success, else negative errno.
++ */
++static inline int usb_gadget_vbus_disconnect(struct usb_gadget *gadget)
++{
++	if (!gadget->ops->vbus_session)
++		return -EOPNOTSUPP;
++	return gadget->ops->vbus_session(gadget, 0);
++}
++
++/**
++ * usb_gadget_connect - software-controlled connect to USB host
++ * @gadget:the peripheral being connected
++ *
++ * Enables the D+ (or potentially D-) pullup.  The host will start
++ * enumerating this gadget when the pullup is active and a VBUS session
++ * is active (the link is powered).  This pullup is always enabled unless
++ * usb_gadget_disconnect() has been used to disable it.
++ *
++ * Returns zero on success, else negative errno.
++ */
++static inline int usb_gadget_connect(struct usb_gadget *gadget)
++{
++	if (!gadget->ops->pullup)
++		return -EOPNOTSUPP;
++	return gadget->ops->pullup(gadget, 1);
++}
++
++/**
++ * usb_gadget_disconnect - software-controlled disconnect from USB host
++ * @gadget:the peripheral being disconnected
++ *
++ * Disables the D+ (or potentially D-) pullup, which the host may see
++ * as a disconnect (when a VBUS session is active).  Not all systems
++ * support software pullup controls.
++ *
++ * This routine may be used during the gadget driver bind() call to prevent
++ * the peripheral from ever being visible to the USB host, unless later
++ * usb_gadget_connect() is called.  For example, user mode components may
++ * need to be activated before the system can talk to hosts.
++ *
++ * Returns zero on success, else negative errno.
++ */
++static inline int usb_gadget_disconnect(struct usb_gadget *gadget)
++{
++	if (!gadget->ops->pullup)
++		return -EOPNOTSUPP;
++	return gadget->ops->pullup(gadget, 0);
++}
++
++
++/*-------------------------------------------------------------------------*/
++
++/**
++ * struct usb_gadget_driver - driver for usb 'slave' devices
++ * @function: String describing the gadget's function
++ * @max_speed: Highest speed the driver handles.
++ * @setup: Invoked for ep0 control requests that aren't handled by
++ *	the hardware level driver. Most calls must be handled by
++ *	the gadget driver, including descriptor and configuration
++ *	management.  The 16 bit members of the setup data are in
++ *	USB byte order. Called in_interrupt; this may not sleep.  Driver
++ *	queues a response to ep0, or returns negative to stall.
++ * @disconnect: Invoked after all transfers have been stopped,
++ *	when the host is disconnected.  May be called in_interrupt; this
++ *	may not sleep.  Some devices can't detect disconnect, so this might
++ *	not be called except as part of controller shutdown.
++ * @bind: the driver's bind callback
++ * @unbind: Invoked when the driver is unbound from a gadget,
++ *	usually from rmmod (after a disconnect is reported).
++ *	Called in a context that permits sleeping.
++ * @suspend: Invoked on USB suspend.  May be called in_interrupt.
++ * @resume: Invoked on USB resume.  May be called in_interrupt.
++ * @driver: Driver model state for this driver.
++ *
++ * Devices are disabled till a gadget driver successfully bind()s, which
++ * means the driver will handle setup() requests needed to enumerate (and
++ * meet "chapter 9" requirements) then do some useful work.
++ *
++ * If gadget->is_otg is true, the gadget driver must provide an OTG
++ * descriptor during enumeration, or else fail the bind() call.  In such
++ * cases, no USB traffic may flow until both bind() returns without
++ * having called usb_gadget_disconnect(), and the USB host stack has
++ * initialized.
++ *
++ * Drivers use hardware-specific knowledge to configure the usb hardware.
++ * endpoint addressing is only one of several hardware characteristics that
++ * are in descriptors the ep0 implementation returns from setup() calls.
++ *
++ * Except for ep0 implementation, most driver code shouldn't need change to
++ * run on top of different usb controllers.  It'll use endpoints set up by
++ * that ep0 implementation.
++ *
++ * The usb controller driver handles a few standard usb requests.  Those
++ * include set_address, and feature flags for devices, interfaces, and
++ * endpoints (the get_status, set_feature, and clear_feature requests).
++ *
++ * Accordingly, the driver's setup() callback must always implement all
++ * get_descriptor requests, returning at least a device descriptor and
++ * a configuration descriptor.  Drivers must make sure the endpoint
++ * descriptors match any hardware constraints. Some hardware also constrains
++ * other descriptors. (The pxa250 allows only configurations 1, 2, or 3).
++ *
++ * The driver's setup() callback must also implement set_configuration,
++ * and should also implement set_interface, get_configuration, and
++ * get_interface.  Setting a configuration (or interface) is where
++ * endpoints should be activated or (config 0) shut down.
++ *
++ * (Note that only the default control endpoint is supported.  Neither
++ * hosts nor devices generally support control traffic except to ep0.)
++ *
++ * Most devices will ignore USB suspend/resume operations, and so will
++ * not provide those callbacks.  However, some may need to change modes
++ * when the host is not longer directing those activities.  For example,
++ * local controls (buttons, dials, etc) may need to be re-enabled since
++ * the (remote) host can't do that any longer; or an error state might
++ * be cleared, to make the device behave identically whether or not
++ * power is maintained.
++ */
++struct usb_gadget_driver {
++	char			*function;
++	enum usb_device_speed	max_speed;
++	int			(*bind)(struct usb_gadget *gadget,
++					struct usb_gadget_driver *driver);
++	void			(*unbind)(struct usb_gadget *);
++	int			(*setup)(struct usb_gadget *,
++					const struct usb_ctrlrequest *);
++	void			(*disconnect)(struct usb_gadget *);
++	void			(*suspend)(struct usb_gadget *);
++	void			(*resume)(struct usb_gadget *);
++
++	/* FIXME support safe rmmod */
++	struct device_driver	driver;
++};
++
++
++
++/*-------------------------------------------------------------------------*/
++
++/* driver modules register and unregister, as usual.
++ * these calls must be made in a context that can sleep.
++ *
++ * these will usually be implemented directly by the hardware-dependent
++ * usb bus interface driver, which will only support a single driver.
++ */
++
++/**
++ * usb_gadget_probe_driver - probe a gadget driver
++ * @driver: the driver being registered
++ * Context: can sleep
++ *
++ * Call this in your gadget driver's module initialization function,
++ * to tell the underlying usb controller driver about your driver.
++ * The @bind() function will be called to bind it to a gadget before this
++ * registration call returns.  It's expected that the @bind() function will
++ * be in init sections.
++ */
++int usb_gadget_probe_driver(struct usb_gadget_driver *driver);
++
++/**
++ * usb_gadget_unregister_driver - unregister a gadget driver
++ * @driver:the driver being unregistered
++ * Context: can sleep
++ *
++ * Call this in your gadget driver's module cleanup function,
++ * to tell the underlying usb controller that your driver is
++ * going away.  If the controller is connected to a USB host,
++ * it will first disconnect().  The driver is also requested
++ * to unbind() and clean up any device state, before this procedure
++ * finally returns.  It's expected that the unbind() functions
++ * will in in exit sections, so may not be linked in some kernels.
++ */
++int usb_gadget_unregister_driver(struct usb_gadget_driver *driver);
++
++extern int usb_add_gadget_udc_release(struct device *parent,
++		struct usb_gadget *gadget, void (*release)(struct device *dev));
++extern int usb_add_gadget_udc(struct device *parent, struct usb_gadget *gadget);
++extern void usb_del_gadget_udc(struct usb_gadget *gadget);
++extern int udc_attach_driver(const char *name,
++		struct usb_gadget_driver *driver);
++
++/*-------------------------------------------------------------------------*/
++
++/* utility to simplify dealing with string descriptors */
++
++/**
++ * struct usb_string - wraps a C string and its USB id
++ * @id:the (nonzero) ID for this string
++ * @s:the string, in UTF-8 encoding
++ *
++ * If you're using usb_gadget_get_string(), use this to wrap a string
++ * together with its ID.
++ */
++struct usb_string {
++	u8			id;
++	const char		*s;
++};
++
++/**
++ * struct usb_gadget_strings - a set of USB strings in a given language
++ * @language:identifies the strings' language (0x0409 for en-us)
++ * @strings:array of strings with their ids
++ *
++ * If you're using usb_gadget_get_string(), use this to wrap all the
++ * strings for a given language.
++ */
++struct usb_gadget_strings {
++	u16			language;	/* 0x0409 for en-us */
++	struct usb_string	*strings;
++};
++
++struct usb_gadget_string_container {
++	struct list_head        list;
++	u8                      *stash[0];
++};
++
++/* put descriptor for string with that id into buf (buflen >= 256) */
++int usb_gadget_get_string(struct usb_gadget_strings *table, int id, u8 *buf);
++
++/*-------------------------------------------------------------------------*/
++
++/* utility to simplify managing config descriptors */
++
++/* write vector of descriptors into buffer */
++int usb_descriptor_fillbuf(void *, unsigned,
++		const struct usb_descriptor_header **);
++
++/* build config descriptor from single descriptor vector */
++int usb_gadget_config_buf(const struct usb_config_descriptor *config,
++	void *buf, unsigned buflen, const struct usb_descriptor_header **desc);
++
++/* copy a NULL-terminated vector of descriptors */
++struct usb_descriptor_header **usb_copy_descriptors(
++		struct usb_descriptor_header **);
++
++/**
++ * usb_free_descriptors - free descriptors returned by usb_copy_descriptors()
++ * @v: vector of descriptors
++ */
++static inline void usb_free_descriptors(struct usb_descriptor_header **v)
++{
++	kfree(v);
++}
++
++struct usb_function;
++int usb_assign_descriptors(struct usb_function *f,
++		struct usb_descriptor_header **fs,
++		struct usb_descriptor_header **hs,
++		struct usb_descriptor_header **ss);
++void usb_free_all_descriptors(struct usb_function *f);
++
++/*-------------------------------------------------------------------------*/
++
++/* utility to simplify map/unmap of usb_requests to/from DMA */
++
++extern int usb_gadget_map_request(struct usb_gadget *gadget,
++		struct usb_request *req, int is_in);
++
++extern void usb_gadget_unmap_request(struct usb_gadget *gadget,
++		struct usb_request *req, int is_in);
++
++/*-------------------------------------------------------------------------*/
++
++/* utility to set gadget state properly */
++
++extern void usb_gadget_set_state(struct usb_gadget *gadget,
++		enum usb_device_state state);
++
++/*-------------------------------------------------------------------------*/
++
++/* utility wrapping a simple endpoint selection policy */
++
++extern struct usb_ep *usb_ep_autoconfig(struct usb_gadget *,
++			struct usb_endpoint_descriptor *);
++
++
++extern struct usb_ep *usb_ep_autoconfig_ss(struct usb_gadget *,
++			struct usb_endpoint_descriptor *,
++			struct usb_ss_ep_comp_descriptor *);
++
++extern void usb_ep_autoconfig_reset(struct usb_gadget *);
++
++#endif /* __LINUX_USB_GADGET_H */
+-- 
+1.7.1
+

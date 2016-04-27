@@ -1,0 +1,38 @@
+From db9a89a1df83b15a2e08de21e68d1dacf2c3e92c Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:22:44 +0900
+Subject: [PATCH 074/170] 0001-correct-spi-driver-and-moved-timer-channel
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 89199e2..feb8f6b 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -117,9 +117,9 @@ static void __init lm2_timer_init(void)
+ 
+ /*	clksrc_timer = ioremap(LM2_TIMER_BASE + 0x38, 0x0c);	*/
+ 	clksrc_timer = ioremap(LM2_TIMER_BASE+0x10, 0x10);
+-	clkevt_timer = ioremap(LM2_TIMER_BASE+0x2c,0x0c);
++	clkevt_timer = ioremap(LM2_TIMER_BASE+0x5c,0x0c);
+ 	lm2_clocksource_init(clksrc_timer);
+-	lm2_clockevent_init(LM2_IRQ_TIMER_0,clkevt_timer);
++	lm2_clockevent_init(LM2_IRQ_TIMER_4,clkevt_timer);
+ }
+ 
+ /*
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index 71e86ab..964dc4c 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -126,7 +126,7 @@ static	void	xspi_write_disable(struct xspi_dev *dev, int cs)
+ {
+ 	u32	reg;
+ 
+-	reg = xspi_rd(dev, (SPI_CFG + cs )));
++	reg = xspi_rd(dev, (SPI_CFG + cs ));
+ 	reg = reg & 0xfffffff0;
+ 	reg = reg | 0x00000007;
+ 	xspi_wr(dev, (SPI_CFG + cs), reg);
+-- 
+1.7.1
+

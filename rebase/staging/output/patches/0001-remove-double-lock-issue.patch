@@ -1,0 +1,31 @@
+From a83b34966f93d7e7ed63f28743846d4cf8f4e16f Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:24:00 +0900
+Subject: [PATCH 133/170] 0001-remove-double-lock-issue
+
+
+diff --git a/drivers/usb/gadget/composite.c b/drivers/usb/gadget/composite.c
+index 70fa27e..e7f2a6b 100644
+--- a/drivers/usb/gadget/composite.c
++++ b/drivers/usb/gadget/composite.c
+@@ -1484,7 +1484,7 @@ void composite_disconnect(struct usb_gadget *gadget)
+ {
+ 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
+ 	unsigned long			flags;
+-printk(KERN_ERR "$ %s entry \n",__func__);
++//printk(KERN_ERR "$ %s entry \n",__func__);
+ 	/* REVISIT:  should we have config and device level
+ 	 * disconnect callbacks?
+ 	 */
+@@ -1520,7 +1520,7 @@ static void __composite_unbind(struct usb_gadget *gadget, bool unbind_driver)
+ 	 * state protected by cdev->lock.
+ 	 */
+ 	WARN_ON(cdev->config);
+-printk(KERN_ERR "$$ %s entry \n",__func__);
++//printk(KERN_ERR "$$ %s entry \n",__func__);
+ 	while (!list_empty(&cdev->configs)) {
+ 		struct usb_configuration	*c;
+ 		c = list_first_entry(&cdev->configs,
+-- 
+1.7.1
+

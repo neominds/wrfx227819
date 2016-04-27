@@ -1,0 +1,174 @@
+From 4094f24a36824f4ffdd8c174a4faa5ef0aff35a2 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:22:51 +0900
+Subject: [PATCH 079/170] 0001-SATA-clock-and-phys-adjustment
+
+
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index 7881ef5..5810d93 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -218,13 +218,13 @@
+ 			interrupts = <61>;
+ 		};
+ 
+-*/
++
+ 		sata@04a30000 {
+ 			compatible = "snps,spear-ahci","ahci";
+ 			reg = <0x04a30000 0x200>;
+ 			interrupts = <85>;
+ 		};
+-/*
++
+ 		ethernet@04410000 {
+ 			compatible = "snps,dwmac";
+ 			reg = <0x04410000 0x10000>;
+diff --git a/drivers/ata/ahci_platform.c b/drivers/ata/ahci_platform.c
+index 6a5c9aa..8c7e05b 100644
+--- a/drivers/ata/ahci_platform.c
++++ b/drivers/ata/ahci_platform.c
+@@ -130,7 +130,8 @@ static int ahci_probe(struct platform_device *pdev)
+ 		return -ENOMEM;
+ 	}
+ 
+-	hpriv->clk = clk_get(dev, NULL);
++//	hpriv->clk = clk_get(dev, NULL);
++	hpriv->clk = 100000000;
+ 	if (IS_ERR(hpriv->clk)) {
+ 		dev_err(dev, "can't get clock\n");
+ 	} else {
+diff --git a/drivers/ata/libata-core.c b/drivers/ata/libata-core.c
+index ca7c23d..23e6fad 100644
+--- a/drivers/ata/libata-core.c
++++ b/drivers/ata/libata-core.c
+@@ -3764,7 +3764,7 @@ int sata_link_hardreset(struct ata_link *link, const unsigned long *timing,
+ 	int rc;
+ 
+ 	DPRINTK("ENTER\n");
+-
++printk("##### %s enter \n",__FUNCTION__);
+ 	if (online)
+ 		*online = false;
+ 
+@@ -3778,7 +3778,7 @@ int sata_link_hardreset(struct ata_link *link, const unsigned long *timing,
+ 			goto out;
+ 
+ 		scontrol = (scontrol & 0x0f0) | 0x304;
+-
++printk("##### %s set needed spd scontrole = %x \n",__FUNCTION__,scontrol); /* yamano */
+ 		if ((rc = sata_scr_write(link, SCR_CONTROL, scontrol)))
+ 			goto out;
+ 
+@@ -3790,6 +3790,8 @@ int sata_link_hardreset(struct ata_link *link, const unsigned long *timing,
+ 		goto out;
+ 
+ 	scontrol = (scontrol & 0x0f0) | 0x301;
++//	scontrol = (scontrol & 0x0f0) | 0x321;
++printk("##### %s scontrole = %x \n",__FUNCTION__,scontrol); /* yamano */
+ 
+ 	if ((rc = sata_scr_write_flush(link, SCR_CONTROL, scontrol)))
+ 		goto out;
+@@ -5643,12 +5645,14 @@ int sata_link_init_spd(struct ata_link *link)
+ {
+ 	u8 spd;
+ 	int rc;
+-
++//printk("#### %s entry\n",__FUNCTION__);	/* yamano */
+ 	rc = sata_scr_read(link, SCR_CONTROL, &link->saved_scontrol);
+ 	if (rc)
+ 		return rc;
+ 
++//printk("#### %s spd %x get\n",__FUNCTION__,link->saved_scontrol);
+ 	spd = (link->saved_scontrol >> 4) & 0xf;
++//	spd = 3;	/* 6Gbps */
+ 	if (spd)
+ 		link->hw_sata_spd_limit &= (1 << spd) - 1;
+ 
+@@ -6106,11 +6110,14 @@ int ata_port_probe(struct ata_port *ap)
+ {
+ 	int rc = 0;
+ 
++//printk("##### %s entry \n",__FUNCTION__);	/* yamano */
+ 	if (ap->ops->error_handler) {
++//printk("##### %s port \n",__FUNCTION__);	/* yamano */
+ 		__ata_port_probe(ap);
+ 		ata_port_wait_eh(ap);
+ 	} else {
+ 		DPRINTK("ata%u: bus probe begin\n", ap->print_id);
++//printk("##### %s bus probe \n",__FUNCTION__);	/* yamano */
+ 		rc = ata_bus_probe(ap);
+ 		DPRINTK("ata%u: bus probe end\n", ap->print_id);
+ 	}
+@@ -6121,7 +6128,7 @@ int ata_port_probe(struct ata_port *ap)
+ static void async_port_probe(void *data, async_cookie_t cookie)
+ {
+ 	struct ata_port *ap = data;
+-
++//printk("##### %s entry \n",__FUNCTION__);	/* yamano */
+ 	/*
+ 	 * If we're not allowed to scan this host in parallel,
+ 	 * we need to wait until all previous scans have completed
+@@ -6131,9 +6138,11 @@ static void async_port_probe(void *data, async_cookie_t cookie)
+ 	 */
+ 	if (!(ap->host->flags & ATA_HOST_PARALLEL_SCAN) && ap->port_no != 0)
+ 		async_synchronize_cookie(cookie);
++//printk("##### %s call ata_port_probe\n",__FUNCTION__);	/* yamano */
+ 
+ 	(void)ata_port_probe(ap);
+ 
++//printk("##### %s ata_port_probe exit \n",__FUNCTION__);	/* yamano */
+ 	/* in order to keep device order, we need to synchronize at this point */
+ 	async_synchronize_cookie(cookie);
+ 
+@@ -6214,6 +6223,7 @@ int ata_host_register(struct ata_host *host, struct scsi_host_template *sht)
+ 					      ap->udma_mask);
+ 
+ 		if (!ata_port_is_dummy(ap)) {
++//			dev_err(host->dev, "#### %s yamanodebug \n",__FUNCTION__);
+ 			ata_port_info(ap, "%cATA max %s %s\n",
+ 				      (ap->flags & ATA_FLAG_SATA) ? 'S' : 'P',
+ 				      ata_mode_string(xfer_mask),
+diff --git a/drivers/ata/libata-eh.c b/drivers/ata/libata-eh.c
+index 370462f..39e3c7a 100644
+--- a/drivers/ata/libata-eh.c
++++ b/drivers/ata/libata-eh.c
+@@ -2832,6 +2832,7 @@ int ata_eh_reset(struct ata_link *link, int classify,
+ 			classes[dev->devno] = ATA_DEV_SEMB_UNSUP;
+ 	}
+ 
++printk("##### %s cur link speed \n",__FUNCTION__);	/* yamano */
+ 	/* record current link speed */
+ 	if (sata_scr_read(link, SCR_STATUS, &sstatus) == 0)
+ 		link->sata_spd = (sstatus >> 4) & 0xf;
+@@ -2839,9 +2840,11 @@ int ata_eh_reset(struct ata_link *link, int classify,
+ 		slave->sata_spd = (sstatus >> 4) & 0xf;
+ 
+ 	/* thaw the port */
++printk("##### %s host link call \n",__FUNCTION__);	/* yamano */
+ 	if (ata_is_host_link(link))
+ 		ata_eh_thaw_port(ap);
+ 
++printk("##### %s host link exit \n",__FUNCTION__);	/* yamano */
+ 	/* postreset() should clear hardware SError.  Although SError
+ 	 * is cleared during link resume, clearing SError here is
+ 	 * necessary as some PHYs raise hotplug events after SRST.
+@@ -2851,10 +2854,14 @@ int ata_eh_reset(struct ata_link *link, int classify,
+ 	 */
+ 	if (postreset) {
+ 		postreset(link, classes);
+-		if (slave)
++printk("##### %s host link reset exit \n",__FUNCTION__);	/* yamano */
++		if (slave){
+ 			postreset(slave, classes);
++printk("##### %s slave link reset exit \n",__FUNCTION__);	/* yamano */
++		}
+ 	}
+ 
++printk("##### %s postreset exit \n",__FUNCTION__);	/* yamano */
+ 	/*
+ 	 * Some controllers can't be frozen very well and may set spurious
+ 	 * error conditions during reset.  Clear accumulated error
+-- 
+1.7.1
+

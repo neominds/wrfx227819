@@ -1,0 +1,247 @@
+From caaf4a120c13aed6dd8736df85b3270835da9eb2 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:23 +0900
+Subject: [PATCH 123/169] 0001-corrected-multi-access-issue
+
+
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index 03dbc24..f1305e7 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -41,6 +41,11 @@
+ 
+ #include <linux/spi/xspi.h>
+ 
++#define	XSPI_DEBUG_FUNC
++#define	XSPI_DEBUG_REG
++#define	XSPI_DEBUG_OPE
++#define	XSPI_DEBUG_INT
++
+ /* Register offset Address */
+ /* configuration and clock */
+ #define	SPI_ERR		0x000
+@@ -112,14 +117,30 @@ static struct xspi_dev	*xspi_api_lib = NULL;
+ 
+ static	inline	u32 xspi_rd(struct xspi_dev *dev, unsigned int reg)
+ {
++#ifdef	XSPI_DEBUG_REG
++	u32	data;
++
++	data = readl(dev->reg_base + reg);
++
++	printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, dev->reg_base + reg, data);
++
++	return	data;
++#else
+ 	return	readl(dev->reg_base + reg);
++#endif
+ }
+ 
+ static	inline	void	xspi_wr(struct xspi_dev *dev, unsigned int reg, u32 val)
+ {
++#ifdef	XSPI_DEBUG_REG
++	printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, dev->reg_base + reg, val);
++
++	writel(val, dev->reg_base + reg);
++#else
+ //	*((unsigned int *)(dev->reg_base + reg)) = val;
+ //	writel(val, dev->reg_base + reg);
+ 	__raw_writel(val, dev->reg_base + reg);
++#endif
+ 	barrier();
+ }
+ 
+@@ -352,14 +373,15 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 	char	*buf;
+ 	int	cnt;
+ 	u32	reg;
+-
++#ifdef	XSPI_DEBUG
+ 	dev_info(&spi->dev, "xspi_start_transfer\n");
+ 	dev_info(&spi->dev, "tfr->len %d\n",tfr->len);
+ 	dev_info(&spi->dev, "tfr->cs_change %d\n",tfr->cs_change);
+ 	dev_info(&spi->dev, "tfr->bit_per_word %d\n",tfr->bits_per_word);
+ 	dev_info(&spi->dev, "tfr->delay_usec %d\n",tfr->delay_usecs);
+ 	dev_info(&spi->dev, "tfr->speed_hz %d\n",tfr->speed_hz);
+-
++#endif	/* XSPI_DEBUG */
++	mutex_lock(&xspi->lock);
+ 	xspi_wr(xspi, SPI_ERR, 0x00000000);	/* error clear */
+ 	xspi_clear_fifo(xspi);
+ 	xspi_wr(xspi, SPI_DCTL, 0x00000100);	/* No DMA mode */
+@@ -368,10 +390,10 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 		buf = (char *)tfr->tx_buf;
+ 		for( cnt = 0 ; cnt < tfr->len ; cnt++ ){
+ 			if(spi->chip_select == 1){
+-				dev_info(&spi->dev, "### Write CPLD ### %d : %x\n",addr,*buf);
++//				dev_info(&spi->dev, "### Write CPLD ### %d : %x\n",addr,*buf);
+ 				xspi_write_trans(xspi, addr, *buf, 4);
+ 			}else{
+-				dev_info(&spi->dev, "### Write MEMORY ### %d : %x\n",addr,*buf);
++//				dev_info(&spi->dev, "### Write MEMORY ### %d : %x\n",addr,*buf);
+ 				xspi_write_trans24(xspi, addr, *buf, 0);
+ 			}
+ 			addr++;
+@@ -382,16 +404,17 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 		for(cnt = 0 ; cnt < tfr->len ;cnt++){
+ 			if(spi->chip_select == 1){
+ 				*buf = (char)xspi_read_trans(xspi, addr, 4);
+-				dev_info(&spi->dev, "### read CPLD ### %d : %x\n",addr,*buf);
++//				dev_info(&spi->dev, "### read CPLD ### %d : %x\n",addr,*buf);
+ 			}else{
+ 				*buf = (char)xspi_read_trans24(xspi, addr, 0);
+-				dev_info(&spi->dev, "### read MEMORY ### %d : %x\n",addr,*buf);
++//				dev_info(&spi->dev, "### read MEMORY ### %d : %x\n",addr,*buf);
+ 			}
+ 			addr++;
+ 			buf++;
+ 		}
+ 	}
+-	xspi->len = tfr->len;	
++	xspi->len = tfr->len;
++	mutex_unlock(&xspi->lock);
+ 	return	0;
+ }
+ 
+@@ -402,11 +425,11 @@ static	int	xspi_transfer_one(struct spi_master *master, struct spi_message *msg)
+ 	struct spi_device	*spi = msg->spi;
+ 	int	err,dat;
+ 
+-	dev_info(&spi->dev,"xspi_transfer_one call\n");
+-	dev_info(&spi->dev,"actual_length=%d\n",msg->actual_length);
+-	dev_info(&spi->dev,"chip_select=%d\n",spi->chip_select);
+-	dev_info(&spi->dev,"mode=%d\n",spi->mode);
+-	dev_info(&spi->dev,"bus_num=%d\n",spi->master->bus_num);
++//	dev_info(&spi->dev,"xspi_transfer_one call\n");
++//	dev_info(&spi->dev,"actual_length=%d\n",msg->actual_length);
++//	dev_info(&spi->dev,"chip_select=%d\n",spi->chip_select);
++//	dev_info(&spi->dev,"mode=%d\n",spi->mode);
++//	dev_info(&spi->dev,"bus_num=%d\n",spi->master->bus_num);
+ 
+ 	list_for_each_entry(tfr, &msg->transfers, transfer_list){
+ 		do{
+@@ -447,13 +470,14 @@ static int xspi_probe(struct platform_device *pdev)
+ 	int		err;
+ 	struct spi_master	*master;
+ 
+-	dev_info(&pdev->dev, "XSPI Driver loading...\n");
++//	dev_info(&pdev->dev, "XSPI Driver loading...\n");
+ 
+ 	master = spi_alloc_master(&pdev->dev,sizeof(struct xspi_dev));
+ 	if(!master){
+ 		dev_err(&pdev->dev, "spi_alloc_master failed\n");
+ 		return	-ENOMEM;
+ 	}
++	platform_set_drvdata(pdev, master);
+ 
+ //	master->dev.of_node = pdev->dev.of_node;
+ 	master->mode_bits = SPI_MODE_0;
+@@ -461,11 +485,11 @@ static int xspi_probe(struct platform_device *pdev)
+ 	master->bus_num = pdev->id;
+ 	master->num_chipselect = 2;
+ 	master->transfer_one_message = xspi_transfer_one;
+-	platform_set_drvdata(pdev, master);
+ 
+ 	xspi= spi_master_get_devdata(master);
+ 
+ 	init_completion(&xspi->done);
++	mutex_init(&xspi->lock);
+ 
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!res){
+@@ -488,24 +512,24 @@ static int xspi_probe(struct platform_device *pdev)
+ 	else
+ 		clk_prepare_enable(xspi->clk);
+ #if 1
+-	xspi->irq = platform_get_irq(pdev, 0);
++//	xspi->irq = platform_get_irq(pdev, 0);
+ #else
+-	xspi->irq = irq_of_parse_and_map(pdev->dev.of_node,0);
++//	xspi->irq = irq_of_parse_and_map(pdev->dev.of_node,0);
+ #endif
+-	if(xspi->irq <= 0){
+-		dev_err(&pdev->dev, "could no get IRQ\n");
+-		goto out_master_put;
+-	}
++//	if(xspi->irq <= 0){
++//		dev_err(&pdev->dev, "could no get IRQ\n");
++//		goto out_master_put;
++//	}
+ 
+ 	clk_prepare_enable(xspi->clk);
+ 
+-	err = request_irq(xspi->irq, xspi_interrupt, IRQF_DISABLED, "xspi", master);
+-	if(err){
+-		dev_err(&pdev->dev, "could not register IRQ\n");
+-		goto out_master_put;
+-	}
++//	err = request_irq(xspi->irq, xspi_interrupt, IRQF_DISABLED, "xspi", master);
++//	if(err){
++//		dev_err(&pdev->dev, "could not register IRQ\n");
++//		goto out_master_put;
++//	}
+ 
+-	dev_info(&pdev->dev, "XSPI I/O %x IRQ %d \n",xspi->reg_base,xspi->irq);
++//	dev_info(&pdev->dev, "XSPI I/O %x IRQ %d \n",xspi->reg_base,xspi->irq);
+ 	/* initialize hardware set up */
+ //	dev_info(&pdev->dev, "SPI_CLK0 %x\n", xspi_rd(xspi, SPI_CLK0));
+ //	dev_info(&pdev->dev, "SPI_CLK1 %x\n", xspi_rd(xspi, SPI_CLK1));
+@@ -520,12 +544,13 @@ static int xspi_probe(struct platform_device *pdev)
+ //	xspi_wr(xspi, SPI_CFG + 4, 0xc00000e0);
+ 
+ //	err = devm_spi_register_master(&pdev->dev, master);
++
+ 	err = spi_register_master(master);
+ 	if(err){
+ 		dev_err(&pdev->dev, "could not register SPI Master Driver \n");
+ 		goto out_free_irq;
+ 	}
+-	dev_info(&pdev->dev, "XSPI set up completed Virt %x \n",xspi->reg_base);
++//	dev_info(&pdev->dev, "XSPI set up completed Virt %x \n",xspi->reg_base);
+ 
+ 	xspi_api_lib = xspi;	/* SPILIB Static data */
+ 
+@@ -571,6 +596,7 @@ int	xspi_read(SPILIB_PARAM *spiParam)
+ 
+ 	if(xspi_api_lib == NULL)	return	-1;
+ 
++	mutex_lock(&xspi_api_lib->lock);
+ 	if(spiParam->unit == SPI_UNIT1)	cs = 4;
+ 	else				cs = 0;
+ 	adr = spiParam->offset;
+@@ -584,6 +610,7 @@ int	xspi_read(SPILIB_PARAM *spiParam)
+ 		buf++;
+ 		adr++;
+ 	}
++	mutex_unlock(&xspi_api_lib->lock);
+ 	return	ret;
+ }
+ EXPORT_SYNBOL(xspi_read);
+@@ -601,6 +628,8 @@ int	xspi_write(SPILIB_PARAM *spiParam)
+ 
+ 	if(xspi_api_lib == NULL)	return	-1;
+ 
++	mutex_lock(&xspi_api_lib->lock);
++
+ 	if(spiParam->unit == SPI_UNIT1)	cs = 4;
+ 	else				cs = 0;
+ 
+@@ -623,11 +652,15 @@ int	xspi_write(SPILIB_PARAM *spiParam)
+ 		/* Write disable */
+ 		xspi_write_disable(xspi_api_lib, cs);
+ 	}
++	mutex_unlock(&xspi_api_lib->lock);
+ 
+ 	return	ret;
+ }
+ EXPORT_SYMBOL(xspi_write);
+ 
++#ifdef	CONFIG_DEBUG_FS
++#endif
++
+ #ifdef CONFIG_OF
+ static struct of_device_id xspi_dt_ids[] = {
+ 	{ .compatible = "mmio-xspi" },
+-- 
+1.7.1
+

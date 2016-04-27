@@ -1,0 +1,9 @@
+CONFLICT (content): Merge conflict in drivers/irqchip/irq-gic.c
+Rebase failed at 0001-remove-unused-warning-for-kernel
+
+irq-gic.c
+merged code changes from both sides. rcpl added cpu variable initialization based on value of
+force variable, FX changes include #ifndef for some variables.
+
+
+/EOT

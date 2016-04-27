@@ -1,0 +1,204 @@
+From 1cc51434b64d36eadc2d7f0adee98bc84cbc281e Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:47:11 +0900
+Subject: [PATCH 067/169] 0001-dtb-and-ether-change
+
+
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index fbcd867..32d8d34 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -11,25 +11,29 @@
+ 
+ / {
+ 	model = "WAIKIKI-LM2";
+-	compatible = "arm,lm2,waikiki", "arm,lm2";
++	compatible = "FujiXerox,waikiki";
+ 	interrupt-parent = <&gic>;
+ 	/* This section address is 40bit addressing */
+-	#address-cells = <2>;
+-	#size-cells = <2>;
+-
++	#address-cells = <1>;
++	#size-cells = <1>;
++	chosen {
++		bootargs = "root=/dev/nfs rw nfsroot=192.168.1.250:/exports/fxcl12490 ip=dhcp console=ttyS0,38400 mem=3G";
++	};
++/*
+ 	aliases {
+ 		serial0 = &lm2_serial0;
+ 		serial1 = &lm2_serial1;
+ 		serial2 = &lm2_serial2;
+ 		serial3 = &lm2_serial3;
+ 	};
+-
++*/
++/*
+ 	clusters {
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+ 
+ 		cluster1: cluster@1 {
+-			reg = <0>;
++			reg = <1>;
+ 			cores {
+ 				#address-cells = <1>;
+ 				#size-cells = <0>;
+@@ -46,7 +50,7 @@
+ 		};
+ 
+ 	};
+-
++*/
+ 	cpus {
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+@@ -55,8 +59,8 @@
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a15";
+ 			reg = <0>;
+-			cluster = <&cluster1>;
+-			core = <&core0>;
++//			cluster = <&cluster1>;
++//			core = <&core0>;
+ 			clock-frequency = <800000000>;
+ 		};
+ 
+@@ -64,8 +68,8 @@
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a15";
+ 			reg = <1>;
+-			cluster = <&cluster1>;
+-			core = <&core1>;
++//			cluster = <&cluster1>;
++//			core = <&core1>;
+ 			clock-frequency = <800000000>;
+ 		};
+ 	};
+@@ -73,18 +77,22 @@
+ 	fcspi@04110000{
+ 		compatible = "fcspi";
+ 		linux,mtd-name = "physmap-flash.0";
+-		reg = <0x0 0x04110000 0x0 0x1000>;
+-		interrupts = <0 21 4>;
++		reg = <0x04110000 0x1000>;
++		interrupts = <21>;
+ 		#address-cells = <1>;
+ 		#size-cells = <1>;
+  
+ 		partition@0 {
+ 			label = "bootloader";
+-			reg = <0x00000000 0x00040000>;
++			reg = <0x00000000 0x00600000>;
+ 			read-only;
+                 };
++		partition@00600000 {
++			label = "rootfs";
++			reg = <0x00600000 0x01500000>;
++                };
+ 	};
+-
++/*
+ 	memory@80000000 {
+ 		device_type = "memory";
+ 		reg = <0x8 0x80000000 0x0 0x80000000>;
+@@ -111,6 +119,7 @@
+ 		compatible = "arm,cci";
+ 		reg = <0x0 0x04060000 0x0 0x8000>;
+ 	};
++*/
+ 
+ 	gic: interrupt-controller@2c001000 {
+ 		compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
+@@ -135,6 +144,7 @@
+ 		};
+ 	};
+ 
++/*
+ 	gpdma@04150000 {
+ 		compatible = "gpdma-lm2";
+ 		reg = <0x0 0x04150000 0x0 0x100>;
+@@ -185,8 +195,8 @@
+ 
+ 	ethernet@04410000 {
+ 		compatible = "snps,dwmac";
+-		reg = <2 0x04410000 0x0 0x10000>;
+-		interrupts = <15>;
++		reg = <0x04410000 0x10000>;
++		interrupts = <94 93>;
+ 		phy-mode = "mii";
+ 		reg-io-width = <4>;
+ 	};
+@@ -226,19 +236,19 @@
+                         0x270000 0x1000
+                         0x271000 0x40>;
+                 interrupts = <0 20 0>, <0 21 0>, <0 22 0>;
+-/*                clocks = <&clock CLK_PR0_250_O>, <&clock CLK_PB0_250_O>; */
+-/*                clock-names = "pcie", "pcie_bus"; */
+-                #address-cells = <3>;
+-                #size-cells = <2>;
++                clocks = <&clock CLK_PR0_250_O>, <&clock CLK_PB0_250_O>;
++                clock-names = "pcie", "pcie_bus";
++                #address-cells = <2>;
++                #size-cells = <1>;
+                 device_type = "pci";
+-                ranges = <0x00000800 0 0x40000000 0x40000000 0 0x00001000   /* configuration space */
+-                          0x81000000 0 0          0x40001000 0 0x00010000   /* downstream I/O */
+-                          0x82000000 0 0x40011000 0x40011000 0 0x1ffef000>; /* non-prefetchable memory */
++                ranges = <0x00000004 0x00000000  0x00001000
++                          0x00000004 0x40001000  0x00010000
++                          0x00000004 0x40011000  0x1ffef000>;
+                 #interrupt-cells = <1>;
+                 interrupt-map-mask = <0 0 0 0>;
+                 interrupt-map = <0x0 0 &gic 53>;
+                 num-lanes = <4>;
+                 status = "disabled";
+         };
+-
++*/
+ };
+diff --git a/arch/arm/kernel/devtree.c b/arch/arm/kernel/devtree.c
+index 0db44e6..1f63596 100644
+--- a/arch/arm/kernel/devtree.c
++++ b/arch/arm/kernel/devtree.c
+@@ -89,6 +89,7 @@ void __init arm_dt_init_cpu_maps(void)
+ 	if (!cpus)
+ 		return;
+ 
++printk("### %s: line %d### mpidr = %d \n", __FUNCTION__, __LINE__, mpidr);
+ 	for_each_child_of_node(cpus, cpu) {
+ 		u32 hwid;
+ 
+@@ -106,7 +107,7 @@ void __init arm_dt_init_cpu_maps(void)
+ 				     cpu->full_name);
+ 			return;
+ 		}
+-
++printk("### %s: line %d### hwid = %d \n",__FUNCTION__,__LINE__,hwid);
+ 		/*
+ 		 * 8 MSBs must be set to 0 in the DT since the reg property
+ 		 * defines the MPIDR[23:0].
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 8ea9b07..d302b2a 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -486,6 +486,7 @@ static void __init lm2_dt_init(void)
+ 	virt_addr = ioremap(LM2_UART_0_BASE,0x32);
+ 	lm2_serial_resource[1].membase = virt_addr;
+ 	platform_device_register(&lm2_serial_device);
++	platform_device_register(&lm2_eth_device);
+ 
+ //	l2x0_of_init(0x00400000, 0xfe0fffff);
+ 	of_platform_populate(NULL, lm2_dt_bus_match, NULL, NULL);
+@@ -507,7 +508,7 @@ DT_MACHINE_START(LM2_DT, "FujiXerox Waikiki")
+ 	.map_io		= lm2_dt_map_io,
+ 	.init_early	= lm2_dt_init_early,
+ 	.init_irq	= lm2_init_irq,
+-	.init_time	= &lm2_timer_init,
++	.init_time	= lm2_timer_init,
+ 	.init_machine	= lm2_dt_init,
+ MACHINE_END
+ 
+-- 
+1.7.1
+

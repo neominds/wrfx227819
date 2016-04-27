@@ -1,0 +1,42 @@
+From b9a5650f771032b8cfbd58a39982ce9095e224c2 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Mon, 5 Oct 2015 13:53:47 +0900
+Subject: [PATCH 1/1] stmac_eee_off_add
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/net/ethernet/stmicro/stmmac/stmmac_main.c |    3 +--
+ drivers/net/phy/phy.c                             |    2 ++
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index b3bb96f..4a17ac6 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -380,8 +380,7 @@ bool stmmac_eee_init(struct stmmac_priv *priv)
+ 			priv->hw->mac->set_eee_pls(priv->ioaddr,
+ 						   priv->phydev->link);
+ 
+-		pr_info("stmmac: Energy-Efficient Ethernet initialized\n");
+-
++//		pr_info("stmmac: Energy-Efficient Ethernet initialized\n");
+ 		ret = true;
+ 	}
+ out:
+diff --git a/drivers/net/phy/phy.c b/drivers/net/phy/phy.c
+index 86bc7fb..7069a94 100644
+--- a/drivers/net/phy/phy.c
++++ b/drivers/net/phy/phy.c
+@@ -1155,6 +1155,8 @@ int phy_ethtool_set_eee(struct phy_device *phydev, struct ethtool_eee *data)
+ 	int val;
+ 
+ 	val = ethtool_adv_to_mmd_eee_adv_t(data->advertised);
++	if ( !data->eee_enabled )
++		val=0;
+ 	phy_write_mmd_indirect(phydev->bus, MDIO_AN_EEE_ADV, MDIO_MMD_AN,
+ 			       phydev->addr, val);
+ 
+-- 
+1.7.1
+

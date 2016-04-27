@@ -1,0 +1,26 @@
+From 8c8c2e274a2d5595cfe833e9bb9031184fa18451 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:49:21 +0900
+Subject: [PATCH 168/169] 0214-GPIO_96Panic
+
+
+diff --git a/drivers/gpio/gpiolib.c b/drivers/gpio/gpiolib.c
+index 81790dd..16a9a6c 100644
+--- a/drivers/gpio/gpiolib.c
++++ b/drivers/gpio/gpiolib.c
+@@ -1405,8 +1405,10 @@ static int gpiod_request(struct gpio_desc *desc, const char *label)
+ 	spin_lock_irqsave(&gpio_lock, flags);
+ 
+ 	chip = desc->chip;
+-	if (chip == NULL)
+-		goto done;
++	if (chip == NULL) {
++		spin_unlock_irqrestore(&gpio_lock, flags);
++		return -1;
++	}
+ 
+ 	if (!try_module_get(chip->owner))
+ 		goto done;
+-- 
+1.7.1
+

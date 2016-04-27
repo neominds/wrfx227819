@@ -1,0 +1,29 @@
+From b16915710f89209205889263fb7aab5b809f32a2 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:02 +0900
+Subject: [PATCH 107/169] 0001-delete-pcie-port-2-and-3-resource
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index bb96458..64c1f3d 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -322,6 +322,7 @@ static struct resource lm2_pcie_resource[]={
+                .end    = 0x04a40fff,
+                .flags  = IORESOURCE_MEM,
+        },
++#if 0
+        {	/* port 2 */
+                .start  = 0x04a50000,
+                .end    = 0x04a50fff,
+@@ -332,6 +333,7 @@ static struct resource lm2_pcie_resource[]={
+                .end    = 0x04a60fff,
+                .flags  = IORESOURCE_MEM,
+        },
++#endif
+        {	/* host bridge interrput */
+ //               .start  = LM2_IRQ_PCIE_BUS,
+ //               .end    = LM2_IRQ_PCIE_BUS,
+-- 
+1.7.1
+

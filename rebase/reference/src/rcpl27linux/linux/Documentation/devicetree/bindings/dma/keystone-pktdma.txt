@@ -1,0 +1,113 @@
+This document explains the device tree bindings for the packet dma
+on keystone devices. The Queue Manager Subsystem, The Packet Accelerator
+Subsystem and the SRIO on Keystone Devices all have their own packet dma
+modules. Each individual packet dma has a certain number of RX channels,
+RX flows and TX channels. Each instance of the packet DMA is being
+initialized through device specific bindings.
+
+Explantions of the various options:
+
+reg:	    the various registers offsets and the actual size from the offset
+loop-back:  this is used only with the queue manger packet dma. This can be
+	    used with other packet dma modules as well for testing purposes.
+big-endian: keystone devices can be operated in a mode where the DSP is in the
+            big endian mode. In such cases enable this option
+enable-all: enables all RX and TX channels associated with an instance of the
+            packet dma.
+debug:      used to enable debug.To see debug messages the
+            CONFIG_DMADEVICES_DEBUG must also be enabled in the .config
+rx-priority: used to set the packet dma global rx priority.
+tx-priority: used to set the packet dma global tx priority.
+
+The channels that will be used then need to be initialized. Both RX and TX
+channels need to be given bindings.
+
+label:           This is used by the dma_request_channel_by_name APi to acquire
+                 channels
+pool:	         is the pool from where descriptors will be acquired. This pool
+                 needs to be defined in the hardware queue layer.
+decriptors:      the number of descriptors accociated with the channel. Care should
+                 be taken that the total number of descriptors associated with a
+	         pool is less than or equal to the number in the hardware queue
+	         layer.
+submit-queue:    The submit queue which will be used by the hardware queue layer.
+completion-queue:the completion queue associated with a channel.
+debug:           debug can be enabled on a per channel basis.
+channel:	 the actual channel number to be used.
+priority:	 the priority associated with a channel.
+flow:		 the RX flow that will be used. Applicable only for
+                 RX.
+logical-queue-managers: number of logical queue managers
+queues-per-queue-manager: the number of queues per queue manager
+qm-base-address: the actual VBUSM address that needs to be programmed into
+		 each QM_BASE_ADDR register. The number of distinct values
+		 should be equal to the number of logical queue managers.
+
+An examples is provided below. padma is packet dma instance associated
+with the packet accelerator susbsystem.
+
+		padma: pktdma@2004000 {
+			compatible = "ti,keystone-pktdma";
+			reg = <0x2004000 0x100		/* 0 - global  */
+			       0x2004400 0x120		/* 1 - txchan  */
+			       0x2004800 0x300		/* 2 - rxchan  */
+			       0x2004c00 0x120		/* 3 - txsched */
+			       0x2005000 0x400>;	/* 4 - rxflow  */
+			/* loop-back;  */
+			/* bigendian; */
+			enable-all;
+			/* debug; */
+
+			logical-queue-managers	= <2>;
+			queues-per-queue-manager = <4096>;
+			qm-base-address = <0x34020000 0x34030000>;
+
+			channels {
+				nettx {
+					transmit;
+					label		= "nettx";
+					pool		= "pool-net";
+					descriptors	= <128>;
+					submit-queue	= <648>;
+					/* complete-queue = <xx>; */
+					/* debug; */
+					/* channel = <0>; */
+					/* priority = <1>; */
+				};
+				netrx {
+					receive;
+					label		= "netrx";
+					pool		= "pool-net";
+					descriptors	= <128>;
+					/* submit-queue   = <xx>; */
+					complete-queue = <657>;
+					/* debug; */
+					/* channel = <0>; */
+					flow		= <0>;
+				};
+				patx {
+					transmit;
+					label		= "patx";
+					pool		= "pool-net";
+					descriptors	= <8>;
+					submit-queue	= <640>;
+					/* complete-queue = <xx>; */
+					/* debug; */
+					/* channel = <xx>; */
+					/* priority = <1>; */
+					queues		= <640 4013>;
+				};
+				parx {
+					receive;
+					label		= "parx";
+					pool		= "pool-net";
+					descriptors	= <4>;
+					/* submit-queue   = <xx>; */
+					/* complete-queue = <xx>; */
+					/* debug; */
+					/* channel = <0>; */
+					flow		= <1>;
+				};
+			};
+		};
+

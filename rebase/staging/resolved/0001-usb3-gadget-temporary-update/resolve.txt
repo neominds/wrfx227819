@@ -1,0 +1,7 @@
+CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
+Rebase failed at 0001-usb3-gadget-temporary-update
+
+FX change is only debug statement added. the function gadget_restart is new in RCPL27 but gadget_start exists in both.
+Merge tool diff is confusing- need manual review in detail.
+
+/EOT

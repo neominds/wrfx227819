@@ -1,0 +1,104 @@
+From ee1e3d2eb8953ef0a42facd9ffcc0c0275e74252 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Sat, 6 Dec 2014 11:15:29 +0900
+Subject: [PATCH 20/20] debug physical memory address
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ init/main.c |   41 +++++++++++++++++++++++++++++++++++++----
+ 1 files changed, 37 insertions(+), 4 deletions(-)
+
+diff --git a/init/main.c b/init/main.c
+index fc071a6..f5dc746 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -160,6 +160,40 @@ static const char *panic_later, *panic_param;
+ 
+ extern const struct obs_kernel_param __setup_start[], __setup_end[];
+ 
++#if 1 /* yamano */
++#define	UART_BASE	0xfc160000
++#define	UART_BASE2	0xfc000000
++#define	UART_DATA(base)	(*(volatile unsigned char *)((base) + 0x10))
++#define	UART_STAT(base)	(*(volatile unsigned char *)((base) + 0x15))
++
++static	void	putchar(u32 base,int c)
++{
++	while((UART_STAT(base) & 0x40) == 0)
++		barrier();
++	UART_DATA(base) = c;
++	return;
++}
++
++static	void	flush(u32 base)
++{
++	while((UART_STAT(base) & 0x40) == 0)
++		barrier();
++}
++
++static	void	putstr(u32 base, const char *ptr)
++{
++	char	c;
++
++	while((c = *ptr++) != '\0'){
++		if(c == '\n')
++			putchar(base,'\r');
++		putchar(base,c);
++	}
++	flush(base);
++}
++extern	lm2_printk(unsigned long ptr,const char *str);
++#endif	/* yamano */
++
+ static int __init obsolete_checksetup(char *line)
+ {
+ 	const struct obs_kernel_param *p;
+@@ -473,11 +507,12 @@ asmlinkage void __init start_kernel(void)
+ {
+ 	char * command_line;
+ 	extern const struct kernel_param __start___param[], __stop___param[];
+-
++	char	buf[128];
+ 	/*
+ 	 * Need to run as early as possible, to initialize the
+ 	 * lockdep hash:
+ 	 */
++	PHYS_OFFSET = 0x0000000890000000ULL;	/* yamano debug */
+ 	lockdep_init();
+ 	smp_setup_processor_id();
+ 	debug_objects_early_init();
+@@ -488,7 +523,6 @@ asmlinkage void __init start_kernel(void)
+ 	boot_init_stack_canary();
+ 
+ 	cgroup_init_early();
+-
+ 	local_irq_disable();
+ 	early_boot_irqs_disabled = true;
+ 
+@@ -741,14 +775,12 @@ static void __init do_initcall_level(int level)
+ {
+ 	extern const struct kernel_param __start___param[], __stop___param[];
+ 	initcall_t *fn;
+-
+ 	strcpy(static_command_line, saved_command_line);
+ 	parse_args(initcall_level_names[level],
+ 		   static_command_line, __start___param,
+ 		   __stop___param - __start___param,
+ 		   level, level,
+ 		   &repair_env_string);
+-
+ 	for (fn = initcall_levels[level]; fn < initcall_levels[level+1]; fn++)
+ 		do_one_initcall(*fn);
+ }
+@@ -812,6 +844,7 @@ static noinline void __init kernel_init_freeable(void);
+ 
+ static int __ref kernel_init(void *unused)
+ {
++
+ 	kernel_init_freeable();
+ 	/* need to finish all async __init code before freeing the memory */
+ 	async_synchronize_full();
+-- 
+1.7.1
+

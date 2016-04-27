@@ -1,0 +1,362 @@
+From b960c4c19503adf7a7a0f8990aa10c32be91a8dc Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:13 +0900
+Subject: [PATCH 115/169] 0001-supported-voltage-status
+
+
+diff --git a/drivers/rtc/rtc-quatro53xx.c b/drivers/rtc/rtc-quatro53xx.c
+index d9298c3..c4359ab 100644
+--- a/drivers/rtc/rtc-quatro53xx.c
++++ b/drivers/rtc/rtc-quatro53xx.c
+@@ -34,6 +34,12 @@
+ #include <linux/printk.h>
+ #include <asm/barrier.h>
+ 
++#define	LM2_INFOREG1_READ	0x0100
++#define	LM2_INFOREG2_READ	0x0200
++
++#define	LM2_GET		1
++#define	LM2_SET		0
++
+ #define	RTCCNT		0x010
+ #define	RTCSECOND	0x018
+ #define	RTCCTL		0x01c
+@@ -63,15 +69,25 @@
+ #define	RTC_CODE_INPUT	0x40000000	/* CI */
+ #define	RTC_CODE_CLK	0x80000000	/* CC */
+ 
+-#define	RTC_STAT_BY	0x01
+-#define	RTC_CON_EN	0x01
++#define	RTC_BY	0x01
++#define	RTC_RW	0x02
++#define	RTC_IN	0x04
++
++#define	RTC_TM	0x07
++
++#define	RTC_CN	0x01
++
++#define	RTC_HS	0x20
++#define	RTC_CI	0x40
++#define	RTC_CC	0x80
++
++#define	RTC_EN	0x01
+ 
+ struct	lm2_rtc	{
+ 	volatile u8 __iomem	*rtc_base;
+ 	int			irq;
+ 	struct rtc_device	*rtc;
+ 	unsigned long		count;
+-//	spinlock_t		lock;
+ 	struct mutex		lock;
+ 	unsigned long		alm_en;
+ 	unsigned long		alm_sec;
+@@ -91,7 +107,7 @@ static	int	rtc_busy(volatile u8 __iomem *reg_base)
+ 	do{
+ 		ctrl = readb(reg_base + RTCCTL_CTL);
+ 		barrier();
+-		if(ctrl & RTC_STAT_BY)
++		if(ctrl & RTC_BY)
+ 			msleep(5);
+ 		else
+ 			goto	end;
+@@ -104,134 +120,60 @@ end:
+ 
+ static	int	rtc_connect(volatile void __iomem *reg_base)
+ {
+-#if 0
+-	u32	val;
+-	u32	cmd;
+-
+-
+-        val = readl(reg_base + RTCCTL);
+-	val &= 0x00ffffff;
+-
+-	/* connection set */
+-	val |= RTC_CONNECT;
+-	writel(val, reg_base + RTCCTL);
+-	udelay(1);
+ 
+-	/* init sequence */
+-	cmd = val |= RTC_CODE_CLK;
+-	writel(cmd, reg_base + RTCCTL);
+-	udelay(1);
+-	cmd = val |= RTC_CODE_INPUT;
+-	writel(cmd, reg_base + RTCCTL);
+-	udelay(1);
+-	cmd = val |= RTC_CODE_CLK | RTC_CODE_INPUT;
+-	writel(cmd, reg_base + RTCCTL);
+-	udelay(1);
+-	cmd = val;
+-	writel(cmd, reg_base + RTCCTL);
+-	udelay(1);
+-	cmd = val |= RTC_CODE_CLK;
+-	writel(cmd, reg_base + RTCCTL);
+-	udelay(1);
+-	cmd = val |= RTC_CODE_INPUT;
+-	writel(cmd, reg_base + RTCCTL);
+-	udelay(1);
+-	cmd = val |= RTC_CODE_CLK | RTC_CODE_INPUT;
+-	writel(cmd, reg_base + RTCCTL);
+-	udelay(1);
+-	cmd = val;
+-	writel(cmd, reg_base + RTCCTL);
+-	udelay(1);
+-#else
+-	writeb(0x01, reg_base + RTCCTL_CON);
++	/* Clock Connect */
++	writeb(RTC_CN, reg_base + RTCCTL_CON);	/* RTCCTR.CN = 1 */
+ 	barrier();
+ 	udelay(1);
+ 
+-	writeb(0x80, reg_base + RTCCTL_CLK);
++	/* Initial Sequence */
++	writeb(RTC_CC, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=1 CI=0 HS=0 */
+ 	barrier();
+-	writeb(0x40, reg_base + RTCCTL_CLK);
++	writeb(RTC_CI, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=0 CI=1 HS=0 */
+ 	barrier();
+-	writeb(0xc0, reg_base + RTCCTL_CLK);
++	writeb(RTC_CC|RTC_CI, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=1 CI=1 HS=0 */
+ 	barrier();
+-	writeb(0x00, reg_base + RTCCTL_CLK);
++	writeb(0x00, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=0 CI=0 HS=0 */
+ 	barrier();
+-	writeb(0x80, reg_base + RTCCTL_CLK);
++	writeb(RTC_CC, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=1 CI=0 HS=0 */
+ 	barrier();
+-	writeb(0x40, reg_base + RTCCTL_CLK);
++	writeb(RTC_CI, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=0 CI=1 HS=0 */
+ 	barrier();
+-	writeb(0xc0, reg_base + RTCCTL_CLK);
++	writeb(RTC_CC|RTC_CI, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=1 CI=1 HS=0 */
+ 	barrier();
+-	writeb(0x00, reg_base + RTCCTL_CLK);
++	writeb(0x00, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=0 CI=0 HS=0 */
+ 	barrier();
+ 	udelay(1);
+-#endif		
++	/* Wait another 300ns RTC is established */
+ 	return	0;
+ 
+ }
+ 
+ static	void	rtc_disconnect(volatile u8 __iomem *reg_base)
+ {
+-#if 0
+-	u32	val;
+-
+-        val = readl(reg_base + RTCCTL);
+-
+-	val &= 0x00ffffff;
+-
+-        val |= RTC_CODE_CLK;
+-        writel(val, reg_base + RTCCTL);	/* 0x80XXXXXX*/
+-	udelay(1);
+-
+-        val &= ~RTC_CODE_CLK;
+-        writel(val, reg_base + RTCCTL);	/* 0x00XXXXXX */
+-	udelay(1);
+-
+-        val = val | RTC_CODE_CLK;
+-        writel(val, reg_base + RTCCTL);	/* 0x80XXXXXX */
+-	udelay(1);
+-
+-        val &= ~RTC_CODE_CLK;
+-        writel(val, reg_base + RTCCTL);
+-	udelay(1);
++	/* Setup Sequence */
+ 
+-        val |= RTC_CODE_CLK;
+-        writel(val, reg_base + RTCCTL);
+-	udelay(1);
+-
+-        val &= ~RTC_CODE_CLK;
+-        writel(val, reg_base + RTCCTL);
+-	udelay(1);
+-
+-        val |= RTC_CODE_CLK;
+-        writel(val, reg_base + RTCCTL);
+-	udelay(1);
+-
+-        val &= ~RTC_CODE_CLK;
+-        writel(val, reg_base + RTCCTL);
+-	udelay(1);
+-
+-	/* connection bit reset */
+-	val &= RTC_CONNECT;
+-        writel(val, reg_base + RTCCTL);
+-#else
+-	writeb(0x80, reg_base + RTCCTL_CLK);
++	writeb(RTC_CC, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=1 CI=0 HS=0 */
+ 	barrier();
+-	writeb(0x00, reg_base + RTCCTL_CLK);
++	writeb(0x00, reg_base + RTCCTL_CLK);	/* RTCCTL.CC=0 CI=0 HS=0 */
+ 	barrier();
+-	writeb(0x80, reg_base + RTCCTL_CLK);
++	writeb(RTC_CC, reg_base + RTCCTL_CLK);
+ 	barrier();
+ 	writeb(0x00, reg_base + RTCCTL_CLK);
+ 	barrier();
+-	writeb(0x80, reg_base + RTCCTL_CLK);
++	writeb(RTC_CC, reg_base + RTCCTL_CLK);
+ 	barrier();
+ 	writeb(0x00, reg_base + RTCCTL_CLK);
+ 	barrier();
+-	writeb(0x80, reg_base + RTCCTL_CLK);
++	writeb(RTC_CC, reg_base + RTCCTL_CLK);
+ 	barrier();
+ 	writeb(0x00, reg_base + RTCCTL_CLK);
+ 	barrier();
++
++	/* Disconnect Clock */
+ 	writeb(0x00, reg_base + RTCCTL_CON);
+-#endif
++	/* 300ns before power off */
++
+ 	return;
+ }
+ 
+@@ -259,7 +201,7 @@ static	int	lm2_set_time(struct device *dev, struct rtc_time *tm)
+ //	reg &= ~RTC_RDWR_R;
+ //	reg |= RTC_START;
+ //	writel(reg, rtc->rtc_base+ RTCCTL);
+-	writeb(0x01, rtc->rtc_base + RTCCTL_CTL);
++	writeb(RTC_BY, rtc->rtc_base + RTCCTL_CTL);
+ 	barrier();
+ 	udelay(1);
+ 	result = rtc_busy(rtc->rtc_base);
+@@ -274,7 +216,7 @@ static	int	lm2_set_time(struct device *dev, struct rtc_time *tm)
+ //	reg = readl(rtc->rtc_base + RTCCTL);
+ //	reg |= RTC_INIT;
+ //	writel(reg, rtc->rtc_base + RTCCTL);
+-	writeb(0x04, rtc->rtc_base + RTCCTL_CTL);
++	writeb(RTC_IN, rtc->rtc_base + RTCCTL_CTL);
+ 	barrier();
+ 	udelay(1);
+ 	result = rtc_busy(rtc->rtc_base);
+@@ -414,6 +356,85 @@ void lm2_timer_do_work(struct work_struct *work)
+ 	//printk("lm2_timer_do_work done\n");
+ }
+ 
++static	int	lm2_get_inforeg(struct device *dev, unsigned long *value, int info)
++{
++	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
++	int	result;
++
++	mutex_lock(&rtc->lock);
++	rtc_connect(rtc->rtc_base);
++	writeb(RTC_IN, rtc->rtc_base + RTCCTL_CTL);
++	barrier();
++	udelay(1);
++	result = rtc_busy(rtc->rtc_base);
++	if(result != 0){
++		printk(KERN_ERR "Time out error\n");
++		rtc_disconnect(rtc->rtc_base);
++		mutex_unlock(&rtc->lock);
++		return	-1;
++	}
++	writeb(info, rtc->rtc_base + RTCCTL_TM);
++	udelay(1);
++	writeb(RTC_RW|RTC_BY, rtc->rtc_base + RTCCTL_CTL);
++	result = rtc_busy(rtc->rtc_base);
++	if(result != 0){
++		printk(KERN_ERR "Time out error\n");
++		rtc_disconnect(rtc->rtc_base);
++		mutex_unlock(&rtc->lock);
++		return	-1;
++	}
++	*value = readl(rtc->rtc_base + RTCCNT);
++	rtc_disconnect(rtc->rtc_base);
++	mutex_unlock(&rtc->lock);
++	return	0;
++}
++
++static	int	lm2_voltage_status(struct device *dev, unsigned long *value, int flag)
++{
++	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
++	char	result;
++
++	mutex_lock(&rtc->lock);
++	if(flag){
++		result = readb(rtc->rtc_base + RTCCTL_CTL);
++		result &= ~RTC_IN; 
++		writeb(result, rtc->rtc_base + RTCCTL_CTL);
++	}else{
++		result = readb(rtc->rtc_base + RTCCTL_CTL);
++		if(result & RTC_IN)
++			*value = 1;
++		else
++			*value = 0;
++	}
++	mutex_unlock(&rtc->lock);
++	return	0;
++}
++
++static	int	lm2_ioctl(struct device *dev,unsigned int opecode, unsigned long value)
++{
++	int	result;
++
++	switch(opecode){
++	case	LM2_INFOREG1_READ:
++		result = lm2_get_inforeg(dev, (unsigned long *)value, 0x04);
++		break;
++	case	LM2_INFOREG2_READ:
++		result = lm2_get_inforeg(dev, (unsigned long *)value, 0x06);
++		break;
++	case	RTC_VL_READ:
++		result = lm2_voltage_status(dev, (unsigned long *)value, LM2_GET); 
++		break;
++	case	RTC_VL_CLR:
++		result = lm2_voltage_status(dev, 0, LM2_SET); 
++		break;
++	default:
++		printk( KERN_ERR "%s Unknown opecode = %d\n", __func__, opecode);
++		result = -1;
++		break;
++	}
++	return	result;
++}
++
+ const static struct of_device_id rtc_of_match[] __initconst = {
+ 	{ .compatible = "waikiki,lm2-rtc", },
+ 	{ },
+@@ -422,6 +443,7 @@ const static struct of_device_id rtc_of_match[] __initconst = {
+ static const	struct	rtc_class_ops	lm2_rtc_ops = {
+ 	.read_time	= lm2_get_time,
+ 	.set_time	= lm2_set_time,
++	.ioctl		=lm2_ioctl,
+ 	.read_alarm	= lm2_read_alarm,
+ 	.set_alarm	= lm2_set_alarm,
+ 	.alarm_irq_enable	= lm2_alarm_enable,
+@@ -479,6 +501,7 @@ static int __init lm2_rtc_probe(struct platform_device *pdev)
+ 	dev->rtc->uie_unsupported = 1;
+ 
+ 	device_init_wakeup(&pdev->dev, 1);
++
+ 	/*
+  	 * To Do check connection and start
+  	 */
+@@ -503,19 +526,7 @@ static int __init lm2_rtc_probe(struct platform_device *pdev)
+ 	barrier();
+ 
+ 	rtc_disconnect(dev->rtc_base);
+-#if 0	/* to used access timing */
+- 	writel(RTC_CONNECT, dev->rtc_base + RTCCTL);
+-	val = RTC_CODE_CLK | RTC_CODE_INPUT | RTC_HTOL_START;
+- 	writel(RTC_CODE_CLK, dev->rtc_base + RTCCTL);
+- 	writel(RTC_CODE_CLK|RTC_CODE_INPUT, dev->rtc_base + RTCCTL);
+- 	writel(val, dev->rtc_base + RTCCTL);
+- 	writel(0 , dev->rtc_base + RTCCTL);
+- 	writel(RTC_CODE_CLK, dev-> rtc_base + RTCCTL);
+- 	writel(RTC_CODE_CLK|RTC_CODE_INPUT, dev->rtc_base + RTCCTL);
+- 	writel(val, dev->rtc_base + RTCCTL);
+- 	writel(0, dev->rtc_base + RTCCTL);
+-	msleep(1);	/* RTC establish wait */	
+-#endif
++
+ 	return	0;
+ }
+ 
+-- 
+1.7.1
+

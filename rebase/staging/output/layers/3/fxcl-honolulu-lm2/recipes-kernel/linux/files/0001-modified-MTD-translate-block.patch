@@ -1,0 +1,58 @@
+From 9be6c1fbcf88b4589e38e9e874f4a449cdb99f67 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:24:09 +0900
+Subject: [PATCH 140/170] 0001-modified-MTD-translate-block
+
+
+diff --git a/drivers/mtd/mtdblock.c b/drivers/mtd/mtdblock.c
+index 25bc79a..24ac4d4 100644
+--- a/drivers/mtd/mtdblock.c
++++ b/drivers/mtd/mtdblock.c
+@@ -70,7 +70,6 @@ static int erase_write (struct mtd_info *mtd, unsigned long pos,
+ 	wait_queue_head_t wait_q;
+ 	size_t retlen;
+ 	int ret;
+-	char	*dmabuf;
+ //printk( KERN_ERR "%s entry\n", __func__);
+ 	/*
+ 	 * First, let's erase the flash block.
+@@ -102,14 +101,7 @@ static int erase_write (struct mtd_info *mtd, unsigned long pos,
+ 	/*
+ 	 * Next, write the data to flash.
+ 	 */
+-//for(i=0 ;i<len;i++){printk("%c",buf[i]);}
+-	dmabuf=kzalloc(len,GFP_KERNEL);
+-	if(dmabuf == NULL)
+-		return -EIO;
+-	memcpy(dmabuf,buf,len);
+-//	ret = mtd_write(mtd, pos, len, &retlen, buf);
+-	ret = mtd_write(mtd, pos, len, &retlen, dmabuf);
+-	kfree(dmabuf);
++	ret = mtd_write(mtd, pos, len, &retlen, buf);
+ 	if (ret)
+ 		return ret;
+ 	if (retlen != len)
+@@ -282,7 +274,9 @@ static int mtdblock_writesect(struct mtd_blktrans_dev *dev,
+ 	struct mtdblk_dev *mtdblk = container_of(dev, struct mtdblk_dev, mbd);
+ //printk(KERN_ERR "%s mtdblock_writesect\n",__func__);
+ 	if (unlikely(!mtdblk->cache_data && mtdblk->cache_size)) {
+-		mtdblk->cache_data = vmalloc(mtdblk->mbd.mtd->erasesize);
++//printk(KERN_ERR "%s mtdblock_writesect vmalloc\n",__func__);
++//		mtdblk->cache_data = vmalloc(mtdblk->mbd.mtd->erasesize);
++		mtdblk->cache_data = kzalloc(mtdblk->mbd.mtd->erasesize,GFP_KERNEL);
+ 		if (!mtdblk->cache_data)
+ 			return -EINTR;
+ 		/* -EINTR is not really correct, but it is the best match
+@@ -342,7 +336,8 @@ static void mtdblock_release(struct mtd_blktrans_dev *mbd)
+ 		 */
+ 		if (mbd->file_mode & FMODE_WRITE)
+ 			mtd_sync(mbd->mtd);
+-		vfree(mtdblk->cache_data);
++	//	vfree(mtdblk->cache_data);
++		kfree(mtdblk->cache_data);
+ 	}
+ 
+ 	mutex_unlock(&mtdblks_lock);
+-- 
+1.7.1
+

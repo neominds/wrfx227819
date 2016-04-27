@@ -1,0 +1,9 @@
+CONFLICT (content): Merge conflict in drivers/usb/dwc3/core.c
+Rebase failed at 0001-fixed-protocol-error
+
+suspend part in dwc3_remove is commented out in FX code.
+whereas RCPL code seems to resequence it. (Free up buffers and other resources and then try to suspend/poweroff).
+
+RCPL code part seems better way to do it. Retained RCPL code for now - if doesnt work need to revert to FX code. 
+
+/EOT

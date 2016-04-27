@@ -1,0 +1,323 @@
+From 2a527319f9160e4fb5b4aacc84676de9b4194f76 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:47:44 +0900
+Subject: [PATCH 093/169] 0001-fixed-watchdog-bug
+
+
+diff --git a/drivers/watchdog/lm2_wdt.c b/drivers/watchdog/lm2_wdt.c
+index 045013b..e16b21e 100644
+--- a/drivers/watchdog/lm2_wdt.c
++++ b/drivers/watchdog/lm2_wdt.c
+@@ -25,76 +25,234 @@
+ #include <linux/watchdog.h>
+ #include <linux/io.h>
+ #include <linux/platform_device.h>
++#include <linux/timer.h>
++#include <linux/jiffies.h>
+ 
+-/* Watchdog timer values in seconds */
+-#define WDT_MAX_TIMER	0xffffffff
+-#define	WDT_MIN_TIMER	0x00000002
++#undef	DEBUG_LM2_WDT_IO
++#undef	DEBUG_LM2_WDT_TRACE
++#undef	DEBUG_LM2_WDT_RELOAD
++#undef	DEBUG_LM2_WDT_DEBUG
+ 
++/* Watchdog timer values in seconds */
+ #define	WDT_TIMER_START	0x00000001
+ #define	WDT_TIMER_STOP	0x00000000
++#define	WDT_TIMER_LOAD	0x7a1c
+ 
+ #define	WDTTC		0x080
+-#define	WDTCNT		0x084
+-#define	WDTEN		0x088
++#define	WDTCNT		0x084	/*	Read Only	*/
++#define	WDTEN		0x088	/* only ones set */
+ #define	WDTLD		0x08C
+ #define	WDTBND		0x090
+ 
+-// #define	WDT_TIMER_LOAD	0x00007a1c
+-#define	WDT_TIMER_LOAD	0x7a1c
++//                              300*1000*1000	/* 300MHz supply clock */
++#define	DEFAULT_TIMEOUT_10s	300*1000*1000 *10	/* 32KHz from RTCCLK2 */
++#define WDT_MAX_TIMER	(DEFAULT_TIMEOUT_10s -10)
++#define	WDT_MIN_TIMER	0x00000002
+ 
+-//#define	DEFAULT_TIMEOUT_10s	32*1000*10	/* 32KHz from RTCCLK2 */
+-#define	DEFAULT_TIMEOUT_10s	1	/* 32KHz from RTCCLK2 */
++static	void __iomem	*lm2_regbase;
++static	unsigned long	lm2_ninesec;	/* 9 sec */
++static	int		lm2_wdt_free;	/* 0: user keepalive control 1:wdt free */
+ 
+ struct lm2_wdt_dev {
+ 	volatile void __iomem	*reg_base;
+ 	struct device		*dev;
+ 	unsigned int		timeout;
++	int			running;	/* start flag */
+ };
+ 
++#ifdef	DEBUG_LM2_WDT_IO
++static	u32 inline	lm2_wdt_readl(void __iomem *addr)
++{
++	u32	val;
++
++	val = readl(addr);
++	printk(KERN_ERR "%s : Addr=0x%8.8x Data=0x%8.8x\n", __FUNCTION__, addr, val);
++	return	val;
++}
++static	u32 inline	lm2_wdt_readw(void __iomem *addr)
++{
++	u32	val;
++
++	val = readw(addr);
++	printk(KERN_ERR "%s : Addr=0x%8.8x Data=0x%4.4x\n", __FUNCTION__, addr, val);
++	return	(val & 0x0000ffff);
++}
++static	u32 inline	lm2_wdt_readb(void __iomem *addr)
++{
++	u32	val;
++
++	val = readb(addr);
++	printk(KERN_ERR "%s : Addr=0x%8.8x Data=0x%2.2x\n", __FUNCTION__, addr, val);
++	return	(val & 0x000000ff);
++}
++
++static	void inline	lm2_wdt_writel(u32 val, void __iomem *addr)
++{
++	printk(KERN_ERR "%s : Addr=0x%8.8x Data=0x%8.8x\n", __FUNCTION__, addr, val);
++	writel(val, addr);
++}
++static	void inline	lm2_wdt_writew(u32 val, void __iomem *addr)
++{
++	printk(KERN_ERR "%s : Addr=0x%8.8x Data=0x%4.4x\n", __FUNCTION__, addr, val);
++	writew(val, addr);
++}
++static	void inline	lm2_wdt_writeb(u32 val, void __iomem *addr)
++{
++	printk(KERN_ERR "%s : Addr=0x%8.8x Data=0x%2.2x\n", __FUNCTION__, addr, val);
++	writeb(val, addr);
++}
++#else
++#define	lm2_wdt_readl(addr)		readl(addr)
++#define	lm2_wdt_readw(addr)		readw(addr)
++#define	lm2_wdt_readb(addr)		readb(addr)
++#define	lm2_wdt_writel(value, addr)	writel(value, addr)
++#define	lm2_wdt_writew(value, addr)	writew(value, addr)
++#define	lm2_wdt_writeb(value, addr)	writeb(value, addr)
++#endif	/* DEBUG_LM2_WDT_IO */	 
++
++static	void	lm2_reload_timer_handler(unsigned long data);
++DEFINE_TIMER(lm2_reload,lm2_reload_timer_handler,0,0);
++
++static	void	lm2_reload_timer_handler(unsigned long data)
++{
++	unsigned long j = jiffies;
++
++#ifdef	DEBUG_LM2_WDT_RELOAD
++	printk( KERN_WARNING "Reload timer handler\n");
++#endif
++	if(lm2_wdt_free == 1){
++		lm2_reload.expires = jiffies + lm2_ninesec;
++		add_timer(&lm2_reload);
++		lm2_wdt_writew(WDT_TIMER_LOAD, lm2_regbase + WDTLD);
++	}else{	/* user contorol */
++#ifdef	DEBUG_LM2_WDT_RELOAD
++		printk( KERN_WARNING "Reload timer exit\n");
++#endif
++		/* To Do */
++	}
++	return;
++}
++
++static	void	dump_wdreg(struct lm2_wdt_dev *wdev,int loc)
++{
++	printk(KERN_WARNING "\n<<Watch Dog Timer Reg Dump at %d\n",loc);
++	printk(KERN_WARNING "WDTTC = %xH, WDTCNT(RO) = %xH\n",
++		   *(unsigned int *)(wdev->reg_base + WDTTC),
++		   *(unsigned int *)(wdev->reg_base + WDTCNT));
++	printk(KERN_WARNING "WDTEN = %xH,  WDTLD = %xH\n",
++		   *(unsigned int *)(wdev->reg_base + WDTEN),
++		   *(unsigned int *)(wdev->reg_base + WDTLD));
++	printk(KERN_WARNING "WDTBND  = %xH>>\n\n",*(unsigned int *)(wdev->reg_base + WDTBND));
++}
+ 
+ static int lm2_wdt_start(struct watchdog_device *wdog)
+ {
++
+ 	struct lm2_wdt_dev *wdev = watchdog_get_drvdata(wdog);
++	int		val;
++	unsigned long flags = 0;
++
++#ifdef	DEBUG_LM2_WDT_TRACE
++	printk(KERN_WARNING "Watch Dog Timer Start Set=%d\n",wdog->timeout);
++#endif
++	if(wdev->running != 0){
++#ifdef	DEBUG_LM2_WDT_TRACE
++		printk(KERN_WARNING "Watch Dog is Running!\n");
++#endif
++		lm2_wdt_writew(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
++		lm2_wdt_free = 0;
++		wdev->running = 1;
++		return	0;
++	}
+ 
++	lm2_wdt_writel(0x00000000, wdev->reg_base + WDTEN);
++	val = lm2_wdt_readl(wdev->reg_base + WDTEN);
++	if(val != 0){
++		printk(KERN_ERR "%s could not stop watch dog timer %x\n", __FUNCTION__, val);
++		return	-EINVAL;
++	}
+ 
+-//	printk(KERN_WARNING "Watch Dog Start\n");
+-	writel(WDT_TIMER_START, wdev->reg_base + WDTEN);
+-	barrier();
+-//	writel(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
+-	writew(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
+-	barrier();
++//	lm2_wdt_writel(wdev->timeout, wdev->reg_base + WDTTC);
++	lm2_wdt_writel(DEFAULT_TIMEOUT_10s, wdev->reg_base + WDTTC);
++	val = lm2_wdt_readl(wdev->reg_base + WDTTC);
++	if(val != DEFAULT_TIMEOUT_10s){
++		printk(KERN_ERR "%s could not set terminal count 0x%8.8x\n", __FUNCTION__, val);
++		return	-EINVAL;
++	}
++	lm2_wdt_writel(WDT_MAX_TIMER, wdev->reg_base + WDTBND);
++	val = lm2_wdt_readl(wdev->reg_base + WDTBND);
++	if(val != WDT_MAX_TIMER){
++		printk(KERN_ERR "%s could not reset terminal count 0x%8.8x\n", __FUNCTION__, val);
++		return	-EINVAL;
++	}
+ 
++	wdev->running = 1;
++	lm2_wdt_free = 0;
++	lm2_wdt_writel(WDT_TIMER_START, wdev->reg_base + WDTEN);
++	lm2_wdt_writew(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
++#ifdef	DEBUG_LM2_WDT_TRACE
++	printk(KERN_WARNING "%s exit\n",__FUNCTION__);
++#endif
+ 	return 0;
+ }
+ 
++/*
++ * lm2_wdt_ping - keepalive ping
++ * WDT reload WDTTC counter
++ */
++static int lm2_wdt_ping(struct watchdog_device *wdog)
++{
++	struct lm2_wdt_dev *wdev = watchdog_get_drvdata(wdog);
++	u32	val;
++
++#ifdef	DEBUG_LM2_WDT_TRACE
++	printk(KERN_WARNING "%s call\n",__FUNCTION__);
++#endif
++	lm2_wdt_writew(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
++
++	return	0;	
++}
++
++/*
++ * lm2_wdt_stop - user request timer stop
++ * after run with self rest timer
++ */
+ static int lm2_wdt_stop(struct watchdog_device *wdog)
+ {
+ 	struct lm2_wdt_dev *wdev = watchdog_get_drvdata(wdog);
+ 
+-//	printk(KERN_WARNING "Watch Dog Stop\n");
+-	writel(WDT_TIMER_STOP, wdev->reg_base + WDTEN);
+-	barrier();
++#ifdef	DEBUG_LM2_WDT_TRACE
++	printk(KERN_WARNING "Watch Dog Stop\n");
++#endif
++	if(wdev->running == 0){
++		return	0;
++	}
++	lm2_wdt_writew(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
++	lm2_wdt_free = 1; /* driver has control */
++#ifdef	DEBUG_LM2_WDT_RELOAD
++		printk( KERN_WARNING "Reload timer start %x %x\n",jiffies,lm2_ninesec);
++#endif
++	lm2_reload.expires = jiffies + lm2_ninesec;
++	add_timer(&lm2_reload);
+ 	return 0;
+ }
+ 
++/*
++ * Timer set value
++ * don't touch register
++ */
+ static int lm2_wdt_set_timeout(struct watchdog_device *wdog,
+ 				unsigned int timeout)
+ {
+ 	struct lm2_wdt_dev *wdev = watchdog_get_drvdata(wdog);
+ 
+-	printk(KERN_WARNING "Watch Dog Timer Set %d\n",timeout);
++	printk(KERN_WARNING "Watch Dog Timer Out: %d\n",timeout);
+ 	wdog->timeout = timeout;
+-
+-	writel(WDT_TIMER_STOP, wdev->reg_base + WDTEN);
+-	barrier();
+-	writel(timeout, wdev->reg_base + WDTTC);
+-	barrier();
+-
+ 	return 0;
+ }
+ 
+ static const struct watchdog_info lm2_wdt_info = {
+-	.options = WDIOF_SETTIMEOUT ,
++	.options = WDIOF_KEEPALIVEPING ,
+ 	.identity = "LM2 watchdog",
+ };
+ 
+@@ -102,6 +260,7 @@ static const struct watchdog_ops lm2_wdt_ops = {
+ 	.owner		= THIS_MODULE,
+ 	.start		= lm2_wdt_start,
+ 	.stop		= lm2_wdt_stop,
++	.ping		= lm2_wdt_ping,
+ 	.set_timeout	= lm2_wdt_set_timeout,
+ };
+ 
+@@ -135,12 +294,16 @@ static int lm2_wdt_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	wdev->reg_base = ioremap(mem->start,0x100);
++	lm2_regbase = wdev->reg_base;
+ 
+ 	lm2_wdt->info		= &lm2_wdt_info;
+ 	lm2_wdt->ops		= &lm2_wdt_ops;
+ 	lm2_wdt->timeout	= DEFAULT_TIMEOUT_10s;
+ 	lm2_wdt->min_timeout	= 2;
+ 	lm2_wdt->max_timeout	= WDT_MAX_TIMER;
++	wdev->running = 0;
++	lm2_wdt_free = 0;
++	lm2_ninesec = msecs_to_jiffies(10000 * 9);
+ 
+ 	watchdog_set_drvdata(lm2_wdt, wdev);
+ 
+@@ -153,14 +316,9 @@ static int lm2_wdt_probe(struct platform_device *pdev)
+ 	ret = watchdog_register_device(lm2_wdt);
+ 	if (ret < 0)
+ 		return ret;
+-
+-	/* init */
+-	writeb(0x00, wdev->reg_base + WDTEN);
+-	barrier();
+-	writel(DEFAULT_TIMEOUT_10s, wdev->reg_base + WDTTC);
+-	barrier();
+-	writel(WDT_MAX_TIMER, wdev->reg_base + WDTBND);
++#ifdef	LM2_DEBUG_TRACE
+ 	dev_info(&pdev->dev,"Watch Dog Timer Installed Virt =%x\n",wdev->reg_base);
++#endif
+ 	return 0;
+ }
+ 
+@@ -189,4 +347,5 @@ module_platform_driver(lm2_wdt_driver);
+ 
+ MODULE_ALIAS("platform:lm2-wdt");
+ MODULE_DESCRIPTION("watchdog Timer");
+-MODULE_LICENSE("GPL");
++MODULE_LICENSE("GP:L");
++
+-- 
+1.7.1
+

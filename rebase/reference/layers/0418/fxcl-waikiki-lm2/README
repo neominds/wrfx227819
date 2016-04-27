@@ -1,0 +1,323 @@
+	ARM CoreTile Express A15-A7 Board Support Package
+
+
+1. About this document
+======================
+This document describes the common and non-hardware specific information
+about the ARM CoreTile Express A15x2-A7x3 Board. Please refer to
+README.hardware for hardware specific information.
+
+Dependencies
+------------
+This layer depends on the oe-core version supplied with Wind River
+Linux and the wr-kernel layer.
+
+Maintenance
+-----------
+This layer is maintained by Wind River Systems, Inc.
+Contact <support@windriver.com> or your support representative for more
+information on submitting changes.
+
+Building the arm-cortile-express-a15-a7 layer
+-----------------------------------------
+This layer and wr-kernel layer should be added to bblayers.conf. This
+is done automatically when using the Wind River configure wrapper.
+
+License
+-------
+Copyright (C) 2012 Wind River Systems, Inc.
+The right to copy, distribute or otherwise make use of this software may
+be licensed only pursuant to the terms of an applicable Wind River license
+agreement. No license to Wind River intellectual properly rights is granted
+herein. All rights not licensed by Wind River are reserved by Wind River.
+
+Source code included in tree for individual recipes is under the LICENSE
+stated in each recipe (.bb file) unless other stated.
+
+2. Board Specific Patches
+=========================
+To get a list of patches applied to the kernel specific to this BSP along
+with patch descriptions use git-whatchanged on the default kernel. For example:
+
+	# cd build/linux-windriver-<version>/linux
+	# git whatchanged standard/base..standard/arm-coretile-express-a15-a7
+
+
+3. Firmware
+===========
+
+After powering up, the target will enter "ARM V2M Boot loader" first.
+
+	ARM V2M Boot loader v1.1.2
+	HBI0190 build 2185
+
+	ARM V2M Firmware v3.1.0
+	Build Date: Jul  2 2012
+
+	Date: Sat 17 Nov 2012
+	Time:     09:52:42
+
+
+	Cmd>
+
+Then you can type "reboot" command to load "ARM Versatile Express Boot Monitor".
+
+	Cmd> reboot
+
+	Powering up system...
+	Daughterboard fitted to site 1.
+
+	...
+
+	ARM Versatile Express Boot Monitor
+	Version:    V5.1.3
+	Build Date: Jul 16 2012
+	Daughterboard Site 1: V2P-CA15_A7 Cortex A15
+	Daughterboard Site 2: Not Used
+
+
+3.1 Update firmware
+-------------------
+
+(1) Install the Recovery firmware from the v4.0b VE CD/DVD that came with your
+Versatile Express Connect and mount your Versatile Express motherboard USB mass
+storage device to your PC Download the latest ARM firmware VERSA-DL-00300-r1p1-01rel1.zip
+from https://silver.arm.com/download/download.tm?pv=1307626
+
+Unzip the firmware zip to the root of the motherboard mounted drive.
+
+(2) Download additional Linaro firmware vemsd-armlt-20120920-001.zip from
+https://wiki.linaro.org/ARM/VersatileExpress?action=AttachFile&do=get&target=vemsd-armlt-20120920-001.zip
+
+Unzip the firmware zip to the root of the motherboard mounted drive,
+Please contact Linaro for any issues related to this firmware update.
+
+3.2 Add u-boot support
+----------------------
+
+Because vexpress a15x2-a7x3 only used boot monitor by default, however it has
+lots of limitations, for example, it can't set boot parameters conveniently.
+To add u-boot support, please refer to below steps.
+
+(1) Generate u-boot.bin from git://git.linaro.org/people/tixy/u-boot.git, and
+copy it to /media/VEMSD/SOFTWARE
+
+(2) Edit /media/VEMSD/SITE1/HBI0249A/images.txt and add an image to the end of
+the list with.
+
+	NOR5UPDATE: AUTO                 ;IMAGE UPDATE:NONE/AUTO/FORCE
+	NOR5ADDRESS: 0f800000            ;Image Flash Address
+	NOR5FILE: \SOFTWARE\u-boot.bin   ;Image File Name
+	NOR5LOAD: 0x80800000             ;Image Load Address
+	NOR5ENTRY: 0x80800000            ;Image Entry Point
+
+The TOTALIMAGES: line in the file will also need updating to account for this
+extra image and the 'NOR5' lines added may need to have a different number to
+'6' if that is not the next in sequence.
+
+(3) Edit /media/VEMSD/SOFTWARE/TC2/bootscr.txt file to have the following line:
+	flash run u-boot
+
+
+4. Boot Instructions
+====================
+
+It is necessary to load the DTB(device tree blob) into the target's memory
+prior to booting the kernel uImage. The DTB file can be found in the export
+directory after a build or you can generate it manually with the following
+commands:
+
+	# make kds
+	# make vexpress-v2p-ca15-tc2.dtb
+
+The vexpress-v2p-ca15-tc2.dtb can then be found in below directory:
+build/linux-windriver-3.4-r0/linux-arm-cortile-express-a15-a7-standard-build/arch/arm/boot
+
+Copy above DTB image to MMC/SD, and use uboot's fatload command to transfer
+it to the board before booting along with kernel image.
+
+
+4.1 Boot from MMC/SD card
+-------------------------
+
+MMC/SD can be set as the default booting device for this board and two
+partitions have been created on the MMC/SD card by default, the first one
+is booting partition while the second is root filesystem, which can be
+created by the fdisk command on the host machine.
+
+4.1.1 Create two partitions and store the u-boot image
+------------------------------------------------------
+(1) Create two partitions on the MMC/SD card.
+
+	# fdisk /dev/mmcblk0
+
+Suppose the device node for MMC/SD card on the host machine is the
+/dev/mmcblk0.
+
+(2) Create VFAT filesystem on the first partition.
+
+	# mkfs.vfat /dev/mmcblk0p1
+
+
+4.1.2 Copy kernel image and DTB image to /dev/mmcblk0p1
+-------------------------------------------------------
+
+	# mkdir /mnt/sd
+	# mount /dev/mmcblk0p1 /mnt/sd
+	# cd <buildprj>/export/images/
+	# cp arm-coretile-express-a15-a7-uImage-WRX.yxx_standard /mnt/sd/uImage
+	# cp arm-coretile-express-a15-a7-vexpress-v2p-ca15-tc2.dtb-WRX.yxx_standard \
+		/mnt/sd/vexpress-v2p-ca15-tc2.dtb
+	# umount /mnt/sd
+
+
+4.1.3 Decompress MMC/SD root filesystem
+---------------------------------------
+Assuming the second partition is used for the root filesystem, format it
+with one of the most popular filesystem types supported by Linux, for
+instance, ext3 and mount it and deploy the root filesystem image there:
+
+	# mkfs.ext3 /dev/mmcblk0p2
+	# mount /dev/mmcblk0p2 /mnt/sd
+	# cd <buildprj>/export/images/
+	# tar -C /mnt/sd -jxf arm-coretile-express-a15-a7-glibc-std-standard-dist.tar.bz2 --numeric-owner
+	# umount /mnt/sd
+
+
+4.1.4 Run images from MMC/SD card
+---------------------------
+
+The default DTB supports to boot from MMC/SD device, following kernel boot
+arguments have been specified in the "chosen" DTB node:
+	console=ttyAMA0,38400 earlyprintk root=/dev/mmcblk0p2 ro rootwait
+
+Load the DTB image and check out the kernel boot arguments:
+
+	# mmcinfo
+	# fatload mmc 0 0x81f00000 vexpress-v2p-ca15-tc2.dtb
+	# fdt addr 0x81f00000
+	# setenv bootargs console=ttyAMA0,38400 earlyprintk root=/dev/mmcblk0p2 ro rootwait
+	# fdt chosen
+	# fdt print /chosen
+	chosen {
+		bootargs = "console=ttyAMA0,38400 earlyprintk root=/dev/mmcblk0p2 ro rootwait";
+	};
+
+Load the kernel image and boot along with the DTB image:
+
+	# mmcinfo
+	# fatload mmc 0 0x80000000 uImage
+	# bootm 0x80000000 - 0x81f00000
+
+
+4.2 NFS Root File System
+------------------------
+
+4.2.1 Prepare NFS and TFTP servers
+----------------------------------
+The files in above example can be found in <buildprj>/export/images and
+are copied to the directory of the TFTP server.
+
+4.2.2 Boot from NFS root filesystem
+-----------------------------------
+The DTB node "chosen" is used to specify the kernel boot arguments, in
+particular, the root device to boot from. In order to boot from root device
+other than MMC/SD card, the "chosen" DTB node needs to be changed in two
+possible approaches.
+
+Either edit the following DTB source file
+	linux/arch/arm/boot/dts/vexpress-v2p-ca15-tc2.dts
+and re-generate the DTB image.
+
+Or modify DTB content on-line via u-boot's fdt command:
+
+	# tftp 0x81f00000 arm-coretile-express-a15-a7-vexpress-v2p-ca15-tc2.dtb-WRX.yxx_standard;
+	# fdt addr 0x81f00000
+	# setenv bootargs console=ttyAMA0,38400 earlyprintk root=/dev/nfs rw nfsroot=$serverip:$rootpath ip=dhcp
+	# fdt chosen
+	# fdt print /chosen
+	chosen {
+		bootargs = "console=ttyAMA0,38400 earlyprintk root=/dev/nfs rw nfsroot=$serverip:$rootpath ip=dhcp";
+	};
+	# (loading kernel image from TFTP server / MMC/SD to 0x80000000)
+	# bootm 0x80000000 - 0x81f00000
+
+
+5. Features
+===========
+
+5.1 UART setting
+----------------
+
+There are four UART ports on the rear panel of the motherboard. UART 0
+(under mmc/sd slot) is used for debug, and has a baud rate of 38400.
+
+
+5.2 Cpufreq
+-----------
+
+Freq scaling is only available when governor works in userspace mode.
+
+# cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors
+conservative ondemand userspace powersave performance
+# cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq
+1200000
+# cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies
+500000 600000 700000 800000 900000 1000000 1100000 1200000
+# echo 800000 > /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
+# cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq
+800000
+
+
+5.3 Audio
+---------
+
+Set the parameter to initialize the codec and then record audio messages:
+
+# amixer contents -c 0	/* Show all available parameters */
+# amixer -c0 cset numid=1 1
+# amixer -c0 cset numid=2 24
+# amixer -c0 cset numid=12 1
+# amixer -c0 cset numid=13 24
+# amixer -c0 cset numid=18 1
+# amixer -c0 cset numid=19 24
+# amixer -c0 cset numid=20 1
+# amixer -c0 cset numid=21 24
+
+Insert a microphone into blue hole(LINE IN) in rear panel of motherboard,
+then record your voice with the command below.
+
+# arecord -c 2 -f S16_LE -r 44100 -d 10 -t wav test.wav
+
+Insert a headphone into green hole(LINE OUT) in rear panel of motherboard,
+play the just recorded wav file.
+
+# aplay test.wav
+
+
+5.4 Kexec and Kdump
+-------------------
+
+For discussion purposes, some terminology that will be useful which will be
+described here.
+
+- boot kernel: the first one that you start and supports kexec, from u-boot
+  for instance
+
+To build boot kernel, use the following configure option to configure project:
+
+	--with-template=feature/kexec
+
+- dump-capture kernel: the kernel that you reboot into after the boot kernel
+  crash
+
+To build dump-capture kernel, use the following configure option to configure
+project:
+
+	--with-template=feature/kdump
+
+To reserve a memory region for dump-capture kernel, please pass "crashkernel=129M@2560M"
+via command line.
+
+For more detailed info about kdump, please refer to Documents/kdump/kdump.txt
+in the kernel source tree.

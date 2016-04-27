@@ -1,0 +1,71 @@
+Merging in 0028-usbd-dwc3-driver-update from br12_29 to br27_29 -new is br27_30
+CONFLICT (content): Merge conflict in drivers/usb/dwc3/core.c 
+CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
+
+drivers/usb/dwc3/core.c
+=>
+
+Conflicts Ln 85
+<<<<<<< HEAD
+int dwc3_core_soft_reset(struct dwc3 *dwc)
+=======
+static int dwc3_core_soft_reset(struct dwc3 *dwc)
+>>>>>>> br12_29
+
+* selected first because RCPL27 uses the int dwc3_core_soft_reset(struct dwc3 *dwc) 
+
+Conflicts Ln 134
+
+* Removed space 
+
+Conflicts Ln 830
+<<<<<<< HEAD
+=======
+        usb_phy_set_suspend(dwc->usb2_phy, 1);
+        usb_phy_set_suspend(dwc->usb3_phy, 1);
+        phy_power_off(dwc->usb2_generic_phy);
+        phy_power_off(dwc->usb3_generic_phy);
+
+        pm_runtime_put_sync(&pdev->dev);
+        pm_runtime_disable(&pdev->dev);
+
+>>>>>>> br12_29
+
+* RCPL27 have restructured the function static int dwc3_remove(struct platform_device *pdev) 
+* WR added phy_power_off(dwc->usb2_generic_phy);
+        phy_power_off(dwc->usb3_generic_phy);
+        pm_runtime_put_sync(&pdev->dev); these are retained as it is.
+* Have a doubt in dwc3_core_exit_mode(dwc);
+
+*NCL(needed checking later in detail)
+
+drivers/usb/dwc3/gadget.c
+==>
+
+COnflict at Ln 753
+
+<<<<<<< HEAD
+__dwc3_gadget_ep_set_halt(dep, 0, false);
+=======
+__dwc3_gadget_ep_set_halt(dep, 0);
+>>>>>>> br12_29
+
+* Selected __dwc3_gadget_ep_set_halt(dep, 0, false); because RCPL27 contains this function.
+* __dwc3_gadget_ep_set_halt(dep, 0); Added by fujitsu but its updated in RCPL27 as above. 
+
+
+COnflict at Ln 1684
+
+* static int dwc3_gadget_start(struct usb_gadget *g, struct usb_gadget_driver *driver) 
+  has been replaced in RCPL27 by int dwc3_gadget_restart(struct dwc3 *dwc)
+-- fujitsu changes to tils function 
+ ret = request_threaded_irq(irq, dwc3_interrupt, dwc3_thread_interrupt,
+-			IRQF_SHARED | IRQF_ONESHOT, "dwc3", dwc);
++			IRQF_SHARED, "dwc3", dwc);
+ 	if (ret) {
+ 		dev_err(dwc->dev, "failed to request irq #%d --> %d\n",
+* Retained RCPL27 because of thedifference in  function arguments. 
+
+*NCL
+
+/EOT

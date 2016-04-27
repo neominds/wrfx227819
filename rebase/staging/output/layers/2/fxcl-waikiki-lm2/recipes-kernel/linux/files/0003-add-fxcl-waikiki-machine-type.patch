@@ -1,0 +1,18 @@
+From 83bc2e2ed43cb79bba39f94454abc0545ae0f3b1 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:45:46 +0900
+Subject: [PATCH 004/169] 0003-add-fxcl-waikiki-machine-type
+
+
+diff --git a/arch/arm/tools/mach-types b/arch/arm/tools/mach-types
+index a10297d..6338c43 100644
+--- a/arch/arm/tools/mach-types
++++ b/arch/arm/tools/mach-types
+@@ -1007,3 +1007,4 @@ eco5_bx2		MACH_ECO5_BX2		ECO5_BX2		4572
+ eukrea_cpuimx28sd	MACH_EUKREA_CPUIMX28SD	EUKREA_CPUIMX28SD	4573
+ domotab			MACH_DOMOTAB		DOMOTAB			4574
+ pfla03			MACH_PFLA03		PFLA03			4575
++lm2			MACH_LM2		LM2			5500
+-- 
+1.7.1
+

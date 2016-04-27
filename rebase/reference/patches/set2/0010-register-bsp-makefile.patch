@@ -1,0 +1,34 @@
+From 10fac395551acf1af1a2a2fc78d282007cb1ea88 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Fri, 5 Dec 2014 20:55:45 +0900
+Subject: [PATCH 10/18] register bsp makefile
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/Makefile |    2 ++
+ 1 files changed, 2 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/Makefile b/arch/arm/Makefile
+index 270b619..d5f7213 100644
+--- a/arch/arm/Makefile
++++ b/arch/arm/Makefile
+@@ -187,6 +187,7 @@ machine-$(CONFIG_ARCH_U300)		+= u300
+ machine-$(CONFIG_ARCH_U8500)		+= ux500
+ machine-$(CONFIG_ARCH_VERSATILE)	+= versatile
+ machine-$(CONFIG_ARCH_VEXPRESS)		+= vexpress
++machine-$(CONFIG_ARCH_LM2)		+= lm2
+ machine-$(CONFIG_ARCH_VT8500)		+= vt8500
+ machine-$(CONFIG_ARCH_W90X900)		+= w90x900
+ machine-$(CONFIG_FOOTBRIDGE)		+= footbridge
+@@ -206,6 +207,7 @@ plat-$(CONFIG_PLAT_PXA)		+= pxa
+ plat-$(CONFIG_PLAT_S3C24XX)	+= samsung
+ plat-$(CONFIG_PLAT_S5P)		+= samsung
+ plat-$(CONFIG_PLAT_VERSATILE)	+= versatile
++plat-$(CONFIG_PLAT_WAIKIKI)	+= waikiki
+ 
+ ifeq ($(CONFIG_ARCH_EBSA110),y)
+ # This is what happens if you forget the IOCS16 line.
+-- 
+1.7.1
+

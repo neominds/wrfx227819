@@ -1,0 +1,32 @@
+From 1ab10f63d7c1f1f1b90c6048071e864ec778f1cb Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Fri, 27 Mar 2015 14:43:53 +0900
+Subject: [PATCH 1/1] correct prototype parameter for MTD
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/mtd/devices/Kconfig |    4 ++++
+ 1 files changed, 4 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/mtd/devices/Kconfig b/drivers/mtd/devices/Kconfig
+index 48ab528..2fc63d6 100644
+--- a/drivers/mtd/devices/Kconfig
++++ b/drivers/mtd/devices/Kconfig
+@@ -2,9 +2,13 @@ menu "Self-contained MTD device drivers"
+ 	depends on MTD!=n
+ 	depends on HAS_IOMEM
+ 
++config SOC_QUATRO5500
++	bool
++
+ config MTD_LM2_FCSPI
+ 	bool	"LM2 FCSPI Flash Driver"
+ 	depends on ARCH_LM2
++	select	SOC_QUATRO5500
+ 	help
+ 
+ config MTD_PMC551
+-- 
+1.7.1
+

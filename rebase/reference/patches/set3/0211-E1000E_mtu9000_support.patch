@@ -1,0 +1,27 @@
+From 899cd4c45ddbb2a5aad03a8cb9a01f4f8980f2fb Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Mon, 28 Mar 2016 11:28:40 +0900
+Subject: [PATCH 1/1] E1000E_mtu9000_support
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/net/ethernet/intel/e1000e/netdev.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index dad0a82..3f9dce7 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -5526,7 +5526,7 @@ static netdev_tx_t e1000_xmit_frame(struct sk_buff *skb,
+ 	 * head, otherwise try next time
+ 	 */
+ #ifdef	WR_E1000E_WORKAROUND
+-	if (e1000_maybe_stop_tx(tx_ring, count + 220))
++	if (e1000_maybe_stop_tx(tx_ring, count + 200))
+ #else
+ 	if (e1000_maybe_stop_tx(tx_ring, count + 2))
+ #endif  /* WR_E1000E_WORKAROUND */
+-- 
+1.7.1
+

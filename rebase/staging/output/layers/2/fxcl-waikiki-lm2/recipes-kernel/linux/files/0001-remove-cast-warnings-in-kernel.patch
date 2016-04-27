@@ -1,0 +1,147 @@
+From 31e051033adc245e2ff188b791c0c538c5c498f8 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:46 +0900
+Subject: [PATCH 141/169] 0001-remove-cast-warnings-in-kernel
+
+
+diff --git a/arch/arm/include/asm/memory.h b/arch/arm/include/asm/memory.h
+index 2111ed7..786cab9 100644
+--- a/arch/arm/include/asm/memory.h
++++ b/arch/arm/include/asm/memory.h
+@@ -210,7 +210,7 @@ static inline unsigned long __phys_to_virt(unsigned long x)
+ extern phys_addr_t  __pv_phys_offset;
+ #define PHYS_OFFSET __pv_phys_offset
+ #define __virt_to_phys(x)	(phys_addr_t)((phys_addr_t)(x) - PAGE_OFFSET + PHYS_OFFSET)
+-#define __phys_to_virt(x)	((phys_addr_t)(x) - PHYS_OFFSET + PAGE_OFFSET)
++#define __phys_to_virt(x)	(unsigned long)((phys_addr_t)(x) - PHYS_OFFSET + PAGE_OFFSET)
+ #endif	/* CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY */	/* yamano */
+ #endif
+ #endif /* __ASSEMBLY__ */
+@@ -264,7 +264,7 @@ static inline void *phys_to_virt(phys_addr_t x)
+  */
+ #define __pa(x)			__virt_to_phys((unsigned long)(x))
+ #ifdef	CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY
+-#define __va(x)			((void *)__phys_to_virt((phys_addr_t)(x)))
++#define __va(x)			((void *)(__phys_to_virt((phys_addr_t)(x))))
+ #else
+ #define __va(x)			((void *)__phys_to_virt((unsigned long)(x)))
+ #endif
+diff --git a/arch/arm/mm/mmu.c b/arch/arm/mm/mmu.c
+index d625d17..d73bd40 100644
+--- a/arch/arm/mm/mmu.c
++++ b/arch/arm/mm/mmu.c
+@@ -112,7 +112,7 @@ static  int     getchar(u32 base)
+         return  UART_DATA(base);
+ }
+ #else
+-static int	yamadebug = 0;
++//static int	yamadebug = 0;
+ #define putchar(a,b)    {}
+ #define flush(a)        {}
+ #define putstr(a,b)     {}
+@@ -1244,22 +1244,22 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	unsigned long addr;
+ //	phys_addr_t	paddr;
+ 	void *vectors;
+-	char	buf[128];
++//	char	buf[128];
+ 
+-putstr(UART_BASE,"devicemaps_init_entry\n");
++//putstr(UART_BASE,"devicemaps_init_entry\n");
+ 	/*
+ 	 * Allocate the vector page early.
+ 	 */
+ 	vectors = early_alloc(PAGE_SIZE * 2);
+-putstr(UART_BASE,"early_alloc for vector\n");
++//putstr(UART_BASE,"early_alloc for vector\n");
+ 
+ 	early_trap_init(vectors);
+-putstr(UART_BASE,"early_trap_init\n");
++//putstr(UART_BASE,"early_trap_init\n");
+ 
+ 	for (addr = VMALLOC_START; addr; addr += PMD_SIZE)
+ 		pmd_clear(pmd_off_k(addr));
+ 
+-putstr(UART_BASE,"pmd_clear\n");
++//putstr(UART_BASE,"pmd_clear\n");
+ 	/*
+ 	 * Map the kernel if it is XIP.
+ 	 * It is always first in the modulearea.
+@@ -1271,7 +1271,7 @@ putstr(UART_BASE,"pmd_clear\n");
+ 	map.type = MT_ROM;
+ 	create_mapping(&map);
+ #endif
+-putstr(UART_BASE,"XIP\n");
++//putstr(UART_BASE,"XIP\n");
+ 	/*
+ 	 * Map the cache flushing regions.
+ 	 */
+@@ -1289,7 +1289,7 @@ putstr(UART_BASE,"XIP\n");
+ 	map.type = MT_MINICLEAN;
+ 	create_mapping(&map);
+ #endif
+-putstr(UART_BASE,"FLASH\n");
++//putstr(UART_BASE,"FLASH\n");
+ 
+ 	/*
+ 	 * Create a mapping for the machine vectors at the high-vectors
+@@ -1306,8 +1306,8 @@ putstr(UART_BASE,"FLASH\n");
+ #else
+ 	map.type = MT_LOW_VECTORS;
+ #endif
+-sprintf(buf,"create_mapping phy=0x%llx vir=0x%x\n", virt_to_phys(vectors), map.virtual);
+-putstr(UART_BASE,buf);
++//sprintf(buf,"create_mapping phy=0x%llx vir=0x%x\n", virt_to_phys(vectors), map.virtual);
++//putstr(UART_BASE,buf);
+ 	create_mapping(&map);
+ //putstr(UART_BASE,"vector\n");
+ 
+@@ -1405,7 +1405,7 @@ void __init paging_init(struct machine_desc *mdesc)
+ 	dma_contiguous_remap();
+ //putstr(UART_BASE,"dma_contiguous_remap\n");
+ 	devicemaps_init(mdesc);	/* reset debug I/O map yamano befor used UART_BASE2 */
+-	yamadebug = 1;
++//	yamadebug = 1;
+ //putstr(UART_BASE2,"devicemaps_init\n");
+ 	kmap_init();
+ //putstr(UART_BASE2,"kmap_init\n");
+diff --git a/drivers/gpio/gpio-lm2.c b/drivers/gpio/gpio-lm2.c
+index 8f6d76a..2493575 100644
+--- a/drivers/gpio/gpio-lm2.c
++++ b/drivers/gpio/gpio-lm2.c
+@@ -104,7 +104,8 @@ static	void	gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
+ 			dat &= ~(1 << (offset - 64));
+ 			writel(dat, gpio->regbase + PIODATC);
+ 		}else{
+-			dev_err(&chip->dev, "GPIO could not access port\n");
++			printk(KERN_ERR "%s GPIO could not access port\n", __func__);
++//			dev_err(&chip->dev, "GPIO could not access port\n");
+ 		}
+ 	}else{
+ 		if(offset < 32){
+@@ -120,7 +121,8 @@ static	void	gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
+ 			dat |= value << (offset - 64);
+ 			writel(dat, gpio->regbase + PIODATC);
+ 		}else{
+-			dev_err(&chip->dev, "GPIO could not access port\n");
++//			dev_err(&chip->dev, "GPIO could not access port\n");
++			printk(KERN_ERR "%s GPIO could not access port\n", __func__);
+ 		}
+ 	}
+ }
+diff --git a/init/main.c b/init/main.c
+index f9d30ab..927fea9 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -625,7 +625,7 @@ asmlinkage void __init start_kernel(void)
+ #ifdef CONFIG_BLK_DEV_INITRD
+ 	if (initrd_start && !initrd_below_start_ok &&
+ 	    page_to_pfn(virt_to_page((void *)initrd_start)) < min_low_pfn) {
+-		pr_crit("initrd overwritten (0x%08lx < 0x%08lx) - disabling it.\n",
++		pr_crit("initrd overwritten (0x%16llx < 0x%08lx) - disabling it.\n",
+ 		    page_to_pfn(virt_to_page((void *)initrd_start)),
+ 		    min_low_pfn);
+ 		initrd_start = 0;
+-- 
+1.7.1
+

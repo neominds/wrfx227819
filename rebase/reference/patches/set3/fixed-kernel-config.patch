@@ -1,0 +1,31 @@
+From d0e00526f9081a3ca9d44a71a6e9d7cdaaed2ac4 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Mon, 12 Jan 2015 18:03:51 +0900
+Subject: [PATCH 1/1] fixed kernel config
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/Kconfig |    6 ++++++
+ 1 files changed, 6 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 75d8f83..026463a 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -106,6 +106,12 @@ config HAVE_PWM
+ config MIGHT_HAVE_PCI
+ 	bool
+ 
++config PCIEPORTBUS
++	bool
++
++config PCIE_LM2
++	bool
++
+ config SYS_SUPPORTS_APM_EMULATION
+ 	bool
+ 
+-- 
+1.7.1
+

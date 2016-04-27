@@ -1,0 +1,31 @@
+From f95f1498571da7eaad5305779fb6e05ab4d96f3a Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Mon, 11 Apr 2016 13:01:47 +0900
+Subject: [PATCH 1/1] GPIO_96Panic
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/gpio/gpiolib.c |    6 ++++--
+ 1 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpio/gpiolib.c b/drivers/gpio/gpiolib.c
+index c2534d6..2f5bbf3 100644
+--- a/drivers/gpio/gpiolib.c
++++ b/drivers/gpio/gpiolib.c
+@@ -1404,8 +1404,10 @@ static int gpiod_request(struct gpio_desc *desc, const char *label)
+ 	spin_lock_irqsave(&gpio_lock, flags);
+ 
+ 	chip = desc->chip;
+-	if (chip == NULL)
+-		goto done;
++	if (chip == NULL) {
++		spin_unlock_irqrestore(&gpio_lock, flags);
++		return -1;
++	}
+ 
+ 	if (!try_module_get(chip->owner))
+ 		goto done;
+-- 
+1.7.1
+

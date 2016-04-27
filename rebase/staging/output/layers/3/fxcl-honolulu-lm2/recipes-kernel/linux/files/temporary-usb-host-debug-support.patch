@@ -1,0 +1,302 @@
+From c92d7b6707664a88d1f8056b7dcea38ca1b60705 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:22:05 +0900
+Subject: [PATCH 043/170] temporary-usb-host-debug-support
+
+
+diff --git a/drivers/usb/core/config.c b/drivers/usb/core/config.c
+index 6524383..2c36370 100644
+--- a/drivers/usb/core/config.c
++++ b/drivers/usb/core/config.c
+@@ -151,6 +151,7 @@ static int usb_parse_endpoint(struct device *ddev, int cfgno, int inum,
+ 	struct usb_host_endpoint *endpoint;
+ 	int n, i, j, retval;
+ 
++dev_info(ddev, "usb_parse_endpoint\n");
+ 	d = (struct usb_endpoint_descriptor *) buffer;
+ 	buffer += d->bLength;
+ 	size -= d->bLength;
+@@ -312,6 +313,7 @@ static int usb_parse_interface(struct device *ddev, int cfgno,
+ 	int len, retval;
+ 	int num_ep, num_ep_orig;
+ 
++dev_warn(ddev, "usb_parse_interface\n");
+ 	d = (struct usb_interface_descriptor *) buffer;
+ 	buffer += d->bLength;
+ 	size -= d->bLength;
+@@ -422,6 +424,7 @@ static int usb_parse_configuration(struct usb_device *dev, int cfgidx,
+ 	u8 inums[USB_MAXINTERFACES], nalts[USB_MAXINTERFACES];
+ 	unsigned iad_num = 0;
+ 
++dev_warn(ddev, "usb_parse_configuration\n");
+ 	memcpy(&config->desc, buffer, USB_DT_CONFIG_SIZE);
+ 	if (config->desc.bDescriptorType != USB_DT_CONFIG ||
+ 	    config->desc.bLength < USB_DT_CONFIG_SIZE ||
+@@ -661,6 +664,7 @@ int usb_get_configuration(struct usb_device *dev)
+ 	unsigned char *bigbuffer;
+ 	struct usb_config_descriptor *desc;
+ 
++dev_err(ddev, "usb_get_configuration\n");
+ 	cfgno = 0;
+ 	result = -ENOMEM;
+ 	if (ncfg > USB_MAXCONFIG) {
+diff --git a/drivers/usb/core/hcd.c b/drivers/usb/core/hcd.c
+index 1296b29..9543612 100644
+--- a/drivers/usb/core/hcd.c
++++ b/drivers/usb/core/hcd.c
+@@ -2497,6 +2497,7 @@ int usb_add_hcd(struct usb_hcd *hcd,
+ 
+ 	dev_info(hcd->self.controller, "%s\n", hcd->product_desc);
+ 
++dev_info(hcd->self.controller, "usb_add_hcd\n");
+ 	/* Keep old behaviour if authorized_default is not in [0, 1]. */
+ 	if (authorized_default < 0 || authorized_default > 1)
+ 		hcd->authorized_default = hcd->wireless? 0 : 1;
+diff --git a/drivers/usb/core/hub.c b/drivers/usb/core/hub.c
+index 520b83d..d3b89b4 100644
+--- a/drivers/usb/core/hub.c
++++ b/drivers/usb/core/hub.c
+@@ -1588,6 +1588,7 @@ static int hub_configure(struct usb_hub *hub,
+ 		hub->indicator [0] = INDICATOR_CYCLE;
+ 
+ 	for (i = 0; i < hdev->maxchild; i++) {
++dev_info(hub_dev, "usb_hub_creat_port_device\n");
+ 		ret = usb_hub_create_port_device(hub, i + 1);
+ 		if (ret < 0) {
+ 			dev_err(hub->intfdev,
+@@ -1673,6 +1674,7 @@ static int hub_probe(struct usb_interface *intf, const struct usb_device_id *id)
+ 	desc = intf->cur_altsetting;
+ 	hdev = interface_to_usbdev(intf);
+ 
++dev_info(&intf->dev, "hub_probe entry\n");
+ 	/*
+ 	 * Set default autosuspend delay as 0 to speedup bus suspend,
+ 	 * based on the below considerations:
+@@ -1791,6 +1793,7 @@ descriptor_error:
+ 	if (id->driver_info & HUB_QUIRK_CHECK_PORT_AUTOSUSPEND)
+ 		hub->quirk_check_port_auto_suspend = 1;
+ 
++dev_info (&intf->dev, "hub_configure\n");
+ 	if (hub_configure(hub, endpoint) >= 0)
+ 		return 0;
+ 
+diff --git a/drivers/usb/host/xhci-hub.c b/drivers/usb/host/xhci-hub.c
+index b1d80a7..d1cde1d 100644
+--- a/drivers/usb/host/xhci-hub.c
++++ b/drivers/usb/host/xhci-hub.c
+@@ -56,6 +56,8 @@ static void xhci_common_hub_descriptor(struct xhci_hcd *xhci,
+ 	desc->bPwrOn2PwrGood = 10;	/* xhci section 5.4.9 says 20ms max */
+ 	desc->bHubContrCurrent = 0;
+ 
++dev_info(xhci->main_hcd->self.controller,"xhci_common_hub_descriptor %d\n",ports);/* yamano */
++
+ 	desc->bNbrPorts = ports;
+ 	temp = 0;
+ 	/* Bits 1:0 - support per-port power switching, or power always on */
+@@ -81,6 +83,8 @@ static void xhci_usb2_hub_descriptor(struct usb_hcd *hcd, struct xhci_hcd *xhci,
+ 	u32 portsc;
+ 	unsigned int i;
+ 
++dev_info(xhci->main_hcd->self.controller,"xhci_usb2_hub_descriptor %d\n",
++			xhci->num_usb2_ports);/* yamano */
+ 	ports = xhci->num_usb2_ports;
+ 
+ 	xhci_common_hub_descriptor(xhci, desc, ports);
+@@ -133,6 +137,8 @@ static void xhci_usb3_hub_descriptor(struct usb_hcd *hcd, struct xhci_hcd *xhci,
+ 	u32 portsc;
+ 	unsigned int i;
+ 
++dev_info(xhci->main_hcd->self.controller,"xhci_usb3_hub_descriptor %d\n",
++			xhci->num_usb3_ports);/* yamano */
+ 	ports = xhci->num_usb3_ports;
+ 	xhci_common_hub_descriptor(xhci, desc, ports);
+ 	desc->bDescriptorType = USB_DT_SS_HUB;
+@@ -159,6 +165,7 @@ static void xhci_hub_descriptor(struct usb_hcd *hcd, struct xhci_hcd *xhci,
+ 		struct usb_hub_descriptor *desc)
+ {
+ 
++dev_info(xhci->main_hcd->self.controller,"xhci_hub_descriptor\n");
+ 	if (hcd->speed == HCD_USB3)
+ 		xhci_usb3_hub_descriptor(hcd, xhci, desc);
+ 	else
+@@ -688,16 +695,19 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 	u16 wake_mask = 0;
+ 	u16 timeout = 0;
+ 
++dev_info(xhci->main_hcd->self.controller,"xhci_hub_control\n");
+ 	max_ports = xhci_get_ports(hcd, &port_array);
+ 	bus_state = &xhci->bus_state[hcd_index(hcd)];
+ 
+ 	spin_lock_irqsave(&xhci->lock, flags);
+ 	switch (typeReq) {
+ 	case GetHubStatus:
++dev_info(xhci->main_hcd->self.controller,"GetHubStatus\n");
+ 		/* No power source, over-current reported per port */
+ 		memset(buf, 0, 4);
+ 		break;
+ 	case GetHubDescriptor:
++dev_info(xhci->main_hcd->self.controller,"GetHubDecriptor\n");
+ 		/* Check to make sure userspace is asking for the USB 3.0 hub
+ 		 * descriptor for the USB 3.0 roothub.  If not, we stall the
+ 		 * endpoint, like external hubs do.
+@@ -713,6 +723,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 				(struct usb_hub_descriptor *) buf);
+ 		break;
+ 	case DeviceRequest | USB_REQ_GET_DESCRIPTOR:
++dev_info(xhci->main_hcd->self.controller,"DeviceRequest\n");
+ 		if ((wValue & 0xff00) != (USB_DT_BOS << 8))
+ 			goto error;
+ 
+@@ -734,6 +745,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 		spin_unlock_irqrestore(&xhci->lock, flags);
+ 		return USB_DT_BOS_SIZE + USB_DT_USB_SS_CAP_SIZE;
+ 	case GetPortStatus:
++dev_info(xhci->main_hcd->self.controller,"GetPortStatus\n");
+ 		if (!wIndex || wIndex > max_ports)
+ 			goto error;
+ 		wIndex--;
+@@ -754,6 +766,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 		put_unaligned(cpu_to_le32(status), (__le32 *) buf);
+ 		break;
+ 	case SetPortFeature:
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature\n");
+ 		if (wValue == USB_PORT_FEAT_LINK_STATE)
+ 			link_state = (wIndex & 0xff00) >> 3;
+ 		if (wValue == USB_PORT_FEAT_REMOTE_WAKE_MASK)
+@@ -766,6 +779,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 		wIndex--;
+ 		temp = xhci_readl(xhci, port_array[wIndex]);
+ 		if (temp == 0xffffffff) {
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature ENODEV Error\n");
+ 			retval = -ENODEV;
+ 			break;
+ 		}
+@@ -773,6 +787,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 		/* FIXME: What new port features do we need to support? */
+ 		switch (wValue) {
+ 		case USB_PORT_FEAT_SUSPEND:
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature FEAT_SUSPEND\n");
+ 			temp = xhci_readl(xhci, port_array[wIndex]);
+ 			if ((temp & PORT_PLS_MASK) != XDEV_U0) {
+ 				/* Resume the port to U0 first */
+@@ -815,6 +830,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 			bus_state->suspended_ports |= 1 << wIndex;
+ 			break;
+ 		case USB_PORT_FEAT_LINK_STATE:
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature FEAT_LINK_STATE\n");
+ 			temp = xhci_readl(xhci, port_array[wIndex]);
+ 
+ 			/* Disable port */
+@@ -878,6 +894,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 				bus_state->suspended_ports |= 1 << wIndex;
+ 			break;
+ 		case USB_PORT_FEAT_POWER:
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature FEAT_POWER\n");
+ 			/*
+ 			 * Turn on ports, even if there isn't per-port switching.
+ 			 * HC will report connect events even before this is set.
+@@ -886,9 +903,10 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 			 */
+ 			xhci_writel(xhci, temp | PORT_POWER,
+ 					port_array[wIndex]);
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature port[%d]=%x\n",wIndex,port_array[wIndex]);
+ 
+ 			temp = xhci_readl(xhci, port_array[wIndex]);
+-			xhci_dbg(xhci, "set port power, actual port %d status  = 0x%x\n", wIndex, temp);
++			xhci_err(xhci, "set port power, actual port %d status  = 0x%x\n", wIndex, temp);	/* yamano dbg -> err*/
+ 
+ 			spin_unlock_irqrestore(&xhci->lock, flags);
+ 			temp = usb_acpi_power_manageable(hcd->self.root_hub,
+@@ -899,6 +917,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 			spin_lock_irqsave(&xhci->lock, flags);
+ 			break;
+ 		case USB_PORT_FEAT_RESET:
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature FEAT_RESET\n");
+ 			temp = (temp | PORT_RESET);
+ 			xhci_writel(xhci, temp, port_array[wIndex]);
+ 
+@@ -906,6 +925,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 			xhci_dbg(xhci, "set port reset, actual port %d status  = 0x%x\n", wIndex, temp);
+ 			break;
+ 		case USB_PORT_FEAT_REMOTE_WAKE_MASK:
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature FEAT_REMOTE_WAKE_MASK\n");
+ 			xhci_set_remote_wake_mask(xhci, port_array,
+ 					wIndex, wake_mask);
+ 			temp = xhci_readl(xhci, port_array[wIndex]);
+@@ -914,12 +934,14 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 					wIndex, temp);
+ 			break;
+ 		case USB_PORT_FEAT_BH_PORT_RESET:
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature FEAT_BH_PORT_RESET\n");
+ 			temp |= PORT_WR;
+ 			xhci_writel(xhci, temp, port_array[wIndex]);
+ 
+ 			temp = xhci_readl(xhci, port_array[wIndex]);
+ 			break;
+ 		case USB_PORT_FEAT_U1_TIMEOUT:
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature FEAT_U1_TIMEOUT\n");
+ 			if (hcd->speed != HCD_USB3)
+ 				goto error;
+ 			temp = xhci_readl(xhci, port_array[wIndex] + PORTPMSC);
+@@ -928,6 +950,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 			xhci_writel(xhci, temp, port_array[wIndex] + PORTPMSC);
+ 			break;
+ 		case USB_PORT_FEAT_U2_TIMEOUT:
++dev_info(xhci->main_hcd->self.controller,"SetPortFeature USB_PORT_FEAT_U2_TIMEOUT\n");
+ 			if (hcd->speed != HCD_USB3)
+ 				goto error;
+ 			temp = xhci_readl(xhci, port_array[wIndex] + PORTPMSC);
+@@ -942,6 +965,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 		temp = xhci_readl(xhci, port_array[wIndex]);
+ 		break;
+ 	case ClearPortFeature:
++dev_info(xhci->main_hcd->self.controller,"ClearPortFeature\n");
+ 		if (!wIndex || wIndex > max_ports)
+ 			goto error;
+ 		wIndex--;
+@@ -1014,6 +1038,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
+ 		break;
+ 	default:
+ error:
++dev_info(xhci->main_hcd->self.controller,"!!!!!!!!!!! xhci_hub_control error end !!!!!!!!\n");
+ 		/* "stall" on error */
+ 		retval = -EPIPE;
+ 	}
+diff --git a/drivers/usb/host/xhci-plat.c b/drivers/usb/host/xhci-plat.c
+index 6e70ce9..bac2866 100644
+--- a/drivers/usb/host/xhci-plat.c
++++ b/drivers/usb/host/xhci-plat.c
+@@ -42,7 +42,7 @@ static const struct hc_driver xhci_plat_xhci_driver = {
+ 	 * generic hardware linkage
+ 	 */
+ 	.irq =			xhci_irq,
+-	.flags =		HCD_MEMORY | HCD_USB3 | HCD_SHARED,
++	.flags =		HCD_MEMORY | HCD_USB2 | HCD_SHARED,
+ 
+ 	/*
+ 	 * basic lifecycle operations
+@@ -125,6 +125,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
+ 		goto release_mem_region;
+ 	}
+ 
++dev_info(&pdev->dev, "usb_add_hcd reg virt = %x\n",hcd->regs);
++dev_info(&pdev->dev, "usb_add_hcd\n");
+ 	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
+ 	if (ret)
+ 		goto unmap_registers;
+@@ -145,10 +147,12 @@ static int xhci_plat_probe(struct platform_device *pdev)
+ 	 */
+ 	*((struct xhci_hcd **) xhci->shared_hcd->hcd_priv) = xhci;
+ 
++dev_info(&pdev->dev, "usb_add_hcd\n");
+ 	ret = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED);
+ 	if (ret)
+ 		goto put_usb3_hcd;
+ 
++dev_info(&pdev->dev, "==================== USB Normal End =========================\n");
+ 	return 0;
+ 
+ put_usb3_hcd:
+-- 
+1.7.1
+

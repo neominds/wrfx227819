@@ -1,0 +1,38 @@
+From abbdebb01247c1dc1e62191aed8c71e14be0d2f8 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:27 +0900
+Subject: [PATCH 126/169] 0001-rtc-voltage-check-issue
+
+
+diff --git a/drivers/rtc/rtc-quatro53xx.c b/drivers/rtc/rtc-quatro53xx.c
+index 80478d0..5f2f0f5 100644
+--- a/drivers/rtc/rtc-quatro53xx.c
++++ b/drivers/rtc/rtc-quatro53xx.c
+@@ -350,6 +350,7 @@ void lm2_timer_do_work(struct work_struct *work)
+ 	//printk("lm2_timer_do_work done\n");
+ }
+ 
++/* Issue No.10 added Voltage check function */
+ static	int	lm2_voltage_status(struct device *dev, unsigned long value, int flag)
+ {
+ 	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
+@@ -358,6 +359,8 @@ static	int	lm2_voltage_status(struct device *dev, unsigned long value, int flag)
+ 	unsigned int	reg;
+ 
+ 	mutex_lock(&rtc->lock);
++
++	rtc_connect(rtc->rtc_base);	/* Issue No.10 */
+ 	if(flag){
+ 		result = readb(rtc->rtc_base + RTCCTL_CTL);
+ 		result |= RTC_IN; 
+@@ -370,6 +373,7 @@ static	int	lm2_voltage_status(struct device *dev, unsigned long value, int flag)
+ 			reg = 0;
+ 		put_user(reg, (int *)value);
+ 	}
++	rtc_disconnect(rtc->rtc_base);	/* Issue No.10 */
+ 	mutex_unlock(&rtc->lock);
+ 	return	0;
+ }
+-- 
+1.7.1
+

@@ -1,0 +1,42 @@
+From d7d3f117b0780e8679b82ad713957f8de0e149da Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:23:56 +0900
+Subject: [PATCH 130/170] 0001-mtd-block-issue
+
+
+diff --git a/drivers/mtd/mtdblock.c b/drivers/mtd/mtdblock.c
+index e047f66..25bc79a 100644
+--- a/drivers/mtd/mtdblock.c
++++ b/drivers/mtd/mtdblock.c
+@@ -70,8 +70,7 @@ static int erase_write (struct mtd_info *mtd, unsigned long pos,
+ 	wait_queue_head_t wait_q;
+ 	size_t retlen;
+ 	int ret;
+-	int	i;	/* yamano */
+-	char	*yamabuf;
++	char	*dmabuf;
+ //printk( KERN_ERR "%s entry\n", __func__);
+ 	/*
+ 	 * First, let's erase the flash block.
+@@ -104,12 +103,13 @@ static int erase_write (struct mtd_info *mtd, unsigned long pos,
+ 	 * Next, write the data to flash.
+ 	 */
+ //for(i=0 ;i<len;i++){printk("%c",buf[i]);}
+-	yamabuf=kzalloc(len,GFP_KERNEL);
+-	if(yamabuf == NULL){printk("yamabuf error\n");return -EIO;}
+-	for(i=0;i<len;i++){yamabuf[i] = buf[i];}
++	dmabuf=kzalloc(len,GFP_KERNEL);
++	if(dmabuf == NULL)
++		return -EIO;
++	memcpy(dmabuf,buf,len);
+ //	ret = mtd_write(mtd, pos, len, &retlen, buf);
+-	ret = mtd_write(mtd, pos, len, &retlen, yamabuf);
+-	kfree(yamabuf);
++	ret = mtd_write(mtd, pos, len, &retlen, dmabuf);
++	kfree(dmabuf);
+ 	if (ret)
+ 		return ret;
+ 	if (retlen != len)
+-- 
+1.7.1
+

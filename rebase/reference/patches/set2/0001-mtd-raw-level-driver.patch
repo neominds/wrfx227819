@@ -1,0 +1,1263 @@
+From 0ab7ca7a3cb263548662b7a95b833cde1d8ecb78 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Mon, 26 Jan 2015 20:12:27 +0900
+Subject: [PATCH 1/1] mtd raw level driver
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/boot/compressed/misc.c             |   27 +-
+ arch/arm/boot/dts/waikiki-lm2.dts           |    4 +-
+ arch/arm/mach-lm2/include/mach/uncompress.h |    7 +
+ drivers/mtd/devices/mtd-lm2-fcspi.c         |  767 ++++++++++++++++-----------
+ 4 files changed, 456 insertions(+), 349 deletions(-)
+
+diff --git a/arch/arm/boot/compressed/misc.c b/arch/arm/boot/compressed/misc.c
+index a85b884..0fdfc77 100644
+--- a/arch/arm/boot/compressed/misc.c
++++ b/arch/arm/boot/compressed/misc.c
+@@ -23,7 +23,7 @@ unsigned int __machine_arch_type;
+ #include <linux/linkage.h>
+ 
+ static void putstr(const char *ptr);
+-/*extern void error(char *x);*/
++extern void error(char *x);
+ 
+ #include CONFIG_UNCOMPRESS_INCLUDE
+ 
+@@ -156,35 +156,10 @@ decompress_kernel(unsigned long output_start, unsigned long free_mem_ptr_p,
+ 	__machine_arch_type	= arch_id;
+ 
+ 	arch_decomp_setup();
+-#if 0
+-	putstr("Debug mode enter\n");
+ 
+-
+-	num_to_string((unsigned int)input_data);
+-	putstr("\n");
+-	num_to_string((unsigned int)input_data_end);
+-	putstr("\n");
+-	num_to_string((unsigned int)in_dat);
+-	putstr("\n");
+-	num_to_string((unsigned int)in_dat_end);
+-	putstr("\n");
+-	num_to_string((unsigned int)output_data);
+-	putstr("\n");
+-
+-
+-	ret = getc();
+-	putc(ret);
+-#endif	/* yamano debug */
+ 	putstr("Uncompressing Linux...");
+ 	ret = do_decompress(input_data, input_data_end - input_data,
+ 			    output_data, error);
+-#if 0
+-	if (ret == -6)	putstr("retunr -6");
+-	if (ret == -5)	putstr("retunr -5");
+-	if (ret == -4)	putstr("retunr -4");
+-	if (ret == -3)	putstr("retunr -3");
+-	if (ret == -2)	putstr("retunr -2");
+-#endif
+ 	if (ret)
+ 		error("decompressor returned an error");
+ 	else
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index e2da86b..7f54c3b 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -123,7 +123,7 @@
+ 			compatible = "arm,cci";
+ 			reg = <0x04060000 0x8000>;
+ 		};
+-*/
++
+ 		fcspi@04110000{
+ 			compatible = "fcspi";
+ 			linux,mtd-name = "physmap-flash.0";
+@@ -143,7 +143,7 @@
+ 				reg = <0x00600000 0x01500000>;
+ 	                };
+ 		};
+-/*
++
+ 		xspi@04130000 {
+ 			compatible = "xspi";
+ 			reg = <0x04130000 0x100>;
+diff --git a/arch/arm/mach-lm2/include/mach/uncompress.h b/arch/arm/mach-lm2/include/mach/uncompress.h
+index ea28c1f..556713a 100644
+--- a/arch/arm/mach-lm2/include/mach/uncompress.h
++++ b/arch/arm/mach-lm2/include/mach/uncompress.h
+@@ -41,29 +41,36 @@ static unsigned long get_uart_base(void)
+  */
+ static inline void putc(int c)
+ {
++#if 0
+ 	unsigned long base = get_uart_base();
+ 
+ 	while ((AMBA_UART_LSR(base) & 0x40) == 0)
+ 		barrier();
+ 
+ 	AMBA_UART_DR(base) = c;
++#endif
+ }
+ 
+ static inline void flush(void)
+ {
++#if 0
+ 	unsigned long base = get_uart_base();
+ 
+ 	while ((AMBA_UART_LSR(base) & 0x40) == 0)
+ 		barrier();
++#endif
+ }
+ 
++
+ static	inline	int getc(void)
+ {
++#if 0
+ 	unsigned long base = get_uart_base();
+ 
+ 	while(( AMBA_UART_LSR(base) & 0x01) == 0)
+ 		barrier();
+ 	return	AMBA_UART_DR(base);
++#endif
+ }
+ /*
+  * nothing to do
+diff --git a/drivers/mtd/devices/mtd-lm2-fcspi.c b/drivers/mtd/devices/mtd-lm2-fcspi.c
+index 24c84e3..f498fa4 100644
+--- a/drivers/mtd/devices/mtd-lm2-fcspi.c
++++ b/drivers/mtd/devices/mtd-lm2-fcspi.c
+@@ -1,19 +1,24 @@
+ /*
+- * mtd-lm2-fcspi - MTD device driver with SPI
+- * Copyright (C) Wind River Systems, Inc.
++ * MTD driver for serial (SPI) flash chips via the 
++ * Alma Technologies SPI-MEM-CTRL (FCSPI) controller
++ *
++ * Copyright (c) 2012 Cambridge Silicon Radio Ltd.
++ *
++ * Some parts are based on m25p80.c by Mike Lavender
++ *
++ * This code is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
+  *
+- * debugging and buffer alignment referd CSR code.
+- * base on spi-nor.c
+- * You should have received a copy of the GNU GPL along with this program.
+  */
+ 
+ #include <linux/kernel.h>
+ #include <linux/slab.h>
+-#include <linux/module.h>
+ #include <linux/platform_device.h>
+-#include <linux/of_platform.h>
++#include <linux/module.h>
+ #include <linux/mtd/mtd.h>
+ #include <linux/mtd/partitions.h>
++#include <linux/of_platform.h>
+ #include <linux/mm.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/interrupt.h>
+@@ -22,8 +27,15 @@
+ #include <linux/workqueue.h>
+ #include <linux/delay.h>
+ 
+-/* refer from CSR */
++#define DRIVER_NAME "fcspi"
++/*#define DEBUG_FCSPI*/
++/*#define DEBUG_FCSPI_WRITE*/
++
+ #define UBUFFSIZE PAGE_SIZE
++
++/* Define max times to check status register before we give up. */
++#define	MAX_READY_WAIT_JIFFIES	(40 * HZ)
++
+ #define SUSPND		(1<<0)
+ #define FCSPIBUSY	(1<<1)
+ #define RDBUSY		(1<<2)
+@@ -31,69 +43,74 @@
+ #define ERASEBUSY	(1<<4)
+ #define FCSPIERR	(1<<5)
+ 
++#define FCSPI_READ_MSG  0
++#define FCSPI_WRITE_MSG 1
++#define FCSPI_ERASE_MSG 2
+ 
+-/* memory map registers */
+-
+-struct fcspi_regs {
+-	volatile u32	fcspi_ctrl;
+-	volatile u32	fcspi_stat;
+-	volatile u32	fcspi_accrr0;
+-	volatile u32	fcspi_accrr1;
+-	volatile u32	fcspi_accrr2;
+-	volatile u32	fcspi_ddpm;
+-	volatile u32	fcspi_rwdata;
+-	volatile u32	fcspi_ffstat;
+-	volatile u32	fcspi_defmem;
+-	volatile u32	fcspi_exaddr;
+-	volatile u32	fcspi_memspec;
+-
+-	volatile u32	fcspi_reserved[501];	/* not used */
+-
+-	volatile u32	fcspi_dma_saddr;
+-	volatile u32	fcspi_dma_faddr;
+-	volatile u32	fcspi_dma_len;
+-	volatile u32	fcspi_dma_cst;
+-	volatile u32	fcspi_dma_debug;	/* not used */
+-	volatile u32	fcspi_dma_spare;	/* not used */
++#ifdef CONFIG_SOC_QUATRO5500
++	/* 55xx has cache-coherency and we assume if it's on
++	 * that fcspi will be coherent too
++	 */
++	#define FCSPI_COHERENT_DMA	(1<<28)
++#else
++	#define FCSPI_COHERENT_DMA	(0)
++#endif
++
++/****************************************************************************/
++
++struct fcspi_ctl_regs {
++	volatile u32 fcspi_ctrl;
++	volatile u32 fcspi_stat;
++	volatile u32 fcspi_accrr0;
++	volatile u32 fcspi_accrr1;
++	volatile u32 fcspi_accrr2;
++	volatile u32 fcspi_ddpm;
++	volatile u32 fcspi_rwdata;
++	volatile u32 fcspi_ffstat;
++	volatile u32 fcspi_defmem;     /* Write only!! */
++	volatile u32 fcspi_exaddr;
++	volatile u32 fcspi_memspec;
++	volatile u32 fcspi_reserved1[53];
++	volatile u32 fcspi_cfgram[64]; /* Write only!! */
++	volatile u32 fcspi_reserved2[384];
++	volatile u32 fcspi_dma_saddr;
++	volatile u32 fcspi_dma_faddr;
++	volatile u32 fcspi_dma_len;
++	volatile u32 fcspi_dma_cst;
++	volatile u32 fcspi_dma_debug;
++	volatile u32 fcspi_dma_spare;
+ };
+ 
+-/* driver private data */
+ struct fcspi {
+-	struct platform_device		*pdev;
+-	struct flash_platform_data	*fdata;
+-	struct mtd_partition		*parts;
+-	struct mtd_info			mtd;
+-	struct fcspi_regs __iomem	*regs;
+-	struct completion		xfer_completion;
+-
+-	struct workqueue_struct		*workqueue;
+-	struct work_struct		work;
+-	struct list_head		queue;
+-	spinlock_t			lock;
+-
+-	unsigned long		base;	/* secure resource date */
+-	unsigned long		regs_sz;
+-	u32			irq;
+-
+-	volatile unsigned	state;	/* CSR */
+-	u32			block_size;
+-	u32			sector_size;
+-	uint8_t			*buffer;
++	struct platform_device        *pdev;
++	struct flash_platform_data    *fdata;
++	struct mtd_partition	      *parts;
++	struct mtd_info		       mtd;
++	struct fcspi_ctl_regs __iomem *regs;
++	struct completion              xfer_completion;
++	struct workqueue_struct	      *workqueue;
++	struct work_struct             work;
++	struct list_head               queue;
++	spinlock_t                     lock;
++	unsigned long                  rregs;
++	unsigned long                  rregs_sz;
++	u32					irq;
++	volatile unsigned              state;
++	int                            flags;
++	u32                            block_size;
++	u32                            sector_size;
++	uint8_t                       *buffer;
+ };
+ 
+-#define READ_CMD  0
+-#define WRITE_CMD 1
+-#define ERASE_CMD 2
+-
+-struct cmd_msg {
+-	struct fcspi		*ctl;
+-	int					type;
+-	int					result;
+-	loff_t				flash_offset;
+-	size_t				len;
+-	uint8_t				*buf;
+-	struct completion	completion;
+-	struct list_head	queue;
++struct fcspi_message {
++	struct fcspi                  *ctl;
++	int                            type;
++	int                            result;
++	loff_t                         flash_offset;
++	size_t                         len;
++	uint8_t                       *buf;
++	struct completion              completion;
++	struct list_head               queue;
+ };
+ 
+ static inline struct fcspi *mtd_to_fcspi(struct mtd_info *mtd)
+@@ -101,61 +118,112 @@ static inline struct fcspi *mtd_to_fcspi(struct mtd_info *mtd)
+ 	return container_of(mtd, struct fcspi, mtd);
+ }
+ 
+-#define ERASE_SECTOR 0
+-#define ERASE_BLOCK  1
+-#define ERASE_CHIP   2
++#define FCSPI_ERASE_SECTOR 0
++#define FCSPI_ERASE_BLOCK  1
++#define FCSPI_ERASE_CHIP   2
+ 
+-#define	MAX_TIMEOUT	40
++#define CHIP_NAME_SZ 32
+ 
+-/*
+- * Flash parameter
+- */
+-#define	WINBOND_W25Q64	0xef4017	/* ID */
+-#define	W25Q64_SIZE	(8*1024*1024)	/* 8M */
+-#define	W25Q64_BOOT	4096
+-#define	W25Q64_BLOCK	(64*1024)
+-const u8 flash_name[]={"W25Q64"};
+-/*
+- * check device busy
++/* Spec sheets usually specify the flash size in megabits, but
++ * we want bytes.  This macro converts from megabits to bytes
+  */
+-static int busy_check(struct fcspi *ctl)
+-{
+-	struct fcspi_regs	*regs = ctl->regs;
+-	unsigned long 		timeout;
+-
+-	timeout = MAX_TIMEOUT;
+-	do {
+-		if ((readl(&regs->fcspi_stat) & (1<<3)))
+-			return 0;
+-		msleep(100);
+-	} while (timeout--);
++#define MEGABITS(x) (((1024*1024)/8)*x)
++
++#define NO_CHIP_ERASE  1
++#define NO_BLOCK_ERASE 2
++
++struct fcspi_flash_info {
++	u32 id;
++	char name[CHIP_NAME_SZ];
++	u32 size;               /* size of the chip in bytes */
++	u32 erase_size;		/* smallest erase size */
++	u32 block_size;		/* block erase size, if there is one */
++	int flags;
++};
+ 
+-	return 1;
+-}
++static const struct fcspi_flash_info fcspi_info[] = {
++/* Spansion */
++	{ 0x010216, "s25fl064",  MEGABITS(64), 4096, 64*1024, 0 },
++	{ 0x010219, "s25fl256s", MEGABITS(256),4096, 64*1024, 0 },
++	{ 0x010220, "s25fl512s", MEGABITS(512), 256*1024, 256*1024, 0 },
++/* Eon */
++	{ 0x1C3015, "en25d16",   MEGABITS(16), 4096, 64*1024, 0 },
++	{ 0x1C2017, "en25b64",   MEGABITS(64), 4096, 64*1024, 0 },
++/* Atmel */
++	{ 0x1F6604, "at25fs040", MEGABITS(4),  4096, 64*1024, 0 },
++/* Numonyx */
++	{ 0x207117, "m25px64",   MEGABITS(64), 4096, 64*1024, 0 },
++	{ 0x208015, "m25px64",   MEGABITS(16), 4096, 64*1024, 0 },
++/* Micron */
++	{ 0x20BA20, "n25q512",   MEGABITS(512),4096, 64*1024, 0 },
++/* AMIC */
++	{ 0x373016, "a25l032",   MEGABITS(32), 4096, 64*1024, 0 },
++/* ESMT */
++	{ 0x8C2015, "f25l16",    MEGABITS(16), 4096, 64*1024, 0 },
++	{ 0x8C4016, "f25l32",    MEGABITS(32), 4096, 64*1024, 0 },
++/* Chingis */
++	{ 0x9D7F13, "pm25lv080", MEGABITS(8),  4096, 64*1024, 0 },
++	{ 0x9D7F14, "pm25lv016", MEGABITS(16), 4096, 64*1024, 0 },
++/* Macronix */
++	{ 0xC22018, "mx25l128",  MEGABITS(128),4096, 64*1024, 0 },
++	{ 0xC22019, "mx25l25735",MEGABITS(256),4096, 64*1024, 0 },
++	{ 0xC2201A, "mx66l512",  MEGABITS(512),4096, 64*1024, 0 },
++	{ 0xC25E16, "mx25l32",   MEGABITS(32), 4096, 64*1024, 0 },
++/* Gigadevice */
++	{ 0xC82013, "gd25f40",   MEGABITS(4),  4096, 64*1024, 0 },
++	{ 0xC82014, "gd25f80",   MEGABITS(8),  4096, 64*1024, 0 },
++	{ 0xC83013, "gd25d40",   MEGABITS(4),  4096, 64*1024, 0 },
++	{ 0xC83014, "gd25d80",   MEGABITS(8),  4096, 64*1024, 0 },
++/* Winbond */
++	{ 0xEF3015, "w25x16",    MEGABITS(16), 4096, 64*1024, 0 },
++	{ 0xEF3016, "w25x32",    MEGABITS(32), 4096, 64*1024, 0 },
++	{ 0xEF3017, "w25x64",    MEGABITS(64), 4096, 64*1024, 0 },
++	{ 0xEF4017, "w25q64",    MEGABITS(64), 4096, 64*1024, 0 },
++	{ 0xEF4018, "w25q128",   MEGABITS(128),4096, 64*1024, 0 },
++/* SST */
++	{ 0xBF254B, "sst25vf064",MEGABITS(64), 4096, 64*1024, 0 },
++	{ },
++};
+ 
+-/*
+- * Interrupt handler
+- */
+-static irqreturn_t fcspi_intr(int irq, void *id)
++static irqreturn_t fcspi_intr(int irq, void *param)
+ {
+-	struct fcspi *ctl = id;
+-	struct fcspi_regs *regs = ctl->regs;
++	struct fcspi *ctl = param;
++	struct fcspi_ctl_regs *regs = ctl->regs;
+ 
+ 	writel(1<<24, &regs->fcspi_dma_cst);
++	complete(&ctl->xfer_completion);
++	return IRQ_HANDLED;
++}
+ 
+-	complete( &ctl->xfer_completion );	/* Sync task */
++static int wait_for_ready(struct fcspi *ctl)
++{
++	struct fcspi_ctl_regs *regs = ctl->regs;
++	unsigned long deadline = jiffies + MAX_READY_WAIT_JIFFIES;
+ 
+-	return IRQ_HANDLED;
++	do {
++		if ((readl(&regs->fcspi_stat) & (1<<3)))
++			return 0;
++		cond_resched();
++	} while (!time_after_eq(jiffies, deadline));
++	return 1;
+ }
+ 
++
+ /*
+- * primitive function
++ * Erase one sector or block or the entire chip at ``offset'' which is any
++ * address within the region which should be erased.
++ *
++ * Returns 0 if successful, non-zero otherwise.
+  */
+ static int erase_region(struct fcspi *ctl, u32 offset, int type)
+ {
+-	struct fcspi_regs *regs = ctl->regs;
++	struct fcspi_ctl_regs *regs = ctl->regs;
+ 
+-	if (busy_check(ctl))
++#ifdef DEBUG_FCSPI_WRITE
++	printk("%s: offset %08x type %d\n", __func__, offset, type);
++#endif
++
++	if (wait_for_ready(ctl))
+ 		return 1;
+ 
+ 	writel(offset, &regs->fcspi_accrr0);
+@@ -165,7 +233,7 @@ static int erase_region(struct fcspi *ctl, u32 offset, int type)
+ 	return 0;
+ }
+ 
+-static int fcspi_erase_work(struct cmd_msg *msg)
++static int fcspi_erase_work(struct fcspi_message *msg)
+ {
+ 	struct fcspi *ctl = msg->ctl;
+ 	u32 addr,len;
+@@ -173,86 +241,61 @@ static int fcspi_erase_work(struct cmd_msg *msg)
+ 	addr = msg->flash_offset;
+ 	len = msg->len;
+ 
+-	/* not test. because all delete to loss the bootloader */
+-	if (len == ctl->mtd.size) {
+-		if (erase_region(ctl, 0, ERASE_CHIP)) {
++#ifdef DEBUG_FCSPI_WRITE
++	printk("%s: addr %08x len %08x\n", 
++	       __func__, addr, len);
++#endif
++
++	if (len == ctl->mtd.size && !(ctl->flags & NO_CHIP_ERASE)) {
++		if (erase_region(ctl, 0, FCSPI_ERASE_CHIP)) {
+ 			return -EIO;
+ 		}
+ 		return 0;
+ 	}
+-
+-	while (len > ctl->block_size) {
+-		if (erase_region(ctl, addr, ERASE_BLOCK)) {
++	while (len > ctl->block_size && !(ctl->flags & NO_BLOCK_ERASE)) {
++		if (erase_region(ctl, addr, FCSPI_ERASE_BLOCK)) {
+ 			return -EIO;
+ 		}
+ 		addr += ctl->block_size;
+ 		len -= ctl->block_size;
+ 	}
+-
++	/* "sector"-at-a-time erase */
+ 	while (len) {
+-		if (erase_region(ctl, addr, ERASE_SECTOR)) {
++		if (erase_region(ctl, addr, FCSPI_ERASE_SECTOR)) {
+ 			return -EIO;
+ 		}
+ 		addr += ctl->sector_size;
+ 		len -= ctl->sector_size;
+ 	}
+-
+ 	return 0;
+ }
+ 
+-static	int	dma_transfer(struct device *dev, struct cmd_msg *msg, int dir)
++static int fcspi_write_work(struct fcspi_message *msg)
+ {
+-	struct	fcspi	*ctrl = msg->ctl;
+-	struct	fcspi_regs	*regs = ctrl->regs;
+-
+-	dma_addr_t		dma_buf;
+-
+-	dma_buf = dma_map_single(dev, msg->buf, msg->len, dir);
+-	if (dma_mapping_error(dev, dma_buf)) {
+-		dev_err(dev, "could not get dma buffer\n");
+-		return -ENOMEM;
+-	}
+-
+-	if (busy_check(ctrl))
+-		return -EIO;
+-
+-	/* address set saddr is memory faddr = flash */
+-
+-	writel(msg->flash_offset, &regs->fcspi_dma_faddr);
+-	writel(dma_buf, &regs->fcspi_dma_saddr);
+-
+-	writel(msg->len, &regs->fcspi_dma_len);
+-
+-	init_completion(&ctrl->xfer_completion);
+-
+-	writel(1<<28 | 1<<16 | 1<<4, &regs->fcspi_dma_cst);
+-
+-	wait_for_completion(&ctrl->xfer_completion);
+-
+-	dma_unmap_single(dev, dma_buf, msg->len, dir);
+-	return 0;
+-}
++	struct fcspi *ctl = msg->ctl;
++	struct fcspi_ctl_regs *regs = ctl->regs;
++	struct device *dev = &ctl->pdev->dev;
++	dma_addr_t tx_dma;
++	unsigned long	tx_dma_36;
+ 
+-static int fcspi_write_work(struct cmd_msg *msg)
+-{
+-	struct fcspi	*ctrl = msg->ctl;
+-	struct device	*dev = &ctrl->pdev->dev;
++#ifdef DEBUG_FCSPI_WRITE
++	printk("%s: to %llx len %d buf %p\n", __func__, 
++           msg->flash_offset, msg->len, msg->buf);
++#endif
+ 
+-	/* memory address check no align and sector over split 2 times re-request */
+-	/* referd CSR code */
+ 	if ((msg->flash_offset & 3) || (msg->len & 3) || (u32)(msg->buf) & 3) {
+-		loff_t			aligned_to = msg->flash_offset & ~3;
+-		unsigned int	adj2, adj1 = msg->flash_offset - aligned_to;
+-		size_t			aligned_len = msg->len + adj1;
++		loff_t aligned_to = msg->flash_offset & ~3;
++		unsigned int adj2, adj1 = msg->flash_offset - aligned_to;
++		size_t aligned_len = msg->len + adj1;
+ 
+ 		adj2 = (4 - (aligned_len & 3)) & 3;
+ 		aligned_len += adj2;
++        
+ 		while (msg->len) {
+ 			int copylen;
+ 			int this_len;
+ 			int retval;
+-			struct cmd_msg this_msg;
+-
++			struct fcspi_message this_msg;
+ 			if (aligned_len > UBUFFSIZE) {
+ 				this_len = UBUFFSIZE;
+ 				copylen = this_len;
+@@ -260,22 +303,28 @@ static int fcspi_write_work(struct cmd_msg *msg)
+ 				this_len = aligned_len;
+ 				copylen = this_len - adj1 - adj2;
+ 			}
+-
+-			*(u32 *)ctrl->buffer = 0xffffffff;
+-			*(u32 *)(ctrl->buffer + this_len - 4) = 0xffffffff;
+-
+-			memcpy(ctrl->buffer + adj1, msg->buf, copylen);
+-			this_msg.ctl = ctrl;
+-			this_msg.type = WRITE_CMD;
++#ifdef DEBUG_FCSPI_WRITE
++			printk("  %s: to %llx len %x buf %p\n", 
++			       __func__, msg->flash_offset, 
++			       msg->len, msg->buf);
++			printk("      aligned_to %llx aligned_len %x "
++			       "adj1 %d adj2 %d copylen %x\n",
++			       aligned_to, aligned_len, 
++			       adj1, adj2, 
++			       copylen);
++#endif
++			*(u32 *)ctl->buffer = 0xffffffff;
++			*(u32 *)(ctl->buffer + this_len - 4) = 0xffffffff;
++			memcpy(ctl->buffer + adj1, msg->buf, copylen);
++			this_msg.ctl = ctl;
++			this_msg.type = FCSPI_WRITE_MSG;
+ 			this_msg.result = 0;
+ 			this_msg.flash_offset = aligned_to;
+ 			this_msg.len = this_len;
+-			this_msg.buf = ctrl->buffer;
+-
++			this_msg.buf = ctl->buffer;
+ 			retval = fcspi_write_work(&this_msg);
+ 			if (retval)
+ 				return retval;
+-
+ 			msg->buf += copylen;
+ 			msg->len -= copylen;
+ 			aligned_to += this_len;
+@@ -284,17 +333,42 @@ static int fcspi_write_work(struct cmd_msg *msg)
+ 		return 0;
+ 	}
+ 
+-	/* dma tarnser */
+-	return	dma_transfer(dev, msg, DMA_TO_DEVICE);
++	tx_dma = dma_map_single(dev, (void *)msg->buf, msg->len, DMA_TO_DEVICE);
++//		dev_err(dev, "dma_map_single Tx %llx\n",tx_dma);
++	if (dma_mapping_error(dev, tx_dma)) {
++		dev_err(dev, "dma_map_single Tx failed\n");
++		return -ENOMEM;
++	}
++
++	if (wait_for_ready(ctl))
++		return -EIO;
++
++#ifdef DEBUG_FCSPI_WRITE
++	printk("    tx_dma %08x\n", __func__, tx_dma);
++#endif
++	tx_dma_36 = tx_dma >> 4;	/* 36bit addressing */
++//		dev_err(dev, "dma_map_single Tx %lx\n",tx_dma_36);
++	writel(tx_dma_36, &regs->fcspi_dma_saddr);
++	writel(msg->flash_offset, &regs->fcspi_dma_faddr);
++	writel(msg->len, &regs->fcspi_dma_len);
++//	reinit_completion(&ctl->xfer_completion);
++	init_completion(&ctl->xfer_completion);
++	writel(FCSPI_COHERENT_DMA | 1<<16 | 1<<4 | 1, &regs->fcspi_dma_cst);
++    wait_for_completion(&ctl->xfer_completion);
++
++	dma_unmap_single(dev, tx_dma, msg->len, DMA_TO_DEVICE);
++
++	return 0;
+ }
+ 
+-static int fcspi_read_work(struct cmd_msg *msg)
++static int fcspi_read_work(struct fcspi_message *msg)
+ {
+-	struct fcspi	*ctrl = msg->ctl;
+-	struct device	*dev = &ctrl->pdev->dev;
++	struct fcspi *ctl = msg->ctl;
++	struct device *dev = &ctl->pdev->dev;
++	struct fcspi_ctl_regs *regs = ctl->regs;
++	dma_addr_t rx_dma;
++	unsigned long	rx_dma_36;
+ 
+-	/* memory address check no align and sector over split 2 times re-request */
+-	/* referd CSR code */
+ 	if ((msg->flash_offset & 3) || (msg->len & 3) || (u32)(msg->buf) & 3) {
+ 		loff_t aligned_from = msg->flash_offset & ~3;
+ 		unsigned int adj2, adj1 = msg->flash_offset - aligned_from;
+@@ -306,7 +380,11 @@ static int fcspi_read_work(struct cmd_msg *msg)
+ 			int copylen;
+ 			int this_len;
+ 			int retval;
+-			struct cmd_msg this_msg;
++			struct fcspi_message this_msg;
++#ifdef DEBUG_FCSPI_READ
++			printk("%s: from %llx msg->len %x buf %p\n", 
++			       __func__, msg->flash_offset, msg->len, msg->buf);
++#endif
+ 			if (aligned_len > UBUFFSIZE) {
+ 				this_len = UBUFFSIZE;
+ 				copylen = this_len - adj1;
+@@ -314,17 +392,22 @@ static int fcspi_read_work(struct cmd_msg *msg)
+ 				this_len = aligned_len;
+ 				copylen = this_len - adj1 - adj2;
+ 			}
+-
+-			this_msg.ctl = ctrl;
+-			this_msg.type = READ_CMD;
++#ifdef DEBUG_FCSPI_READ
++			printk("len %08x aligned_from %llx aligned_len %x "
++			       "adj1 %d adj2 %d copylen %x\n",
++			       msg->len, aligned_from, aligned_len, adj1, adj2, 
++			       copylen);
++#endif
++			this_msg.ctl = ctl;
++			this_msg.type = FCSPI_READ_MSG;
+ 			this_msg.result = 0;
+ 			this_msg.flash_offset = aligned_from;
+ 			this_msg.len = this_len;
+-			this_msg.buf = ctrl->buffer;
++			this_msg.buf = ctl->buffer;
+ 			retval = fcspi_read_work(&this_msg);
+ 			if (retval)
+ 				return retval;
+-			memcpy(msg->buf, ctrl->buffer+adj1, copylen);
++			memcpy(msg->buf, ctl->buffer+adj1, copylen);
+ 			adj1 = 0;
+ 			msg->buf += copylen;
+ 			msg->len -= copylen;
+@@ -333,19 +416,50 @@ static int fcspi_read_work(struct cmd_msg *msg)
+ 		return 0;
+ 	}
+ 
+-	return dma_transfer(dev, msg, DMA_FROM_DEVICE);
++	rx_dma = dma_map_single(dev, msg->buf, msg->len, DMA_FROM_DEVICE);
++//		dev_err(dev, "dma_map_single Rx %llx\n",rx_dma);
++	if (dma_mapping_error(dev, rx_dma)) {
++		dev_err(dev, "dma_map_single Rx failed\n");
++		return -ENOMEM;
++	}
++
++#ifdef DEBUG_FCSPI_READ
++	printk("%s: from %llx len %x buf %p rx_dma %08x\n", 
++	       __func__, msg->flash_offset, msg->len, msg->buf, rx_dma);
++#endif
++	if (wait_for_ready(ctl))
++		return -EIO;
++
++	rx_dma_36 = rx_dma >> 4;
++//		dev_err(dev, "dma_map_single shift rx %lx\n",rx_dma_36);
++	writel(msg->flash_offset, &regs->fcspi_dma_faddr);
++	writel(rx_dma_36, &regs->fcspi_dma_saddr);
++	writel(msg->len, &regs->fcspi_dma_len);
++
++//	reinit_completion(&ctl->xfer_completion);
++	init_completion(&ctl->xfer_completion);
++	writel(FCSPI_COHERENT_DMA | 1<<16 | 1<<4, &regs->fcspi_dma_cst);
++	wait_for_completion(&ctl->xfer_completion);
++
++	dma_unmap_single(dev, rx_dma, msg->len, DMA_FROM_DEVICE);
++	/*
++	printk("%s: from %llx len %x buf %p %02X %02X %02X %02X\n", 
++		__func__, msg->flash_offset, msg->len, msg->buf,
++		msg->buf[0], msg->buf[1], msg->buf[2], msg->buf[3]);
++	*/
++	return 0;
+ }
+ 
+-static void handle_msg(struct cmd_msg *msg)
++static void handle_msg(struct fcspi_message *msg)
+ {
+ 	switch (msg->type) {
+-	case READ_CMD:
++	case FCSPI_READ_MSG:
+ 		msg->result = fcspi_read_work(msg);
+ 		break;
+-	case WRITE_CMD:
++	case FCSPI_WRITE_MSG:
+ 		msg->result = fcspi_write_work(msg);
+ 		break;
+-	case ERASE_CMD:
++	case FCSPI_ERASE_MSG:
+ 		msg->result = fcspi_erase_work(msg);
+ 		break;
+ 	default:
+@@ -355,9 +469,6 @@ static void handle_msg(struct cmd_msg *msg)
+ 	complete(&msg->completion);
+ }
+ 
+-/*
+- * Message Work Task
+- */
+ static void fcspi_work(struct work_struct *work)
+ {
+ 	struct fcspi *ctl = container_of(work, struct fcspi, work);
+@@ -365,11 +476,13 @@ static void fcspi_work(struct work_struct *work)
+ 
+ 	spin_lock_irqsave(&ctl->lock, flags);
+ 
+-	while (!list_empty(&ctl->queue) && !(ctl->state & SUSPND)) {
++	while (!list_empty(&ctl->queue)
++	       && !(ctl->state & SUSPND)) {
+ 
+-		struct cmd_msg *msg;
++		struct fcspi_message *msg;
+ 
+-		msg = container_of(ctl->queue.next, struct cmd_msg, queue);
++		msg = container_of(ctl->queue.next, 
++				   struct fcspi_message, queue);
+ 
+ 		list_del_init(&msg->queue);
+ 
+@@ -388,116 +501,124 @@ static void fcspi_work(struct work_struct *work)
+ 	spin_unlock_irqrestore(&ctl->lock, flags);
+ }
+ 
+-/*
+- * Work MTD Frame Work request
+- * serialize work request. to see 
+- */
+-static int fcspi_queue_work(struct cmd_msg *msg)
++
++static int fcspi_queue_work(struct fcspi_message *msg)
+ {
+ 	struct fcspi *ctl = msg->ctl;
+ 	unsigned long flags;
+ 
+-	/* sync init */
+ 	init_completion(&msg->completion);
+-
+ 	spin_lock_irqsave(&ctl->lock, flags);
+ 	if (ctl->state & SUSPND) {
+ 		spin_unlock_irqrestore(&ctl->lock, flags);
+ 		return -ESHUTDOWN;
+ 	}
+-
+ 	list_add_tail(&msg->queue, &ctl->queue);
+-
+-	/* execute work queue */
+ 	queue_work(ctl->workqueue, &ctl->work);
+-
+ 	spin_unlock_irqrestore(&ctl->lock, flags);
+ 	wait_for_completion(&msg->completion);
+-
+ 	return msg->result;
+ }
+-/*
+- * MTD FrameWork functions
+- */
+-/*
+- * erase entry
++
++/**
++ * fcspi_erase - [MTD Interface] erase block(s)
++ * @mtd:	MTD device structure
++ * @instr:	erase instruction
++ *
++ * Erase one or more regions
+  */
+ static int fcspi_erase(struct mtd_info *mtd, struct erase_info *instr)
+ {
+ 	struct fcspi *ctl = mtd_to_fcspi(mtd);
+-	struct cmd_msg msg;
++	struct fcspi_message msg;
+ 	int    result;
+ 	uint32_t rem;
+ 
++#ifdef DEBUG_FCSPI
++	printk("%s: %llx len %lld \n", 
++	       __func__, (long long)instr->addr, (long long)instr->len);
++#endif
++
+ 	/* sanity checks */
+ 	if (instr->addr + instr->len > ctl->mtd.size)
+ 		return -EINVAL;
+-
+ 	div_u64_rem(instr->len, mtd->erasesize, &rem);
+ 	if (rem)
+ 		return -EINVAL;
+ 
+ 	msg.ctl = ctl;
+-	msg.type = ERASE_CMD;
++	msg.type = FCSPI_ERASE_MSG;
+ 	msg.result = 0;
+ 	msg.flash_offset = instr->addr;
+ 	msg.len = instr->len;
+ 	msg.buf = NULL;
+-
+ 	result = fcspi_queue_work(&msg);
+-
+ 	if (result) {
+ 		instr->state = MTD_ERASE_FAILED;
+ 	}
+ 	else {
+ 		instr->state = MTD_ERASE_DONE;
+-		mtd_erase_callback(instr);	/* MTD function success call */
++		mtd_erase_callback(instr);
+ 	}
+-
+-	return result;
++	return result;;
+ }
+ 
++/**
++ * fcspi_write - [MTD Interface] write to flash part
++ * @mtd:	MTD device structure
++ * @to:		offset to write to
++ * @len:	number of bytes to write
++ * @retlen:	pointer to variable to store the number of written bytes
++ * @buf:	the data to write
++ *
++ */
+ static int fcspi_write(struct mtd_info *mtd, loff_t to, size_t len,
+ 		       size_t *retlen, const uint8_t *buf)
+ {
+ 	struct fcspi *ctl = mtd_to_fcspi(mtd);
+ 	struct device *dev = &ctl->pdev->dev;
++	struct fcspi_message msg;
+ 
+-	struct cmd_msg msg;
+-	int	result;
++#ifdef DEBUG_FCSPI
++	printk("%s: to %llx len %d buf %p\n", __func__, to, len, buf);
++#endif
++
++	if (retlen)
++		*retlen = len;
+ 
+ 	/* sanity checks */
+-	if (len == 0){
+-		dev_err(dev, "write size invalid\n");
+-		return 0;
+-	}
++	if (len == 0)
++		return(0);
+ 
+-	if ((to + len) > ctl->mtd.size) {
+-		dev_err(dev, "write size over\n");
++	if (to + len > ctl->mtd.size) {
++		dev_err(dev, "Write request overflow\n");
+ 		return -EINVAL;
+ 	}
+ 
+-	/* create work message */
+-	msg.ctl		= ctl;
+-	msg.type	= WRITE_CMD;
+-	msg.result	= 0;
++	msg.ctl = ctl;
++	msg.type = FCSPI_WRITE_MSG;
++	msg.result = 0;
+ 	msg.flash_offset = to;
+-	msg.len		= len;
+-	msg.buf		= (uint8_t *)buf;
+-
+-	result = fcspi_queue_work(&msg);
+-
+-	if(result < 0)
+-		*retlen = 0;	/* error */
+-
+-	return 0;
++	msg.len = len;
++	msg.buf = (uint8_t *)buf;
++	return (fcspi_queue_work(&msg));
+ }
+ 
++
++/**
++ * fcspi_read - [MTD Interface] read from flash part
++ * @mtd:	MTD device structure
++ * @from:	offset to read from
++ * @len:	number of bytes to read
++ * @retlen:	pointer to variable to store the number of read bytes
++ * @buf:	the databuffer to put data
++ *
++ */
+ static int fcspi_read(struct mtd_info *mtd, loff_t from, size_t len,
+ 		      size_t *retlen, uint8_t *buf)
+ {
+ 	struct fcspi *ctl = mtd_to_fcspi(mtd);
+-	struct cmd_msg msg;
++	struct fcspi_message msg;
+ 
+ 	if (retlen)
+ 		*retlen = len;
+@@ -509,7 +630,7 @@ static int fcspi_read(struct mtd_info *mtd, loff_t from, size_t len,
+ 		return -EINVAL;
+ 
+ 	msg.ctl = ctl;
+-	msg.type = READ_CMD;
++	msg.type = FCSPI_READ_MSG;
+ 	msg.result = 0;
+ 	msg.flash_offset = from;
+ 	msg.len = len;
+@@ -517,31 +638,22 @@ static int fcspi_read(struct mtd_info *mtd, loff_t from, size_t len,
+ 	return (fcspi_queue_work(&msg));
+ }
+ 
+-/*
+- * Driver control
+- */
+-
+-/*
+- * probe driver
+- */
+ static int __init fcspi_probe(struct platform_device *pdev)
+ {
+-	struct fcspi	*ctl;
++	struct fcspi *ctl;
+ 	struct device_node *np = pdev->dev.of_node;
+-	struct flash_platform_data	*fdata;
++	struct flash_platform_data *fdata;
+ 	struct mtd_part_parser_data	ppdata;
+-	struct mtd_partition		*parts;
+-	struct mtd_info			*mtd;
+-
+-	struct resource		*regs;
+-	struct resource		*irq;
+-	volatile u32 __iomem	*memspec;
+-	struct lm2_flash_info	*info;
+-	unsigned				nr_parts;
+-	int 		ret = -ENODEV;
++	struct mtd_partition *parts;
++	struct mtd_info *mtd;
++	volatile u32 __iomem *memspec;
++	struct fcspi_flash_info *info;
++	unsigned nr_parts;
++	int ret = -ENODEV;
++	struct resource	*rregs;
++	struct resource	*rirq;
+ 	u32 val;
+ 
+-	/* Platform frame work */
+ 	fdata = dev_get_platdata(&pdev->dev);
+ 	if (fdata == NULL && np == NULL) {
+ 		dev_err(&pdev->dev, "platform_data missing!\n");
+@@ -549,20 +661,20 @@ static int __init fcspi_probe(struct platform_device *pdev)
+ 	}
+ 	ppdata.of_node = pdev->dev.of_node;
+ 
+-	/* driver used resource */
+-	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+-	if (regs == NULL) {
+-		dev_err(&pdev->dev, "Could not get mmio resource\n");
++	/* Check for availability of necessary resource */
++	rregs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (rregs == NULL) {
++		dev_err(&pdev->dev, "Unable to get SPI MEM resource\n");
+ 		return -ENXIO;
+ 	}
+ 
+-	irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+-	if (irq == NULL) {
+-		dev_err(&pdev->dev, "Could not get irq resource\n");
++	/* Check for availability of necessary resource */
++	rirq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
++	if (rirq == NULL) {
++		dev_err(&pdev->dev, "Unable to get SPI IRQ resource\n");
+ 		return -ENXIO;
+ 	}
+ 
+-	/* private driver data */
+ 	ctl = devm_kzalloc(&pdev->dev, sizeof(struct fcspi), GFP_KERNEL);
+ 	if (!ctl) {
+ 		dev_err(&pdev->dev, "Can't allocate control structure\n");
+@@ -571,25 +683,23 @@ static int __init fcspi_probe(struct platform_device *pdev)
+ 
+ 	platform_set_drvdata(pdev, ctl);
+ 
++	ctl->irq = rirq->start;
+ 	ctl->pdev = pdev;
++	ctl->rregs = rregs->start;
++	ctl->rregs_sz = resource_size(rregs);
+ 
+-	ctl->irq = irq->start;
+-	ctl->base = regs->start;
+-	ctl->regs_sz = resource_size(regs);
+-
+-	/* Work Queue Initi */
+ 	init_completion(&ctl->xfer_completion);
+ 	INIT_WORK(&ctl->work, fcspi_work);
+ 	INIT_LIST_HEAD(&ctl->queue);
+ 
+-	ctl->regs = devm_ioremap_resource(&pdev->dev, regs);
++	ctl->regs = devm_ioremap_resource(&pdev->dev, rregs);
+ 	if (ctl->regs == NULL) {
+ 		dev_err(&pdev->dev, "Unable to remap IO\n");
+ 		ret = -ENXIO;
+ 		goto err1;
+ 	}
+ 
+-	if (devm_request_irq(&pdev->dev, irq->start, fcspi_intr, 0,
++	if (devm_request_irq(&pdev->dev, rirq->start, fcspi_intr, 0,
+ 			pdev->name, ctl)) {
+ 		dev_err(&pdev->dev, "Unable to get fcspi IRQ\n");
+ 		ret = -ENXIO;
+@@ -598,11 +708,27 @@ static int __init fcspi_probe(struct platform_device *pdev)
+ 	if (fdata) {
+ 		parts = fdata->parts;
+ 		nr_parts = fdata->nr_parts;
+-	} else {
++	}
++	else {
+ 		parts = NULL;
+ 		nr_parts = 0;
+ 	}
+ 
++	mtd = &ctl->mtd;
++	memspec = &ctl->regs->fcspi_memspec;
++	val = readl(memspec);
++	
++	for (info = (void *)fcspi_info; info->id; info++) {
++		if (info->id == val) {
++			break;
++		}
++	}
++	if (!info->id) {
++		dev_err(&pdev->dev, "Unknown flash device %08x\n", val);
++		ret =  -ENODEV;
++		goto err3;
++	}
++
+ 	/* allocate a buffer for non-aligned accesses */
+ 	if (!(ctl->buffer = kmalloc(UBUFFSIZE, GFP_KERNEL))) {
+ 		dev_err(&pdev->dev, "Can't allocate buffer\n");
+@@ -610,34 +736,30 @@ static int __init fcspi_probe(struct platform_device *pdev)
+ 		goto err3;
+ 	}
+ 
+-	/* SPI use Work queue from spi driver */
+-	ctl->workqueue = create_singlethread_workqueue("FCSPI");
++	ctl->workqueue = 
++		create_singlethread_workqueue(DRIVER_NAME);
+ 
+ 	if (ctl->workqueue == NULL) {
+ 		dev_err(&pdev->dev, "Unable to create workqueue\n");
+ 		ret = -ENOMEM;
+ 		goto err4;
+ 	}
+-
+-	ctl->sector_size = W25Q64_BOOT;
+-	ctl->block_size = W25Q64_BLOCK;
+-
+-	/* setting mtd device 
+-	 * only this SPI work MTD 
+-	 */
+-	mtd->name	= flash_name;
+-	mtd->owner	= THIS_MODULE;
+-	mtd->dev.parent	= &pdev->dev;
+-	mtd->size	= W25Q64_SIZE;
+-	mtd->type	= MTD_NORFLASH;
+-	mtd->flags	= MTD_CAP_NORFLASH;
+-	mtd->writesize	= 1;
+-	/* function */
+-	mtd->_erase	= fcspi_erase;
+-	mtd->_read	= fcspi_read;
+-	mtd->_write	= fcspi_write;
+-	/* attribute */
+-	mtd->erasesize = 16*1024;
++	ctl->flags = info->flags;
++	ctl->sector_size = info->erase_size;
++	ctl->block_size = info->block_size;
++	mtd->type = MTD_NORFLASH;
++	mtd->writesize = 1;
++	mtd->flags = MTD_CAP_NORFLASH;
++	mtd->_erase = fcspi_erase;
++	mtd->_read = fcspi_read;
++	mtd->_write = fcspi_write;
++	mtd->name = info->name;
++	mtd->owner = THIS_MODULE;
++	mtd->dev.parent = &pdev->dev;
++	mtd->size = info->size;
++	mtd->erasesize = info->erase_size;
++	if (mtd->erasesize < 16 * 1024)
++		mtd->erasesize = 16 * 1024;
+ 
+ 	spin_lock_init(&ctl->lock);
+ 
+@@ -652,26 +774,21 @@ err3:
+ 	free_irq(ctl->irq, ctl);
+ 	iounmap(ctl->regs);
+ err2:
+-	release_mem_region(regs->start, resource_size(regs));
++	release_mem_region(rregs->start, resource_size(rregs));
+ err1:
+ 	kfree(ctl);
+ 	platform_set_drvdata(pdev, NULL);
+-
+ 	return ret;
+ }
+ 
+-/*
+- * remove driver 
+- */
+ static int fcspi_remove(struct platform_device *pdev)
+ {
+-	struct fcspi	*ctl;
+-	unsigned long	flags;
+-
++	struct fcspi *ctl;
++	unsigned long flags;
++	printk(KERN_INFO "%s\n", __func__);
+ 	ctl = platform_get_drvdata(pdev);
+ 
+ 	spin_lock_irqsave(&ctl->lock, flags);
+-
+ 	ctl->state |= SUSPND;
+ 	spin_unlock_irqrestore(&ctl->lock, flags);
+ 
+@@ -679,40 +796,48 @@ static int fcspi_remove(struct platform_device *pdev)
+ 		msleep(10);
+ 
+ 	destroy_workqueue(ctl->workqueue);
+-
+-	kfree(ctl->buffer);
+-
+ 	free_irq(ctl->irq, ctl);
+ 	iounmap(ctl->regs);
+-
+-	release_mem_region(ctl->regs, ctl->regs_sz);
+-
++	release_mem_region(ctl->rregs, ctl->rregs_sz);
++	kfree(ctl->buffer);
+ 	kfree(ctl);
+ 	platform_set_drvdata(pdev, NULL);
++	return 0;
++}
++
++static int fcspi_suspend(struct device *dev)
++{
++	printk(KERN_INFO "%s\n", __func__);
++	return 0;
++}
+ 
++static int fcspi_resume(struct device *dev)
++{
++	printk(KERN_INFO "%s\n", __func__);
+ 	return 0;
+ }
+ 
+-static const struct of_device_id fcspi_id_table[] = {
+-	{ .compatible = "fcspi" },
++static SIMPLE_DEV_PM_OPS(csr_fcspi_pm_ops, fcspi_suspend, fcspi_resume);
++
++static const struct of_device_id csr_fcspi_id_table[] = {
++	{ .compatible = "csr,fcspi" },
+ 	{}
+ };
++MODULE_DEVICE_TABLE(of, csr_fcspi_id_table);
+ 
+-MODULE_DEVICE_TABLE(of, fcspi_id_table);
+-
+-static struct platform_driver fcspi_driver = {
+-	.probe	= fcspi_probe,
+-	.remove	= fcspi_remove,
++static struct platform_driver csr_fcspi_driver = {
+ 	.driver = {
+ 		.name = "fcspi",
+ 		.bus = &platform_bus_type,
+ 		.owner = THIS_MODULE,
+-		.of_match_table = of_match_ptr(fcspi_id_table),
+-
++		.of_match_table = of_match_ptr(csr_fcspi_id_table),
++		.pm = &csr_fcspi_pm_ops,
+ 	},
++	.probe = fcspi_probe,
++	.remove = fcspi_remove,
+ };
++module_platform_driver(csr_fcspi_driver);
+ 
+-module_platform_driver(fcspi_driver);
+-
+-MODULE_DESCRIPTION("LM2 SPI driver for FCSPI flash controller");
++MODULE_AUTHOR("Cambridge Silicon Radio Ltd.");
++MODULE_DESCRIPTION("MTD SPI driver for FCSPI controller");
+ MODULE_LICENSE("GPL v2");
+-- 
+1.7.1
+

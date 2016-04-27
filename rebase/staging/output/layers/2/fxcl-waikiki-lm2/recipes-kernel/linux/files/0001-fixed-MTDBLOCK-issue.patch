@@ -1,0 +1,172 @@
+From 006aa7c0f2ba64562871ee048c6280678810a3c9 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:18 +0900
+Subject: [PATCH 119/169] 0001-fixed-MTDBLOCK-issue
+
+
+diff --git a/drivers/mtd/devices/mtd-lm2-fcspi.c b/drivers/mtd/devices/mtd-lm2-fcspi.c
+index 2c258af..8ef62b0 100644
+--- a/drivers/mtd/devices/mtd-lm2-fcspi.c
++++ b/drivers/mtd/devices/mtd-lm2-fcspi.c
+@@ -30,6 +30,7 @@
+ #define DRIVER_NAME "fcspi"
+ /*#define DEBUG_FCSPI*/
+ /*#define DEBUG_FCSPI_WRITE*/
++/*#define DEBUG_FCSPI_ERASE*/
+ 
+ #define UBUFFSIZE PAGE_SIZE
+ 
+@@ -219,7 +220,7 @@ static int erase_region(struct fcspi *ctl, u32 offset, int type)
+ {
+ 	struct fcspi_ctl_regs *regs = ctl->regs;
+ 
+-#ifdef DEBUG_FCSPI_WRITE
++#ifdef DEBUG_FCSPI_ERASE
+ 	printk("%s: offset %08x type %d\n", __func__, offset, type);
+ #endif
+ 
+@@ -241,7 +242,7 @@ static int fcspi_erase_work(struct fcspi_message *msg)
+ 	addr = msg->flash_offset;
+ 	len = msg->len;
+ 
+-#ifdef DEBUG_FCSPI_WRITE
++#ifdef DEBUG_FCSPI_ERASE
+ 	printk("%s: addr %08x len %08x\n", 
+ 	       __func__, addr, len);
+ #endif
+@@ -277,6 +278,7 @@ static int fcspi_write_work(struct fcspi_message *msg)
+ 	struct device *dev = &ctl->pdev->dev;
+ 	dma_addr_t tx_dma;
+ 	unsigned long	tx_dma_36;
++	int	i;	/* yamano */
+ 
+ #ifdef DEBUG_FCSPI_WRITE
+ 	printk("%s: to %llx len %d buf %p\n", __func__, 
+@@ -290,7 +292,10 @@ static int fcspi_write_work(struct fcspi_message *msg)
+ 
+ 		adj2 = (4 - (aligned_len & 3)) & 3;
+ 		aligned_len += adj2;
+-        
++
++#ifdef DEBUG_FCSPI_WRITE
++printk(" Address alignment adjust\n");
++#endif
+ 		while (msg->len) {
+ 			int copylen;
+ 			int this_len;
+@@ -344,10 +349,14 @@ static int fcspi_write_work(struct fcspi_message *msg)
+ 		return -EIO;
+ 
+ #ifdef DEBUG_FCSPI_WRITE
+-	printk("    tx_dma %08x\n", __func__, tx_dma);
++	printk(" %s   tx_dma %llx\n", __func__, tx_dma);
+ #endif
+-	tx_dma_36 = tx_dma >> 4;	/* 36bit addressing */
++	tx_dma_36 = (unsigned long)((unsigned long long)(tx_dma) >> 4);	/* 36bit addressing */
+ //		dev_err(dev, "dma_map_single Tx %lx\n",tx_dma_36);
++#ifdef DEBUG_FCSPI_WRITE
++	printk(" %s   tx_dma_36 %lx\n", __func__, tx_dma_36);
++#endif
++//for(i=0;i<msg->len;i++){printk("%c",msg->buf[i]);}	/* yamano */
+ 	writel(tx_dma_36, &regs->fcspi_dma_saddr);
+ 	writel(msg->flash_offset, &regs->fcspi_dma_faddr);
+ 	writel(msg->len, &regs->fcspi_dma_len);
+@@ -430,7 +439,7 @@ static int fcspi_read_work(struct fcspi_message *msg)
+ 	if (wait_for_ready(ctl))
+ 		return -EIO;
+ 
+-	rx_dma_36 = rx_dma >> 4;
++	rx_dma_36 = (unsigned long )(rx_dma >> 4);
+ //		dev_err(dev, "dma_map_single shift rx %lx\n",rx_dma_36);
+ 	writel(msg->flash_offset, &regs->fcspi_dma_faddr);
+ 	writel(rx_dma_36, &regs->fcspi_dma_saddr);
+@@ -534,7 +543,7 @@ static int fcspi_erase(struct mtd_info *mtd, struct erase_info *instr)
+ 	int    result;
+ 	uint32_t rem;
+ 
+-#ifdef DEBUG_FCSPI
++#ifdef DEBUG_FCSPI_ERASE
+ 	printk("%s: %llx len %lld \n", 
+ 	       __func__, (long long)instr->addr, (long long)instr->len);
+ #endif
+@@ -758,8 +767,8 @@ static int __init fcspi_probe(struct platform_device *pdev)
+ 	mtd->dev.parent = &pdev->dev;
+ 	mtd->size = info->size;
+ 	mtd->erasesize = info->erase_size;
+-	if (mtd->erasesize < 16 * 1024)
+-		mtd->erasesize = 16 * 1024;
++//	if (mtd->erasesize < 16 * 1024)
++//		mtd->erasesize = 16 * 1024;
+ 
+ 	spin_lock_init(&ctl->lock);
+ 
+diff --git a/drivers/mtd/mtdblock.c b/drivers/mtd/mtdblock.c
+index 2aef5dd..e047f66 100644
+--- a/drivers/mtd/mtdblock.c
++++ b/drivers/mtd/mtdblock.c
+@@ -70,7 +70,9 @@ static int erase_write (struct mtd_info *mtd, unsigned long pos,
+ 	wait_queue_head_t wait_q;
+ 	size_t retlen;
+ 	int ret;
+-
++	int	i;	/* yamano */
++	char	*yamabuf;
++//printk( KERN_ERR "%s entry\n", __func__);
+ 	/*
+ 	 * First, let's erase the flash block.
+ 	 */
+@@ -101,8 +103,13 @@ static int erase_write (struct mtd_info *mtd, unsigned long pos,
+ 	/*
+ 	 * Next, write the data to flash.
+ 	 */
+-
+-	ret = mtd_write(mtd, pos, len, &retlen, buf);
++//for(i=0 ;i<len;i++){printk("%c",buf[i]);}
++	yamabuf=kzalloc(len,GFP_KERNEL);
++	if(yamabuf == NULL){printk("yamabuf error\n");return -EIO;}
++	for(i=0;i<len;i++){yamabuf[i] = buf[i];}
++//	ret = mtd_write(mtd, pos, len, &retlen, buf);
++	ret = mtd_write(mtd, pos, len, &retlen, yamabuf);
++	kfree(yamabuf);
+ 	if (ret)
+ 		return ret;
+ 	if (retlen != len)
+@@ -123,6 +130,9 @@ static int write_cached_data (struct mtdblk_dev *mtdblk)
+ 			"at 0x%lx, size 0x%x\n", mtd->name,
+ 			mtdblk->cache_offset, mtdblk->cache_size);
+ 
++//	printk(KERN_ERR "mtdblock: writing cached data for \"%s\" "
++//			"at 0x%lx, size 0x%x\n", mtd->name,
++//			mtdblk->cache_offset, mtdblk->cache_size);
+ 	ret = erase_write (mtd, mtdblk->cache_offset,
+ 			   mtdblk->cache_size, mtdblk->cache_data);
+ 	if (ret)
+@@ -151,6 +161,9 @@ static int do_cached_write (struct mtdblk_dev *mtdblk, unsigned long pos,
+ 	pr_debug("mtdblock: write on \"%s\" at 0x%lx, size 0x%x\n",
+ 		mtd->name, pos, len);
+ 
++//	printk(KERN_ERR "mtdblock: write on \"%s\" at 0x%lx, size 0x%x sec 0x%x\n",
++//		mtd->name, pos, len, sect_size);
++//for(retlen = 0;retlen < len;retlen++){printk("%c",buf[retlen]);}
+ 	if (!sect_size)
+ 		return mtd_write(mtd, pos, len, &retlen, buf);
+ 
+@@ -267,6 +280,7 @@ static int mtdblock_writesect(struct mtd_blktrans_dev *dev,
+ 			      unsigned long block, char *buf)
+ {
+ 	struct mtdblk_dev *mtdblk = container_of(dev, struct mtdblk_dev, mbd);
++//printk(KERN_ERR "%s mtdblock_writesect\n",__func__);
+ 	if (unlikely(!mtdblk->cache_data && mtdblk->cache_size)) {
+ 		mtdblk->cache_data = vmalloc(mtdblk->mbd.mtd->erasesize);
+ 		if (!mtdblk->cache_data)
+@@ -284,6 +298,7 @@ static int mtdblock_open(struct mtd_blktrans_dev *mbd)
+ 	struct mtdblk_dev *mtdblk = container_of(mbd, struct mtdblk_dev, mbd);
+ 
+ 	pr_debug("mtdblock_open\n");
++//printk(KERN_ERR "%s mtdblock_open\n",__func__);
+ 
+ 	mutex_lock(&mtdblks_lock);
+ 	if (mtdblk->count) {
+-- 
+1.7.1
+

@@ -1,0 +1,97 @@
+From 16f7342f91a20f323fe08e918e95aa2b86a27371 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:24:33 +0900
+Subject: [PATCH 158/170] 0203-correct-2038-RTC-issue
+
+
+diff --git a/drivers/rtc/rtc-quatro53xx.c b/drivers/rtc/rtc-quatro53xx.c
+index 47759d9..4c430d7 100644
+--- a/drivers/rtc/rtc-quatro53xx.c
++++ b/drivers/rtc/rtc-quatro53xx.c
+@@ -90,6 +90,7 @@ struct	lm2_rtc	{
+ 	unsigned long		alm_sec;
+ 	int			tim_en;
+ 	struct work_struct 	irqwork;
++	int			hw_sts;	/* 2038 issue */
+ };
+ 
+ /*
+@@ -222,6 +223,9 @@ static	int	lm2_set_time(struct device *dev, struct rtc_time *tm)
+ 
+ 	rtc_disconnect(rtc->rtc_base);
+ 
++	if(rtc->hw_sts != 0)	/* 2038 issue */
++		rtc->hw_sts = 0;
++
+ 	mutex_unlock(&rtc->lock);
+ 
+ //	printk( KERN_WARNING "RTC set date and time completed\n");
+@@ -236,6 +240,7 @@ static	int	lm2_get_time(struct device *dev, struct rtc_time *tm)
+ 	u32	current_sec;
+ 	int	result;
+ 
++//	printk( KERN_WARNING "RTC read date and time\n");
+ //	if(rtc->rtc_base == NULL){
+ //		dev_err(dev,"ioremap error lm2_rtc_get %x\n",rtc->rtc_base);
+ //		return 0;
+@@ -248,6 +253,16 @@ static	int	lm2_get_time(struct device *dev, struct rtc_time *tm)
+ 	}
+ 	
+ 	current_sec = readl(rtc->rtc_base + RTCCNT);
++//	current_sec = 0x80000000;	/* 2038 issue test code */
++
++	if(current_sec > 0x7fffffff){
++//		printk( KERN_ERR "RTC Counter problem %lx\n", current_sec);
++		rtc->hw_sts = 1;
++		return	-1;
++	}else{
++		rtc->hw_sts = 0;
++	}
++		
+ 	rtc_time_to_tm(current_sec,tm);
+ 
+ 	return	0;
+@@ -382,7 +397,7 @@ static	int	lm2_voltage_status(struct device *dev, unsigned long value, int flag)
+ static	int	lm2_ioctl(struct device *dev, unsigned int opecode, unsigned long value)
+ {
+ 	int	result;
+-
++	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
+ 
+ 	switch(opecode){
+ 	case	RTC_VL_READ:
+@@ -391,6 +406,10 @@ static	int	lm2_ioctl(struct device *dev, unsigned int opecode, unsigned long val
+ 	case	RTC_VL_CLR:
+ 		result = lm2_voltage_status(dev, 0, LM2_SET); 
+ 		break;
++	case	RTC_HW_CHK:
++		put_user( rtc->hw_sts , (int *)value);
++		result = 0;
++		break;
+ 	default:
+ 		printk( KERN_ERR "%s Unknown opecode = %d\n", __func__, opecode);
+ 		result = -1;
+@@ -458,6 +477,7 @@ static int __init lm2_rtc_probe(struct platform_device *pdev)
+ 	dev->count = 0;
+ 	dev->alm_en =0;
+ 	dev->tim_en =0;	
++	dev->hw_sts = 0;	/* 2038 issue */
+ 
+ 	platform_set_drvdata(pdev,dev);
+ 
+diff --git a/include/uapi/linux/rtc.h b/include/uapi/linux/rtc.h
+index f8c82e6..1e87e68 100644
+--- a/include/uapi/linux/rtc.h
++++ b/include/uapi/linux/rtc.h
+@@ -94,6 +94,8 @@ struct rtc_pll_info {
+ #define RTC_VL_READ	_IOR('p', 0x13, int)	/* Voltage low detector */
+ #define RTC_VL_CLR	_IO('p', 0x14)		/* Clear voltage low information */
+ 
++#define RTC_HW_CHK	_IOR('p', 0x15, int)	/* check RTC Hardware counter */
++
+ /* interrupt flags */
+ #define RTC_IRQF 0x80	/* Any of the following is active */
+ #define RTC_PF 0x40	/* Periodic interrupt */
+-- 
+1.7.1
+

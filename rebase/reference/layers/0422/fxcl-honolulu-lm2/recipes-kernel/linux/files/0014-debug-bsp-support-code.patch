@@ -1,0 +1,244 @@
+From df74645ccdd4b749849730d9f4059ceefa28f78f Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Fri, 5 Dec 2014 21:29:40 +0900
+Subject: [PATCH 14/18] debug bsp support code
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mm/init.c    |   42 ++++++++++++++++++++++++++++++++++++++++++
+ arch/arm/mm/mmu.c     |   20 ++++++++++----------
+ arch/arm/mm/proc-v7.S |   22 ++++++++++++++++++++++
+ 3 files changed, 74 insertions(+), 10 deletions(-)
+
+diff --git a/arch/arm/mm/init.c b/arch/arm/mm/init.c
+index dd5d5ae..8b4160b 100644
+--- a/arch/arm/mm/init.c
++++ b/arch/arm/mm/init.c
+@@ -36,6 +36,47 @@
+ 
+ #include "mm.h"
+ 
++#if 1 /* yamano */
++#define UART_BASE       0xfc160000
++#define UART_BASE2      0xfc000000
++#define UART_DATA(base) (*(volatile unsigned char *)((base) + 0x10))
++#define UART_STAT(base) (*(volatile unsigned char *)((base) + 0x15))
++
++static  void    putchar(u32 base, int c)
++{
++        while((UART_STAT(base) & 0x40) == 0)
++                barrier();
++        UART_DATA(base) = c;
++        return;
++}
++
++static  void    flush(u32 base)
++{
++        while((UART_STAT(base) & 0x40) == 0)
++                barrier();
++}
++
++static  void    putstr(u32 base, const char *ptr)
++{
++        char    c;
++
++        while((c = *ptr++) != '\0'){
++                if(c == '\n')
++                        putchar(base,'\r');
++                putchar(base,c);
++        }
++        flush(base);
++}
++
++static  int     getchar(u32 base)
++{
++        while((UART_STAT(base) & 0x01) == 0)
++                barrier();
++        return  UART_DATA(base);
++}
++#endif  /* yamano */
++
++
+ static phys_addr_t phys_initrd_start __initdata = 0;
+ static unsigned long phys_initrd_size __initdata = 0;
+ 
+@@ -391,6 +432,7 @@ void __init arm_memblock_init(struct meminfo *mi, struct machine_desc *mdesc)
+ void __init bootmem_init(void)
+ {
+ 	unsigned long min, max_low, max_high;
++	char	buf[128];
+ 
+ 	max_low = max_high = 0;
+ 
+diff --git a/arch/arm/mm/mmu.c b/arch/arm/mm/mmu.c
+index 28d2aed..eb76908 100644
+--- a/arch/arm/mm/mmu.c
++++ b/arch/arm/mm/mmu.c
+@@ -42,7 +42,7 @@
+  */
+ struct page *empty_zero_page;
+ EXPORT_SYMBOL(empty_zero_page);
+-
++static int	yamadebug = 0;
+ /*
+  * The pmd table for the upper-most set of pages.
+  */
+@@ -609,6 +609,7 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
+ 				  unsigned long end, unsigned long pfn,
+ 				  const struct mem_type *type)
+ {
++	char buf[128];
+ 	pte_t *pte = early_pte_alloc(pmd, addr, type->prot_l1);
+ 	do {
+ 		set_pte_ext(pte, pfn_pte(pfn, __pgprot(type->prot_pte)), 0);
+@@ -647,9 +648,9 @@ static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
+ 				      unsigned long end, phys_addr_t phys,
+ 				      const struct mem_type *type)
+ {
++	char	buf[128];
+ 	pmd_t *pmd = pmd_offset(pud, addr);
+ 	unsigned long next;
+-
+ 	do {
+ 		/*
+ 		 * With LPAE, we must loop over to map
+@@ -763,6 +764,7 @@ static void __init create_mapping(struct map_desc *md)
+ 	phys_addr_t phys;
+ 	const struct mem_type *type;
+ 	pgd_t *pgd;
++	char	buf[128];	/* yamano */
+ 
+ 	if (md->virtual != vectors_base() && md->virtual < TASK_SIZE) {
+ 		printk(KERN_WARNING "BUG: not creating mapping for 0x%08llx"
+@@ -801,7 +803,6 @@ static void __init create_mapping(struct map_desc *md)
+ 		       (long long)__pfn_to_phys(md->pfn), addr);
+ 		return;
+ 	}
+-
+ 	pgd = pgd_offset_k(addr);
+ 	end = addr + length;
+ 	do {
+@@ -1086,13 +1087,13 @@ static inline void prepare_page_table(void)
+ {
+ 	unsigned long addr;
+ 	phys_addr_t end;
++	char	buf[64];
+ 
+ 	/*
+ 	 * Clear out all the mappings below the kernel image.
+ 	 */
+ 	for (addr = 0; addr < MODULES_VADDR; addr += PMD_SIZE)
+ 		pmd_clear(pmd_off_k(addr));
+-
+ #ifdef CONFIG_XIP_KERNEL
+ 	/* The XIP kernel is mapped in the module area -- skip over it */
+ 	addr = ((unsigned long)_etext + PMD_SIZE - 1) & PMD_MASK;
+@@ -1155,13 +1156,13 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ {
+ 	struct map_desc map;
+ 	unsigned long addr;
++	phys_addr_t	paddr;
+ 	void *vectors;
+ 
+ 	/*
+ 	 * Allocate the vector page early.
+ 	 */
+ 	vectors = early_alloc(PAGE_SIZE * 2);
+-
+ 	early_trap_init(vectors);
+ 
+ 	for (addr = VMALLOC_START; addr; addr += PMD_SIZE)
+@@ -1203,6 +1204,8 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	 * create a mapping at the low-vectors virtual address.
+ 	 */
+ 	map.pfn = __phys_to_pfn(virt_to_phys(vectors));
++	paddr = virt_to_phys(vectors);
++	map.pfn = __phys_to_pfn(paddr);
+ 	map.virtual = 0xffff0000;
+ 	map.length = PAGE_SIZE;
+ #ifdef CONFIG_KUSER_HELPERS
+@@ -1211,7 +1214,6 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	map.type = MT_LOW_VECTORS;
+ #endif
+ 	create_mapping(&map);
+-
+ 	if (!vectors_high()) {
+ 		map.virtual = 0;
+ 		map.length = PAGE_SIZE * 2;
+@@ -1225,7 +1227,6 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	map.length = PAGE_SIZE;
+ 	map.type = MT_LOW_VECTORS;
+ 	create_mapping(&map);
+-
+ 	/*
+ 	 * Ask the machine support to map in the statically mapped devices.
+ 	 */
+@@ -1268,12 +1269,10 @@ static void __init map_lowmem(void)
+ 			end = arm_lowmem_limit;
+ 		if (start >= end)
+ 			break;
+-
+ 		map.pfn = __phys_to_pfn(start);
+ 		map.virtual = __phys_to_virt(start);
+ 		map.length = end - start;
+ 		map.type = MT_MEMORY;
+-
+ 		create_mapping(&map);
+ 	}
+ }
+@@ -1285,6 +1284,8 @@ static void __init map_lowmem(void)
+ void __init paging_init(struct machine_desc *mdesc)
+ {
+ 	void *zero_page;
++	char	buf[64];
++	int c;
+ 
+ 	memblock_set_current_limit(arm_lowmem_limit);
+ 
+@@ -1295,7 +1296,6 @@ void __init paging_init(struct machine_desc *mdesc)
+ 	devicemaps_init(mdesc);
+ 	kmap_init();
+ 	tcm_init();
+-
+ 	top_pmd = pmd_off_k(0xffff0000);
+ 
+ 	/* allocate the zero page. */
+diff --git a/arch/arm/mm/proc-v7.S b/arch/arm/mm/proc-v7.S
+index 72de967..5c3b348 100644
+--- a/arch/arm/mm/proc-v7.S
++++ b/arch/arm/mm/proc-v7.S
+@@ -354,8 +354,30 @@ __v7_setup:
+ 
+ 4:	mov	r10, #0
+ 	mcr	p15, 0, r10, c7, c5, 0		@ I+BTB cache invalidate
++	mcr	p15, 0, r10, c7, c5, 6		@ Branch predictor invalidate all yamano
++	isb
+ #ifdef CONFIG_MMU
+ 	mcr	p15, 0, r10, c8, c7, 0		@ invalidate I + D TLBs
++/*5:	b	5b 	* yamano */
++/* r10=zero,r4=ttbr,r8=ttbr1,tmp=r5 */ 
++	mov	r10, #0x08	/* yamano */
++#if 0	/* yamano debug page table walk */
++	mov	r6, r8
++	mov	r5, r6, lsr #(32-ARCH_PGD_SHIFT)
++	mov	r6, r6, lsl #ARCH_PGD_SHIFT
++	addls	r6, r6, #TTBR1_OFFSET
++	mcrr	p15, 1, r6, r10, c2		@ TTBR1
++	isb
++	mov	r6, r4
++	mov	r5, r6, lsr #(32 - ARCH_PGD_SHIFT)
++	mov	r6, r6, lsl #ARCH_PGD_SHIFT
++	orr	r6, r6, #0x3
++	mrrc	p15, 0, r5, r8, c2
++	mcrr	p15, 0, r6, r10, c2		@ TTBR0
++ 	isb
++	mcrr	p15, 0, r5, r8, c2
++	isb
++#endif
+ 	v7_ttb_setup r10, r4, r8, r5		@ TTBCR, TTBRx setup
+ 	ldr	r5, =PRRR			@ PRRR
+ 	ldr	r6, =NMRR			@ NMRR
+-- 
+1.7.1
+

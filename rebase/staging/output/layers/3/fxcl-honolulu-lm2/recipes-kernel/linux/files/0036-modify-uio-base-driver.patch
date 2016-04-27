@@ -1,0 +1,616 @@
+From bc3516bf761cdac5dce678e9eedcceee99ab4c26 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:21:59 +0900
+Subject: [PATCH 039/170] 0036-modify-uio-base-driver
+
+
+diff --git a/drivers/dma/Kconfig b/drivers/dma/Kconfig
+index a7687b2..33daf23 100644
+--- a/drivers/dma/Kconfig
++++ b/drivers/dma/Kconfig
+@@ -35,6 +35,11 @@ comment "DMA Devices"
+ 
+ source "drivers/dma/xilinx/Kconfig"
+ 
++config LM2_GPDMA
++	bool "Lm2 GPDMA Generic Driver "
++	depends on ARCH_LM2
++	help
++
+ config INTEL_MID_DMAC
+ 	tristate "Intel MID DMA support for Peripheral DMA controllers"
+ 	depends on PCI && X86
+diff --git a/drivers/dma/Makefile b/drivers/dma/Makefile
+index 5517dcd..733b97a 100644
+--- a/drivers/dma/Makefile
++++ b/drivers/dma/Makefile
+@@ -6,6 +6,7 @@ obj-$(CONFIG_DMA_VIRTUAL_CHANNELS) += virt-dma.o
+ obj-$(CONFIG_DMA_ACPI) += acpi-dma.o
+ obj-$(CONFIG_DMA_OF) += of-dma.o
+ 
++obj-$(CONFIG_LM2_GPDMA) += gpdma.o
+ obj-$(CONFIG_NET_DMA) += iovlock.o
+ obj-$(CONFIG_INTEL_MID_DMAC) += intel_mid_dma.o
+ obj-$(CONFIG_DMATEST) += dmatest.o
+diff --git a/drivers/dma/gpdma.c b/drivers/dma/gpdma.c
+new file mode 100644
+index 0000000..b089db3
+--- /dev/null
++++ b/drivers/dma/gpdma.c
+@@ -0,0 +1,573 @@
++/* Kernel driver for GPDMA found on Quatro processors
++ *
++ * Copyright (c) 2014 Cambridge Silicon Radio Ltd.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/delay.h>
++#include <linux/jiffies.h>
++#include <linux/platform_device.h>
++#include <linux/of_platform.h>
++#include <linux/fs.h>
++#include <linux/mm.h>
++#include <linux/pagemap.h>
++#include <linux/io.h>
++#include <linux/dma-mapping.h>
++#include <linux/vmalloc.h>
++#include <linux/mman.h>
++#include <linux/slab.h>
++#include <linux/interrupt.h>
++#include <linux/device.h>
++#include <linux/fs.h>
++#include <linux/cdev.h>
++#include <linux/poll.h>
++#include <linux/mutex.h>
++#include <asm/io.h>
++#include <asm/mman.h>
++#include <asm/uaccess.h>
++#include <asm/dma.h>
++#include <asm/pgalloc.h>
++
++#define QGPDMA_DEVNAME	"gpdma"
++#define	QGPDMA_MAJOR	208
++#define	QMSG_DONE	0xff000001
++#define	QGETDONE		0x9D00
++#define	QWAITDONE		0x9D01
++#define QVIRT2PHYS              0x9E00
++#define QPHYS2VIRT              0x9E01
++struct q_doneinfo {
++        unsigned msg;                                   /* return message/value                     */
++        unsigned detail;                                /* detail for message                       */
++        unsigned long long endtime;             /* finish time absolute in HRT microseconds */
++        unsigned long long cycles;              /* cycle count where appropriate            */
++};
++
++#define GPDMA_START               0x00000001
++#define GPDMA_BUSY                0x00000002
++#define GPDMA_ERROR               0x00000004
++#define GPDMA_RESUME              0x00000008
++#define GPDMA_8BEAT               0x00000700
++#define GPDMA_16BEAT              0x00000F00
++#define GPDMA_NO_SWAP             0x00000000
++#define GPDMA_BYTE_SWAP           0x00001000
++#define GPDMA_HWORD_SWAP          0x00002000
++#define GPDMA_ENDIAN_SWAP         0x00003000
++#define GPDMA_COPY                0x00000000
++#define GPDMA_REUSE               0x00004000
++#define GPDMA_PATTERN             0x00008000
++#define GPDMA_ADDRESSES           0x0000C000
++#define GPDMA_INTR_EN             0x00100000
++#define GPDMA_ACTIVE_LOW          0x00000000
++#define GPDMA_ACTIVE_HIGH         0x00080000
++#define GPDMA_LEVEL               0x00000000
++#define GPDMA_EDGE                0x00040000
++#define GPDMA_FIXED_SOURCE        0x00020000
++#define GPDMA_FIXED_DEST          0x00010000
++
++struct q_gpdma_xfer {
++        void*   virt_addr;
++        dma_addr_t   phys_addr;
++        unsigned bytes;
++};
++
++/* this is the max ahead on ints rcvd. keep it kinda big
++*/
++#define MAX_MAILBOX 256
++
++struct gpdma_quatro {
++	int			ref;
++	int			minor;
++	struct cdev		cdev;
++	volatile u8		__iomem	*regs;
++	unsigned		ioreg_start;
++	unsigned		ioreg_end;
++	int			irq;
++	struct device*		dev;
++	wait_queue_head_t	mbq;	/* wait-queue for dma-doneinterrupt events */
++	struct q_doneinfo	doneinfo[MAX_MAILBOX];
++	int			di_head, di_tail;
++	spinlock_t		lock;
++};
++
++#define GPD_SRC	(0x00000010)
++#define GPD_DST	(0x00000014)
++#define GPD_SZE	(0x00000018)
++#define GPD_CST	(0x0000001c)
++
++static inline int gpdmaRead32(struct gpdma_quatro* dma, u32 reg, volatile unsigned* val)
++{
++	volatile u32 rv = 0;
++	int ret = 0;
++
++	reg += dma->ioreg_start;
++	if(reg >= dma->ioreg_start && reg <= dma->ioreg_end) {
++		rv = readl(dma->regs + (reg - dma->ioreg_start));
++	}
++	else {
++		printk(KERN_WARNING "qgdma ioctl getreg addr range error\n");
++		ret = -EINVAL;
++	}
++	*val = (unsigned long)rv;
++	return ret;
++}
++
++static int gpdmaWrite32(struct gpdma_quatro* dma, u32 reg, u32 val)
++{
++	reg += dma->ioreg_start;
++	if(reg >= dma->ioreg_start && reg <= dma->ioreg_end)
++		writel(val, dma->regs + (reg - dma->ioreg_start));
++	else
++		printk(KERN_WARNING
++	   		"qgpdma ioctl setreg addr range error reg %08X not in %08X to %08X\n",
++			reg, dma->ioreg_start, dma->ioreg_end);
++		return -EINVAL;
++	return 0;
++}
++
++static int gpdma_open(struct inode* inode, struct file* filp)
++{
++	struct gpdma_quatro *dma;
++	
++	dma = container_of(inode->i_cdev, struct gpdma_quatro, cdev);
++	dma->ref++;
++	dma->minor = iminor(inode);
++	filp->private_data = dma;
++	dma->di_head = dma->di_tail = 0;
++	return 0;
++}
++
++static int gpdma_release(struct inode* inode, struct file* filp)
++{
++	struct gpdma_quatro *dma;
++	
++	dma = container_of(inode->i_cdev, struct gpdma_quatro, cdev);
++	if(dma->ref <= 0)
++		return -EFAULT;
++	dma->ref--;
++	filp->private_data = NULL;
++	return 0;
++}
++
++static int gpdma_read(struct file* filp, char __user *buffer, size_t length, loff_t* offset)
++{
++	struct gpdma_quatro *dma;	
++	
++	dma = (struct gpdma_quatro*)filp->private_data;
++	return -EINVAL;
++}
++
++static int gpdma_write(struct file* filp, const char __user *buffer, size_t length, loff_t* offset)
++{
++	struct gpdma_quatro *dma;	
++	
++	dma = (struct gpdma_quatro*)filp->private_data;
++	return -EINVAL;
++}
++
++static unsigned int gpdma_poll(struct file *filp, poll_table *wait)
++{
++	struct gpdma_quatro* dma;	
++	unsigned int mask = 0;
++	unsigned long flags;
++	
++	dma = (struct gpdma_quatro*)filp->private_data;
++
++	poll_wait(filp, &dma->mbq, wait);
++	spin_lock_irqsave(&dma->lock, flags);
++	if(dma->di_head != dma->di_tail)
++		mask |= POLLIN | POLLRDNORM; /* readable */
++	spin_unlock_irqrestore(&dma->lock, flags);
++	return mask;
++}
++
++static int gpdma_xfer(struct gpdma_quatro *dma, struct q_gpdma_xfer *xfer, int tophys)
++{
++	struct page *page, **pages;
++	int pagecnt, firstpage, lastpage;
++	int pageno;
++	int voff;
++	int size;
++	int nleft;
++	int timeout;
++	int result;
++	dma_addr_t dma_s, dma_d;
++	u8 *physoff;
++	u8 *vs;
++
++	/* validate parameters */
++	if(! xfer || ! xfer->virt_addr || ! xfer->phys_addr) 
++		return -EINVAL;
++	if(xfer->bytes < 0)
++		return -EINVAL;
++	if(xfer->bytes & 3) {
++		printk("gpdma xfer count must be dword aligned\n");
++		return -EINVAL;
++	}
++	if((u32)xfer->virt_addr & 3) {
++		printk("gpdma xfer virtual addr must be dword aligned\n");
++		return -EINVAL;
++	}
++	if((u32)xfer->phys_addr & 0x1F) {
++		printk("gpdma xfer phys addr must be cache-line aligned\n");
++		return -EINVAL;
++	}
++	/* alloc a page array */
++	firstpage = (u32)xfer->virt_addr >> PAGE_SHIFT;
++	lastpage  = ((u32)xfer->virt_addr + xfer->bytes) >> PAGE_SHIFT;
++	pagecnt = lastpage - firstpage + 1;
++	
++	pages = (struct page**)kmalloc(pagecnt * sizeof(struct page*), GFP_KERNEL);
++	if(! pages)
++		return -ENOMEM;
++
++	/* lock mm for read */
++	down_read(&current->mm->mmap_sem);
++	
++	/* Map the user I/O buffer. */
++	result = get_user_pages(
++				current,
++				current->mm,
++				(unsigned long) xfer->virt_addr & PAGE_MASK,
++				pagecnt,
++				tophys ? 0 : 1,
++				0,
++				pages,
++				NULL
++				);
++							
++	up_read(&current->mm->mmap_sem);
++
++	if(result < 0 || result < pagecnt) {
++		printk(KERN_WARNING "get pages failed %d\n", result);
++		kfree(pages);
++		return result;
++ 	}
++	physoff = (u8*)xfer->phys_addr;
++	nleft = xfer->bytes;
++
++	/* for each page in virt, xfer to the phys location */
++	for(pageno = 0; pageno < pagecnt; pageno++) {
++		page = pages[pageno];		
++		size = PAGE_SIZE;
++		
++		/* if first page, reduce count by offset into page of va */
++		if(pageno == 0) {
++			voff = (u32)xfer->virt_addr & ~PAGE_MASK;
++			size -= voff;
++		} else
++			voff = 0;
++			
++		/* if last page, reduce count by bytes to right of end of xfer */
++		if(pageno == (pagecnt - 1))
++			size -=  PAGE_SIZE - (((u32)xfer->virt_addr + xfer->bytes) & ~PAGE_MASK);
++			
++		if(size > nleft)
++			size = nleft;
++			
++		vs = kmap(page);
++			
++		/*printk("cp %d from %p + %d to %p\n", size, vs, voff, physoff);*/
++		
++		dma_d = dma_map_single(
++					dma->dev,
++					tophys ? __va(physoff) : (void*)vs,
++					PAGE_SIZE, DMA_TO_DEVICE
++				);
++		dma_s = dma_map_single(
++					dma->dev,
++					tophys ? (void*)vs : __va(physoff),
++					PAGE_SIZE, DMA_TO_DEVICE
++				);
++		
++		if(size > 0) {
++			int starthead;
++
++			/* setup dma */
++			gpdmaWrite32(dma, GPD_SRC, (unsigned)dma_s + (tophys ? voff : 0));
++			gpdmaWrite32(dma, GPD_DST, (unsigned)dma_d + (tophys ? 0 : voff));
++			gpdmaWrite32(dma, GPD_SZE, size);
++			
++			/* remember where the interrupt record is, we'll pull it ourselves
++			*/
++			starthead = dma->di_head;
++			gpdmaWrite32(dma, GPD_CST, GPDMA_8BEAT | GPDMA_START);	
++			
++			/* wait for done, should be like a microsecond or less */
++			timeout = 0;
++			while(dma->di_head == dma->di_tail) {
++				/* TODO - check for dma in progress? */
++				if (wait_event_interruptible(dma->mbq, (dma->di_head != dma->di_tail)))
++					return -ERESTARTSYS;
++				if (timeout++ > 1000000)
++					break;
++			}
++			if (dma->di_head == dma->di_tail) {
++				printk("gpdma didn't complete?\n");
++			}
++			/* pull the interrupt record */
++			dma->di_head = starthead;
++		}
++	//	printk("fbd=%02X %02X\n", *(u8*)__va(physoff), *(u8*)__va(dma_d));
++	//	printk("dmatime=%d\n", timeout);
++		
++		dma_unmap_single(dma->dev, dma_s, PAGE_SIZE, DMA_FROM_DEVICE);
++		dma_unmap_single(dma->dev, dma_d, PAGE_SIZE, DMA_FROM_DEVICE);
++		
++		kunmap(page);
++		
++		physoff += size;
++		nleft -= size;
++		
++		page_cache_release(page);
++	}		
++	/* Clean up and return. */
++	kfree(pages);
++	return xfer->bytes - nleft;
++}
++
++static long gpdma_ioctl(struct file* filp, unsigned int cmd, unsigned long arg)
++{
++	struct gpdma_quatro *dma;	
++	struct q_gpdma_xfer xfer;
++	unsigned long flags;
++	int ret = 0;
++	
++	dma = (struct gpdma_quatro*)filp->private_data;
++	
++	switch(cmd)
++	{
++	case QGETDONE:
++		if(dma->di_head == dma->di_tail)
++			return -EAGAIN;
++		ret = copy_to_user((void*)arg,
++			(void*)&dma->doneinfo[dma->di_tail], sizeof(struct q_doneinfo));
++		spin_lock_irqsave(&dma->lock, flags);
++		dma->di_tail++;
++		if(dma->di_tail >= MAX_MAILBOX)
++			dma->di_tail = 0;
++		spin_unlock_irqrestore(&dma->lock, flags);
++		break;
++	case QWAITDONE:
++		while(dma->di_head == dma->di_tail) {
++			/* TODO - check for dma in progress? */
++			if (wait_event_interruptible(dma->mbq,
++				(dma->di_head != dma->di_tail)))
++				return -ERESTARTSYS;
++		}
++		if(dma->di_head != dma->di_tail) {
++			ret = copy_to_user((void*)arg, (void*)&dma->doneinfo[dma->di_tail], sizeof(struct q_doneinfo));
++			spin_lock_irqsave(&dma->lock, flags);
++			dma->di_tail++;
++			if(dma->di_tail >= MAX_MAILBOX)
++				dma->di_tail = 0;
++			spin_unlock_irqrestore(&dma->lock, flags);
++			ret = 0;
++		}
++		else
++			/* TODO - check for dma in progress? */
++			ret = -EAGAIN;
++		break;
++	case QVIRT2PHYS:
++	case QPHYS2VIRT:
++		/* like copy_from_user or copy_to_user but uses gpdma to 
++		 * be sdram bus friendly
++		 */
++		if(copy_from_user((void*)&xfer,
++			(void*)arg, sizeof(struct q_gpdma_xfer)))
++			return -EINVAL;
++		ret = gpdma_xfer(dma, &xfer, cmd == QVIRT2PHYS);
++		break;
++	default:
++		printk(KERN_WARNING "gpdma - bad ioctl %x\n", cmd);
++		ret = -EINVAL;
++	}
++	return ret;
++}
++
++static int gpdma_mmap(struct file* filp, struct vm_area_struct* vma)
++{
++	struct gpdma_quatro *dma;	
++	int length, ret = 0;
++	
++	dma = (struct gpdma_quatro*)filp->private_data;	
++	if(! dma) return -ENODEV;
++
++	/* !! mark pages as uncached for now !! */
++	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
++	length = vma->vm_end - vma->vm_start;
++	if(length > (dma->ioreg_end - dma->ioreg_start)) {
++		printk(KERN_WARNING "GPDMA VMA length truncated to io region\n");
++		length = (dma->ioreg_end - dma->ioreg_start); 
++	}
++	
++	ret = remap_pfn_range(
++			vma,
++			vma->vm_start,
++			dma->ioreg_start >> PAGE_SHIFT,
++			length,
++			vma->vm_page_prot
++			);
++	return ret;
++}
++
++static irqreturn_t quatro_gpdma_interrupt(int irq, void *dev_id)
++{
++	struct gpdma_quatro *dma = (struct gpdma_quatro *)dev_id; 
++	struct timeval tv;
++	int ret;
++	unsigned long flags;
++
++	dma->doneinfo[dma->di_head].msg     = QMSG_DONE;
++	dma->doneinfo[dma->di_head].detail  = 0;
++	do_gettimeofday(&tv);
++	dma->doneinfo[dma->di_head].endtime = (unsigned long long)tv.tv_sec * 1000000 +
++			(unsigned long long)tv.tv_usec;
++	dma->doneinfo[dma->di_head].cycles  = 0;
++	spin_lock_irqsave(&dma->lock, flags);
++	dma->di_head++;
++	if(dma->di_head >= MAX_MAILBOX)
++		dma->di_head = 0;
++	spin_unlock_irqrestore(&dma->lock, flags);
++#ifdef GPD0CST__CLR_INT__MASK
++	gpdmaWrite32(dma, GPD_CST, GPD0CST__CLR_INT__MASK);
++#endif
++	/* wakeup tasks waiting on dma done
++	*/
++	wake_up_interruptible(&dma->mbq);
++
++	ret = IRQ_HANDLED;
++	return ret;
++}
++
++static struct file_operations quatro_gpdma_ops = {
++	.owner		= THIS_MODULE,
++	.open		= gpdma_open,
++	.release	= gpdma_release,
++	.read		= gpdma_read,
++	.write		= gpdma_write,
++	.poll		= gpdma_poll,
++	.mmap		= gpdma_mmap,
++	.unlocked_ioctl	= gpdma_ioctl
++};
++
++static int __init quatro_gpdma_probe(struct platform_device *pdev)
++{
++	struct gpdma_quatro *dma;
++	struct resource	*regs;
++	dev_t  dman;
++	int    ret;
++	static int ndmas = 0;
++
++	dma = kzalloc(sizeof(struct gpdma_quatro), GFP_KERNEL);
++	if (!dma) {
++		dev_dbg(&pdev->dev, "out of memory\n");
++		return -ENOMEM;
++	}
++	cdev_init(&dma->cdev, &quatro_gpdma_ops);
++	dman = MKDEV(QGPDMA_MAJOR, ndmas);
++	ret = cdev_add(&dma->cdev, dman, 1);
++	if (ret) {
++		dev_dbg(&pdev->dev, "could not create char dev %d\n", ndmas);
++		goto out_err;
++	}
++	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!regs) {
++		dev_dbg(&pdev->dev, "no mmio reg resource defined\n");
++		ret = -ENXIO;
++		goto out_rerr;
++	}
++	dma->ioreg_start = regs->start;
++	dma->ioreg_end   = regs->end;
++
++	dma->regs = ioremap(regs->start, regs->end - regs->start + 1);
++	if(!dma->regs) {
++		ret = -ENOMEM;
++		dev_dbg(&pdev->dev, "could not map reg I/O memory\n");
++		goto out_ioerr;
++	}
++
++	dma->irq = platform_get_irq(pdev, 0);
++	if (dma->irq < 0) {
++		dev_dbg(&pdev->dev, "could not get irq\n");
++		ret = -ENXIO;
++		goto out_ioerr;
++	}
++	spin_lock_init(&dma->lock);
++	init_waitqueue_head(&dma->mbq);
++
++	ret = request_irq(dma->irq, quatro_gpdma_interrupt,
++		IRQF_DISABLED, "gpdma", dma);
++	if (ret) {
++		dev_dbg(&pdev->dev, "could not request irq %d\n", dma->irq);
++		dma->irq = -1;
++		goto out_ioerr;
++	}
++	platform_set_drvdata(pdev, dma);
++	printk("QGPDMA %d - mapped at %p, irq %d\n", ndmas, dma->regs, dma->irq);
++	ndmas++;
++	device_init_wakeup(&pdev->dev, 1);	
++	dma->dev = &pdev->dev;
++	return 0;
++out_ioerr:
++	iounmap(dma->regs);
++out_rerr:
++	cdev_del(&dma->cdev);		
++out_err:
++	kfree(dma);
++	return ret;
++}
++
++static int __exit quatro_gpdma_remove(struct platform_device *pdev)
++{
++	struct gpdma_quatro *dma = platform_get_drvdata(pdev);
++
++	if(dma->irq > 0)
++		free_irq(dma->irq, dma);
++	iounmap(dma->regs);
++	cdev_del(&dma->cdev);		
++	kfree(dma);
++	platform_set_drvdata(pdev, NULL);
++	return 0;
++}
++
++MODULE_ALIAS("platform:quatro-dma");
++
++static const struct of_device_id csr_quatro_id_table[] = {
++	{ .compatible = "csr,quatro-gpdma" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, csr_quatro_id_table);
++
++static struct platform_driver quatro_gpdma_driver_ops = {
++	.probe		= quatro_gpdma_probe,
++	.remove		= quatro_gpdma_remove,
++	.driver		= {
++		.name	= "quatro-gpdma",
++		.owner	= THIS_MODULE,
++		.of_match_table = of_match_ptr(csr_quatro_id_table),	
++	},
++};
++
++static int __init quatro_gpdma_init(void)
++{
++	int ret;
++
++	ret = platform_driver_register(&quatro_gpdma_driver_ops);
++	return ret;
++}
++module_init(quatro_gpdma_init);
++
++static void __exit quatro_gpdma_exit(void)
++{
++	platform_driver_unregister(&quatro_gpdma_driver_ops);
++}
++module_exit(quatro_gpdma_exit);
++
++MODULE_AUTHOR("Cambridge Silicon Radio Ltd.");
++MODULE_DESCRIPTION(" Quatro GPDMA driver");
++MODULE_LICENSE("GPL v2");
++
+-- 
+1.7.1
+

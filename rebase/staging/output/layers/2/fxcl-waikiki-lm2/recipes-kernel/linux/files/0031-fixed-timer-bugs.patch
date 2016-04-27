@@ -1,0 +1,636 @@
+From 7eb1a1cd849c9ff3a36dc6ef3ed8512cda73bf14 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:46:27 +0900
+Subject: [PATCH 032/169] 0031-fixed-timer-bugs
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 452bc5a..58633f9 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -289,6 +289,25 @@ static	struct platform_device lm2_rtc_device = {
+ 
+ };
+ 
++/*
++ * Watch Dog
++ */
++static struct resource lm2_wdt_resource[]={
++       {
++               .start  = 0x04040000,
++               .end    = 0x04040100,
++               .flags  = IORESOURCE_MEM,
++       },
++};
++
++static struct platform_device lm2_wdt_device = {
++       .name           = "lm2-wdt",
++       .id             = -1,
++       .resource       = lm2_wdt_resource,
++       .num_resources  = ARRAY_SIZE(lm2_wdt_resource),
++};
++
++
+ static	struct resource	lm2_i2c_resource[] = {
+ 	{
+ 		.start	= 0x041F0000,
+@@ -420,6 +439,7 @@ static void __init lm2_init(void)
+ 	platform_device_register(&lm2_gpio_device);
+ 	platform_device_register(&lm2_rtc_device);
+ 	platform_device_register(&lm2_i2c_device);
++	platform_device_register(&lm2_wdt_device);
+ }
+ 
+ MACHINE_START(LM2, "FujiXerox Waikiki")
+diff --git a/drivers/rtc/rtc-quatro53xx.c b/drivers/rtc/rtc-quatro53xx.c
+index e760969..c418e0f 100644
+--- a/drivers/rtc/rtc-quatro53xx.c
++++ b/drivers/rtc/rtc-quatro53xx.c
+@@ -10,6 +10,7 @@
+  */
+ /*
+  * revision:
++ * 0.2  connection fail
+  * 0.1  added alram function. All Interface clean. where alarm register?
+  * 0.0	initial 
+  */
+@@ -28,11 +29,29 @@
+ #include <linux/of_address.h>
+ #include <linux/irq.h>
+ #include <linux/slab.h>
++#include <linux/mutex.h>
++#include <linux/printk.h>
++#include <asm/barrier.h>
+ 
+ #define	RTCCNT		0x010
+ #define	RTCSECOND	0x018
+ #define	RTCCTL		0x01c
+ 
++/* bye operation address */
++#if 1
++#define	RTCCTL_CTL	(RTCCTL + 0)
++#define	RTCCTL_TM	(RTCCTL + 1)
++#define	RTCCTL_CON	(RTCCTL + 2)
++#define	RTCCTL_CLK	(RTCCTL + 3)
++#else
++#define	RTCCTL_CTL	(RTCCTL + 3)
++#define	RTCCTL_TM	(RTCCTL + 2)
++#define	RTCCTL_CON	(RTCCTL + 1)
++#define	RTCCTL_CLK	(RTCCTL + 0)
++#endif	/* */
++
++#define	RTC_MAX_WAIT	32	/* 24MHz system clock cycle ? */
++
+ #define	RTC_START	0x00000001	/* BY */
+ #define	RTC_RDWR_R	0x00000002	/* RW */
+ #define	RTC_RDWR_W	0x00000000	/* RW */
+@@ -43,43 +62,250 @@
+ #define	RTC_CODE_INPUT	0x40000000	/* CI */
+ #define	RTC_CODE_CLK	0x80000000	/* CC */
+ 
++#define	RTC_STAT_BY	0x01
++#define	RTC_CON_EN	0x01
++
+ struct	lm2_rtc	{
+-	void __iomem		*rtc_base;
++	volatile u8 __iomem	*rtc_base;
+ 	struct rtc_device	*rtc;
+ 	unsigned long		count;
++//	spinlock_t		lock;
++	struct mutex		lock;
+ };
+ 
+ /*
+  * rtc class menbers
+  */
+-static	int	lm2_open(struct device *dev)
++static	int	rtc_busy(volatile u8 __iomem *reg_base)
++{
++	u8	ctrl;
++	int	retry;
++
++	retry = 0;
++	do{
++		ctrl = readb(reg_base + RTCCTL_CTL);
++		barrier();
++		if(ctrl & RTC_STAT_BY)
++			msleep(5);
++		else
++			goto	end;
++		retry++;
++	}while(retry < RTC_MAX_WAIT);
++	return	-1;	/* retry over */
++end:
++	return	0;
++}
++
++static	int	rtc_connect(volatile void __iomem *reg_base)
+ {
+-	/* need a mutex ? */
++#if 0
++	u32	val;
++	u32	cmd;
++
++
++        val = readl(reg_base + RTCCTL);
++	val &= 0x00ffffff;
++
++	/* connection set */
++	val |= RTC_CONNECT;
++	writel(val, reg_base + RTCCTL);
++	udelay(1);
++
++	/* init sequence */
++	cmd = val |= RTC_CODE_CLK;
++	writel(cmd, reg_base + RTCCTL);
++	udelay(1);
++	cmd = val |= RTC_CODE_INPUT;
++	writel(cmd, reg_base + RTCCTL);
++	udelay(1);
++	cmd = val |= RTC_CODE_CLK | RTC_CODE_INPUT;
++	writel(cmd, reg_base + RTCCTL);
++	udelay(1);
++	cmd = val;
++	writel(cmd, reg_base + RTCCTL);
++	udelay(1);
++	cmd = val |= RTC_CODE_CLK;
++	writel(cmd, reg_base + RTCCTL);
++	udelay(1);
++	cmd = val |= RTC_CODE_INPUT;
++	writel(cmd, reg_base + RTCCTL);
++	udelay(1);
++	cmd = val |= RTC_CODE_CLK | RTC_CODE_INPUT;
++	writel(cmd, reg_base + RTCCTL);
++	udelay(1);
++	cmd = val;
++	writel(cmd, reg_base + RTCCTL);
++	udelay(1);
++#else
++	writeb(0x01, reg_base + RTCCTL_CON);
++	barrier();
++	udelay(1);
++
++	writeb(0x80, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x40, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0xc0, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x00, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x80, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x40, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0xc0, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x00, reg_base + RTCCTL_CLK);
++	barrier();
++	udelay(1);
++#endif		
+ 	return	0;
++
++}
++
++static	void	rtc_disconnect(volatile u8 __iomem *reg_base)
++{
++#if 0
++	u32	val;
++
++        val = readl(reg_base + RTCCTL);
++
++	val &= 0x00ffffff;
++
++        val |= RTC_CODE_CLK;
++        writel(val, reg_base + RTCCTL);	/* 0x80XXXXXX*/
++	udelay(1);
++
++        val &= ~RTC_CODE_CLK;
++        writel(val, reg_base + RTCCTL);	/* 0x00XXXXXX */
++	udelay(1);
++
++        val = val | RTC_CODE_CLK;
++        writel(val, reg_base + RTCCTL);	/* 0x80XXXXXX */
++	udelay(1);
++
++        val &= ~RTC_CODE_CLK;
++        writel(val, reg_base + RTCCTL);
++	udelay(1);
++
++        val |= RTC_CODE_CLK;
++        writel(val, reg_base + RTCCTL);
++	udelay(1);
++
++        val &= ~RTC_CODE_CLK;
++        writel(val, reg_base + RTCCTL);
++	udelay(1);
++
++        val |= RTC_CODE_CLK;
++        writel(val, reg_base + RTCCTL);
++	udelay(1);
++
++        val &= ~RTC_CODE_CLK;
++        writel(val, reg_base + RTCCTL);
++	udelay(1);
++
++	/* connection bit reset */
++	val &= RTC_CONNECT;
++        writel(val, reg_base + RTCCTL);
++#else
++	writeb(0x80, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x00, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x80, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x00, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x80, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x00, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x80, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x00, reg_base + RTCCTL_CLK);
++	barrier();
++	writeb(0x00, reg_base + RTCCTL_CON);
++#endif
++	return;
+ }
+ 
+ static	int	lm2_set_time(struct device *dev, struct rtc_time *tm)
+ {
+-	struct lm2_rtc	*rtc = dev;
++	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
+ 	u32	current_sec;
++	int	result;
++	u32	reg;
++
++	printk( KERN_WARNING "RTC set date and time\n");
++	result = rtc_tm_to_time(tm, &current_sec);
++	if(result){
++		printk(KERN_WARNING "wrong Date and time\n");
++		return	result;
++	}
++
++	mutex_lock(&rtc->lock);
+ 
+-	current_sec = mktime(tm->tm_year, tm->tm_mon,tm->tm_mday,tm->tm_hour,tm->tm_min,tm->tm_sec);
+-	writel(current_sec,rtc->rtc_base + RTCSECOND);
++	rtc_connect(rtc->rtc_base);
+ 
++	writel(current_sec, rtc->rtc_base + RTCCNT);
++
++//	reg = readl(rtc->rtc_base + RTCCTL);
++//	reg &= ~RTC_RDWR_R;
++//	reg |= RTC_START;
++//	writel(reg, rtc->rtc_base+ RTCCTL);
++	writeb(0x01, rtc->rtc_base + RTCCTL_CTL);
++	barrier();
++	udelay(1);
++	result = rtc_busy(rtc->rtc_base);
++	if(result != 0){
++		printk(KERN_ERR "No responce Watch Dog Timer\n");
++		mutex_unlock(&rtc->lock);
++		return	-1;
++	}
++
++	/* stored to RTC Block counter */
++
++//	reg = readl(rtc->rtc_base + RTCCTL);
++//	reg |= RTC_INIT;
++//	writel(reg, rtc->rtc_base + RTCCTL);
++	writeb(0x04, rtc->rtc_base + RTCCTL_CTL);
++	barrier();
++	udelay(1);
++	result = rtc_busy(rtc->rtc_base);
++	if(result != 0){
++		printk(KERN_ERR "No responce store operation Watch Dog Timer\n");
++		mutex_unlock(&rtc->lock);
++		return	-1;
++	}
++
++	rtc_disconnect(rtc->rtc_base);
++
++	mutex_unlock(&rtc->lock);
++
++	printk( KERN_WARNING "RTC set date and timecompleted\n");
++	
+ 	return	0;
+ }
+ 
+ 
+ static	int	lm2_get_time(struct device *dev, struct rtc_time *tm)
+ {
+-	struct lm2_rtc	*rtc = dev;
++	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
+ 	u32	current_sec;
++	int	result;
+ 
+-	if(rtc->rtc_base == NULL){
+-		dev_err(dev,"ioremap error lm2_rtc_get %x\n",rtc->rtc_base);
+-		return 0;
++//	if(rtc->rtc_base == NULL){
++//		dev_err(dev,"ioremap error lm2_rtc_get %x\n",rtc->rtc_base);
++//		return 0;
++//	}
++
++	result = rtc_busy(rtc->rtc_base);
++	if(result != 0){
++		printk(KERN_ERR "No responce Watch Dog Timer\n");
++		return	-1;
+ 	}
+-	current_sec = readl(rtc->rtc_base + RTCSECOND);
++	
++	current_sec = readl(rtc->rtc_base + RTCCNT);
+ 	rtc_time_to_tm(current_sec,tm);
+ 
+ 	return	0;
+@@ -95,49 +321,73 @@ static const	struct	rtc_class_ops	lm2_rtc_ops = {
+ 	.set_time	= lm2_set_time,
+ };
+ 
+-static void __init lm2_rtc_probe(struct platform_device *pdev)
++static int __init lm2_rtc_probe(struct platform_device *pdev)
+ {
+ 	struct lm2_rtc	*dev;
+ 	struct resource	*mem;
+ 	u32	val;
+-
++	u8	reg;
++	
+ 	dev_info(&pdev->dev,"RTC Driver Probing\n");
+ 
+-	dev = kzalloc(sizeof(struct lm2_rtc), GFP_KERNEL);
++	/* Private date get */
++	dev = devm_kzalloc(&pdev->dev,sizeof(struct lm2_rtc), GFP_KERNEL);
+ 	if(!dev){
+ 		dev_err(&pdev->dev,"Could not allocate RTC driver space \n");
+ 		return	-ENOMEM;
+ 	}
+ 
+-	dev_info(&pdev->dev,"RTC Driver Probing\n");
++
+ 	mem = platform_get_resource(pdev,IORESOURCE_MEM,0);
+ 	if(!mem){
+ 		dev_err(&pdev->dev,"no mmio space\n");
++		kfree(dev);
+ 		return	-EINVAL;
+ 	}
+ 
+-	dev_info(&pdev->dev,"RTC Driver Probing\n");
+ 	dev->rtc_base = ioremap(mem->start,0x100);
+-//	dev->rtc_base = devm_ioremap(pdev,mem->start,resource_size(mem));
+-//	if(!dev->rtc_base){
+-//		dev_err(&pdev->dev,"can't mapping mmio\n");
+-//		return	-ENOMEM;
+-//	}
+-	dev->count = 0;
++	if(!dev->rtc_base){
++		dev_err(&pdev->dev,"can't mapping mmio\n");
++		kfree(dev);
++		return	-ENOMEM;
++	}
+ 
+-	dev_info(&pdev->dev,"RTC Driver Probing\n");
++	mutex_init(&dev->lock);
++
++	dev->count = 0;
++	
+ 	platform_set_drvdata(pdev,dev);
+ 
+ 	dev->rtc = rtc_device_register("lm2-rtc", &pdev->dev, &lm2_rtc_ops, THIS_MODULE);
+-#if 0 
+-	rtc =devm_rtc_device_register(&pdev->dev, "lm2-rtc",&lm2_rtc_ops, THIS_MODULE);
+-	if(IS_ERR(rtc))
+-		return	-1;
+-#endif
++
++	device_init_wakeup(&pdev->dev, 1);
++
+ 	/*
+- 	 * To Do check connection
++ 	 * To Do check connection and start
+  	 */
+-#if 0
++	rtc_connect(dev->rtc_base);
++	rtc_busy(dev->rtc_base);
++	reg = readb(dev->rtc_base + RTCCTL_CTL);
++	if((reg & 0x04) == 0){
++		printk( KERN_WARNING "RTC first time access\n");
++		writel(0x00000000,dev->rtc_base + RTCCNT);
++		barrier();
++		writeb(0x01, dev->rtc_base + RTCCTL_CTL);
++		barrier();
++		udelay(1);
++		rtc_busy(dev->rtc_base);
++		writeb(0x04, dev->rtc_base + RTCCTL_CTL);
++		barrier();
++		udelay(1);
++		rtc_busy(dev->rtc_base);
++	}
++ 	writeb(0x03, dev->rtc_base + RTCCTL_CTL);
++	rtc_busy(dev->rtc_base);
++	barrier();
++
++	rtc_disconnect(dev->rtc_base);
++#if 0	/* to used access timing */
++ 	writel(RTC_CONNECT, dev->rtc_base + RTCCTL);
+ 	val = RTC_CODE_CLK | RTC_CODE_INPUT | RTC_HTOL_START;
+  	writel(RTC_CODE_CLK, dev->rtc_base + RTCCTL);
+  	writel(RTC_CODE_CLK|RTC_CODE_INPUT, dev->rtc_base + RTCCTL);
+@@ -147,14 +397,17 @@ static void __init lm2_rtc_probe(struct platform_device *pdev)
+  	writel(RTC_CODE_CLK|RTC_CODE_INPUT, dev->rtc_base + RTCCTL);
+  	writel(val, dev->rtc_base + RTCCTL);
+  	writel(0, dev->rtc_base + RTCCTL);
+-	msleep(300);	/* RTC establish wait */	
+- 	writel(RTC_CONNECT, dev->rtc_base + RTCCTL);
++	msleep(1);	/* RTC establish wait */	
+ #endif
++	return	0;
+ }
+ 
+-static	int	__exit	lm2_rtc_remove(struct platform_device *dev)
++static	int	__exit	lm2_rtc_remove(struct platform_device *pdev)
+ {
+-	struct lm2_rtc	*rtc = platform_get_drvdata(dev);
++	struct lm2_rtc	*rtc = platform_get_drvdata(pdev);
++
++	device_init_wakeup(&pdev->dev,0);
++
+ 
+ 	/*
+  	 * ToDo: remove or shutdown 
+@@ -162,6 +415,8 @@ static	int	__exit	lm2_rtc_remove(struct platform_device *dev)
+  	 */
+ #if 0
+ 	u32	val;
++	u32	reg;
++
+ 	val = readl(rtc->rtc_base + RTCCTL);
+ 
+ 	val = val | RTC_CODE_CLK;
+@@ -181,6 +436,11 @@ static	int	__exit	lm2_rtc_remove(struct platform_device *dev)
+ 	val &= ~RTC_CODE_CLK;
+ 	writel(val, rtc->rtc_base + RTCCTL);
+ #endif
++	iounmap(rtc->rtc_base);
++	rtc_device_unregister(rtc->rtc);
++	platform_set_drvdata(pdev,NULL);
++	kfree(rtc);
++	return	0;
+ }
+ static	const struct platform_device_id lm2_rtc_id_table[] = {
+ 	{ "lm2-rtc",},
+diff --git a/drivers/watchdog/lm2_wdt.c b/drivers/watchdog/lm2_wdt.c
+index ecd0460..8398879 100644
+--- a/drivers/watchdog/lm2_wdt.c
++++ b/drivers/watchdog/lm2_wdt.c
+@@ -28,6 +28,8 @@
+ 
+ /* Watchdog timer values in seconds */
+ #define WDT_MAX_TIMER	0xffffffff
++#define	WDT_MIN_TIMER	0x00000002
++
+ #define	WDT_TIMER_START	0x00000001
+ #define	WDT_TIMER_STOP	0x00000000
+ 
+@@ -37,11 +39,13 @@
+ #define	WDTLD		0x08C
+ #define	WDTBND		0x090
+ 
+-#define	WDT_TIMER_LOAD	0x7a1c
++#define	WDT_TIMER_LOAD	0x00007a1c
+ 
++//#define	DEFAULT_TIMEOUT_10s	32*1000*10	/* 32KHz from RTCCLK2 */
++#define	DEFAULT_TIMEOUT_10s	1	/* 32KHz from RTCCLK2 */
+ 
+ struct lm2_wdt_dev {
+-	void	__iomem		*reg_base;
++	volatile u32 __iomem	*reg_base;
+ 	struct device		*dev;
+ 	unsigned int		timeout;
+ };
+@@ -50,8 +54,13 @@ struct lm2_wdt_dev {
+ static int lm2_wdt_start(struct watchdog_device *wdog)
+ {
+ 	struct lm2_wdt_dev *wdev = watchdog_get_drvdata(wdog);
+-	writel(WDT_TIMER_LOAD,wdev->reg_base+WDTLD);
+-	writel(WDT_TIMER_START,wdev->reg_base+WDTEN);
++
++
++//	printk(KERN_WARNING "Watch Dog Start\n");
++	writel(WDT_TIMER_START, wdev->reg_base + WDTEN);
++	barrier();
++	writel(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
++	barrier();
+ 
+ 	return 0;
+ }
+@@ -60,8 +69,9 @@ static int lm2_wdt_stop(struct watchdog_device *wdog)
+ {
+ 	struct lm2_wdt_dev *wdev = watchdog_get_drvdata(wdog);
+ 
+-	writel(WDT_TIMER_STOP,wdev->reg_base+WDTEN);
+-
++//	printk(KERN_WARNING "Watch Dog Stop\n");
++	writel(WDT_TIMER_STOP, wdev->reg_base + WDTEN);
++	barrier();
+ 	return 0;
+ }
+ 
+@@ -70,9 +80,12 @@ static int lm2_wdt_set_timeout(struct watchdog_device *wdog,
+ {
+ 	struct lm2_wdt_dev *wdev = watchdog_get_drvdata(wdog);
+ 
++	printk(KERN_WARNING "Watch Dog Timer Set %d\n",timeout);
+ 	wdog->timeout = timeout;
+ 
+-	writel(timeout, wdev->reg_base+WDTTC);
++	writel(timeout, wdev->reg_base + WDTTC);
++	barrier();
++
+ 	return 0;
+ }
+ 
+@@ -88,6 +101,7 @@ static const struct watchdog_ops lm2_wdt_ops = {
+ 	.set_timeout	= lm2_wdt_set_timeout,
+ };
+ 
++
+ static int lm2_wdt_probe(struct platform_device *pdev)
+ {
+ 	bool nowayout = WATCHDOG_NOWAYOUT;
+@@ -97,12 +111,16 @@ static int lm2_wdt_probe(struct platform_device *pdev)
+ 	int ret;
+ 
+ 	lm2_wdt = devm_kzalloc(&pdev->dev, sizeof(*lm2_wdt), GFP_KERNEL);
+-	if (!lm2_wdt)
++	if (!lm2_wdt){
++		printk( KERN_ERR "Watch Dog Timer NOMEM install failed\n");
+ 		return -ENOMEM;
++	}
+ 
+ 	wdev = devm_kzalloc(&pdev->dev, sizeof(*wdev), GFP_KERNEL);
+-	if (!wdev)
++	if (!wdev){
++		printk(KERN_ERR "Watch Dog driver could not allocate private memory\n");
+ 		return -ENOMEM;
++	}
+ 
+ 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if(!mem){
+@@ -114,11 +132,14 @@ static int lm2_wdt_probe(struct platform_device *pdev)
+ 
+ 	lm2_wdt->info		= &lm2_wdt_info;
+ 	lm2_wdt->ops		= &lm2_wdt_ops;
+-	lm2_wdt->timeout	= WDT_MAX_TIMER;
+-	lm2_wdt->min_timeout	= 0;
++	lm2_wdt->timeout	= DEFAULT_TIMEOUT_10s;
++	lm2_wdt->min_timeout	= 2;
+ 	lm2_wdt->max_timeout	= WDT_MAX_TIMER;
+ 
+ 	watchdog_set_drvdata(lm2_wdt, wdev);
++
++	platform_set_drvdata(pdev, lm2_wdt);
++
+ 	watchdog_set_nowayout(lm2_wdt, nowayout);
+ 
+ 	wdev->dev		= &pdev->dev;
+@@ -127,9 +148,12 @@ static int lm2_wdt_probe(struct platform_device *pdev)
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	platform_set_drvdata(pdev, lm2_wdt);
+ 	/* init */
+-	writel(WDT_MAX_TIMER, wdev->reg_base+WDTBND);
++	writel(0x00, wdev->reg_base + WDTEN);
++	barrier();
++	writel(WDT_MAX_TIMER, wdev->reg_base + WDTBND);
++	barrier();
++	writel(DEFAULT_TIMEOUT_10s, wdev->reg_base + WDTTC);
+ 
+ 	return 0;
+ }
+@@ -140,7 +164,9 @@ static int lm2_wdt_remove(struct platform_device *pdev)
+ 	struct lm2_wdt_dev *wdev = watchdog_get_drvdata(wdog);
+ 
+ 	watchdog_unregister_device(wdog);
+-
++	iounmap(wdev->reg_base);
++	kfree(wdev);
++	kfree(wdog);
+ 	return 0;
+ }
+ 
+@@ -149,6 +175,7 @@ static struct platform_driver lm2_wdt_driver = {
+ 	.remove		= lm2_wdt_remove,
+ 	.driver		= {
+ 		.name	= "lm2-wdt",
++		.owner	= THIS_MODULE,
+ 	},
+ };
+ 
+-- 
+1.7.1
+

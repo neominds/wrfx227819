@@ -1,0 +1,21 @@
+0002-fxcl-waikiki-platform-base.patch:+	return clk->rate;
+0002-fxcl-waikiki-platform-base.patch:+	if (clk->ops && clk->ops->round)
+0002-fxcl-waikiki-platform-base.patch:+		ret = clk->ops->round(clk, rate);
+0002-fxcl-waikiki-platform-base.patch:+	if (clk->ops && clk->ops->set)
+0002-fxcl-waikiki-platform-base.patch:+		ret = clk->ops->set(clk, rate);
+0002-fxcl-waikiki-platform-base.patch:+	vco = icst_hz_to_vco(clk->params, rate);
+0002-fxcl-waikiki-platform-base.patch:+	return icst_hz(clk->params, vco);
+0002-fxcl-waikiki-platform-base.patch:+	vco = icst_hz_to_vco(clk->params, rate);
+0002-fxcl-waikiki-platform-base.patch:+	clk->rate = icst_hz(clk->params, vco);
+0002-fxcl-waikiki-platform-base.patch:+	clk->ops->setvco(clk, vco);
+0028-usbd-dwc3-driver-update.patch:+		 * STAR#9000588375: Clock Gating, SOF Issues when ref_clk-Based
+memory-and-tlb-bug.patch: 	return clk->rate;
+memory-and-tlb-bug.patch: 	if (clk->ops && clk->ops->round)
+memory-and-tlb-bug.patch: 		ret = clk->ops->round(clk, rate);
+memory-and-tlb-bug.patch: 	if (clk->ops && clk->ops->set)
+memory-and-tlb-bug.patch: 		ret = clk->ops->set(clk, rate);
+memory-and-tlb-bug.patch: 	vco = icst_hz_to_vco(clk->params, rate);
+memory-and-tlb-bug.patch: 	return icst_hz(clk->params, vco);
+memory-and-tlb-bug.patch: 	vco = icst_hz_to_vco(clk->params, rate);
+memory-and-tlb-bug.patch: 	clk->rate = icst_hz(clk->params, vco);
+memory-and-tlb-bug.patch: 	clk->ops->setvco(clk, vco);

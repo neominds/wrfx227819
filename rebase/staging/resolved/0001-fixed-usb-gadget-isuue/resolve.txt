@@ -1,0 +1,17 @@
+CONFLICT (content): Merge conflict in drivers/usb/dwc3/core.c
+CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
+Rebase failed at 0001-fixed-usb-gadget-isuue
+
+
+1.
+core.c
+FX change for function dwc3_remove() seems to comment out suspend and poweroff.
+RCPL27 re-orders operations and performs suspend and poweroff after freeing resources.
+rcpl27 seems like a better way of doing, so retained that.
+However if tests fail, may need to revert to FX change.
+
+2. 
+gadget.c
+FX changes are only debug add or removal. Added same to merged file.
+
+/EOT

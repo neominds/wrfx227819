@@ -1,0 +1,97 @@
+From 321cc6c5ff286ebeafbbe4b0809a90ddf25532e9 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:23:58 +0900
+Subject: [PATCH 131/170] 0001-xspi-driver-isuue
+
+
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index a420fef..78e0e79 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -395,41 +395,12 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 
+ 	if(tfr->tx_buf == NULL){	/* read only */
+ 		xspi_read_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->rx_buf);
+-#if 0
+-		buf = (char *)tfr->tx_buf;
+-		for( cnt = 0 ; cnt < tfr->len ; cnt++ ){
+-			if(spi->chip_select == 1){
+-//				dev_info(&spi->dev, "### Write CPLD ### %d : %x\n",addr,*buf);
+-				xspi_write_trans(xspi, addr, *buf, 4);
+-			}else{
+-//				dev_info(&spi->dev, "### Write MEMORY ### %d : %x\n",addr,*buf);
+-				xspi_write_trans24(xspi, addr, *buf, 0);
+-			}
+-			addr++;
+-			buf++;
+-		}
+-#endif
+ 	}else{
+ 		/* read */
+ 		if(tfr->rx_buf != NULL)
+ 			xspi_read_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->rx_buf);
+ 		xspi_write_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->tx_buf);
+-#if 0
+-		buf = (char *)tfr->rx_buf;
+-		for(cnt = 0 ; cnt < tfr->len ;cnt++){
+-			if(spi->chip_select == 1){
+-				*buf = (char)xspi_read_trans(xspi, addr, 4);
+-//				dev_info(&spi->dev, "### read CPLD ### %d : %x\n",addr,*buf);
+-			}else{
+-				*buf = (char)xspi_read_trans24(xspi, addr, 0);
+-//				dev_info(&spi->dev, "### read MEMORY ### %d : %x\n",addr,*buf);
+-			}
+-			addr++;
+-			buf++;
+-		}
+-#endif
+ 	}
+-	xspi->len = tfr->len;
+ 	mutex_unlock(&xspi->lock);
+ 	return	0;
+ }
+@@ -448,27 +419,11 @@ static	int	xspi_transfer_one(struct spi_master *master, struct spi_message *msg)
+ //	dev_info(&spi->dev,"bus_num=%d\n",spi->master->bus_num);
+ 
+ 	list_for_each_entry(tfr, &msg->transfers, transfer_list){
+-		do{
+-			err = xspi_start_transfer(spi, tfr, msg->actual_length);
+-			if(err)
+-				goto out;
+-
+-//			wait_for_completion(&xspi->done);
+-//
+-//			if(xspi->stat){
+-//				msg->status = -1;
+-//				goto	out;
+-//			}
+-//			if(spi->chip_select != 0){	/* CPLD */
+-//				err = xspi_rd(xspi, SPI_STAT + 4);
+-//				dev_info(&spi->dev,"data = %x\n",err);
+-//				dat = xspi_rd(xspi, SPI_FIFO); 	
+-//				dev_info(&spi->dev,"data = %x\n",dat);
+-//			}else{
+-//
+-//			}
+-			msg->actual_length += xspi->len;
+-		}while(msg->actual_length < tfr->len);
++		err = xspi_start_transfer(spi, tfr, msg->actual_length);
++		if(err)
++			goto out;
++
++		msg->actual_length += xspi->len;
+ 	}
+ 	msg->status = 0;
+ out:
+@@ -852,7 +807,7 @@ int	xspi_read(SPILIB_PARAM *spiParam)
+ 	mutex_unlock(&xspi_api_lib->lock);
+ 	return	ret;
+ }
+-EXPORT_SYNBOL(xspi_read);
++EXPORT_SYMBOL(xspi_read);
+ 
+ /*
+  * Driver Function xspi_write
+-- 
+1.7.1
+

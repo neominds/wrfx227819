@@ -1,0 +1,53 @@
+From 27ba9b12b24e409d3e14e637b85fe02a7f659dec Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Sat, 6 Dec 2014 09:37:46 +0900
+Subject: [PATCH 18/20] merge fix base bsp
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mach-lm2/lm2.c |   10 ++--------
+ 1 files changed, 2 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 8cd3660..8d1f1e5 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -7,8 +7,6 @@
+  */
+ 
+ #include <linux/device.h>
+-#include <linux/amba/bus.h>
+-#include <linux/amba/mmci.h>
+ #include <linux/io.h>
+ #include <linux/init.h>
+ #include <linux/of_address.h>
+@@ -16,12 +14,11 @@
+ #include <linux/of_irq.h>
+ #include <linux/of_platform.h>
+ #include <linux/platform_device.h>
++#include <linux/dma-mapping.h>
+ #include <linux/ata_platform.h>
+-#include <linux/smsc911x.h>
+ #include <linux/memblock.h>
+ #include <linux/spinlock.h>
+ #include <linux/device.h>
+-#include <linux/usb/isp1760.h>
+ #include <linux/clkdev.h>
+ #include <linux/mtd/physmap.h>
+ #include <linux/serial_8250.h>
+@@ -37,11 +34,8 @@
+ #include <asm/mach/time.h>
+ #include <asm/hardware/arm_timer.h>
+ #include <asm/hardware/cache-l2x0.h>
+-#include <asm/hardware/gic.h>
+-#include <asm/hardware/timer-sp.h>
+-#include <asm/hardware/sp810.h>
+ #include <linux/stmmac.h>
+-
++#include <linux/irqchip/arm-gic.h>
+ /*
+  * BSPs include files 
+  */
+-- 
+1.7.1
+

@@ -1,0 +1,57 @@
+From 757f2ea91c4426e6d1608759575a475197705ffd Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:24:17 +0900
+Subject: [PATCH 146/170] 0001-support-MAC-address-from-DTB
+
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
+index b9fcbda..483590c 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
+@@ -31,6 +31,12 @@
+ #define GMAC_EXTCFG	0x801c
+ 
+ #ifdef CONFIG_OF
++static  const struct of_device_id lm2_mac_addr[] ={
++        {
++                .name = "mac_addr",
++        },
++};
++
+ static int stmmac_probe_config_dt(struct platform_device *pdev,
+ 				  struct plat_stmmacenet_data *plat,
+ 				  const char **mac)
+@@ -79,6 +85,11 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
+  */
+ static int stmmac_pltfr_probe(struct platform_device *pdev)
+ {
++#ifdef CONFIG_OF
++        struct device_node      *node;
++        const struct of_device_id       *of_id;
++        struct property *pp;
++#endif
+ 	int ret = 0;
+ 	struct resource *res;
+ 	struct device *dev = &pdev->dev;
+@@ -125,6 +136,18 @@ static int stmmac_pltfr_probe(struct platform_device *pdev)
+ 		pr_err("%s: main driver probe failed", __func__);
+ 		return -ENODEV;
+ 	}
++#ifdef CONFIG_OF
++        node = of_find_matching_node(NULL,lm2_mac_addr);
++        if(node){
++                int     i;
++                char    *ptr;
++                pp= of_find_property(node, "mac-address",NULL);
++                if(pp != NULL){
++                        mac=pp->value;  /* MAC Address from Panbug */
++                }
++                of_node_put(node);
++        }
++#endif
+ 
+ 	/* Get MAC address if available (DT) */
+ 	if (mac)
+-- 
+1.7.1
+

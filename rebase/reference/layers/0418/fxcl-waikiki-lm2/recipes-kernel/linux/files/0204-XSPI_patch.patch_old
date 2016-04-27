@@ -1,0 +1,215 @@
+From 2a066041a7423b97362891a7ef6dc465a4a9709e Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Tue, 1 Mar 2016 15:20:27 +0900
+Subject: [PATCH 1/1] XSPI_patch
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mach-lm2/lm2.c              |   25 ++++++++++++++++++
+ arch/arm/mach-lm2/xspi.c             |   14 +++++-----
+ drivers/spi/xspi.c                   |   24 ++++++++++++-----
+ include/linux/spi/tpm_stm_st33_spi.h |   46 ++++++++++++++++++++++++++++++++++
+ 4 files changed, 95 insertions(+), 14 deletions(-)
+ create mode 100644 include/linux/spi/tpm_stm_st33_spi.h
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index a921646..dbf3866 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -46,6 +46,11 @@
+ 
+ #include "core.h"
+ 
++/* #ifdef CONFIG_TCG_ST33_SPI_OPTION */ 
++#include <linux/spi/tpm_stm_st33_spi.h> 
++#include <linux/spi/spi.h> 
++/* #endif */ /* CONFIG_TCG_ST33_SPI_OPTION */ 
++
+ #if 1	/* WR Change */
+ #define OS_PRODUCT_ID_BOMBORA    0x33
+ #define OS_PRODUCT_ID_KAIMANA    0x34
+@@ -359,6 +364,22 @@ static	struct platform_device lm2_pcie_device = {
+ 	.num_resources	= ARRAY_SIZE(lm2_pcie_resource),
+ };
+ 
++/* #ifdef CONFIG_TCG_ST33_SPI_OPTION */ 
++static struct st33zp24_platform_data tpm_data = {
++    .io_serirq = 52,
++};
++
++static struct spi_board_info tpm_st33_spi_board_info[] = {
++        {
++                .modalias = TPM_ST33_SPI,
++                .max_speed_hz = 10000000,
++                .bus_num = 0,
++                .chip_select = 2,
++                .mode = SPI_MODE_0,
++                .platform_data = &tpm_data,
++        },
++};
++/* #endif*/ /* CONFIG_TCG_ST33_SPI_OPTION */
+ 
+ static void __init lm2_init_early(void)
+ {
+@@ -574,6 +595,10 @@ static void __init lm2_dt_init(void)
+ #ifdef	CONFIG_SPI_XSPI
+ 	lm2_xspi_register();
+ #endif	/* CONFIG_SPI_XSPI */
++	
++/* #ifdef CONFIG_TCG_ST33_SPI_OPTION */
++        spi_register_board_info(tpm_st33_spi_board_info, ARRAY_SIZE(tpm_st33_spi_board_info));
++/* #endif */ /* CONFIG_TCG_ST33_SPI_OPTION */
+ 
+ 	of_platform_populate(NULL, lm2_dt_bus_match, NULL, NULL);
+ 	node = of_find_matching_node(NULL,lm2_pcie_match);
+diff --git a/arch/arm/mach-lm2/xspi.c b/arch/arm/mach-lm2/xspi.c
+index 800bbee..32b6c86 100644
+--- a/arch/arm/mach-lm2/xspi.c
++++ b/arch/arm/mach-lm2/xspi.c
+@@ -69,13 +69,13 @@ static	struct spi_board_info	lm2_spi_devices[] __initdata = {
+ 		.max_speed_hz	= 580000,
+ 		.mode		= SPI_MODE_0,
+ 	},
+-	{
+-		.modalias	= "spidev",
+-		.bus_num	= 0,
+-		.chip_select	= 2,
+-		.max_speed_hz	= 580000,
+-		.mode		= SPI_MODE_0,
+-	},
++//	{
++//		.modalias	= "spidev",
++//		.bus_num	= 0,
++//		.chip_select	= 2,
++//		.max_speed_hz	= 580000,
++//		.mode		= SPI_MODE_0,
++//	},
+ };
+ 
+ static	struct resource	lm2_xspi_resource[] = {
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index 8dbc5db..4042200 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -42,10 +42,10 @@
+ 
+ #include <linux/spi/xspi.h>
+ 
+-#undef	XSPI_DEBUG_FUNC
+-#undef	XSPI_DEBUG_REG
+-#undef	XSPI_DEBUG_OPE
+-#undef	XSPI_DEBUG_INT
++#define	XSPI_DEBUG_FUNC
++#define	XSPI_DEBUG_REG
++#define	XSPI_DEBUG_OPE
++#define	XSPI_DEBUG_INT
+ 
+ /* Register offset Address */
+ /* configuration and clock */
+@@ -123,7 +123,7 @@ static	inline	u32 xspi_rd(struct xspi_dev *dev, unsigned int reg)
+ 
+ 	data = readl(dev->reg_base + reg);
+ 
+-	printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, dev->reg_base + reg, data);
++	printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, reg, data);
+ 
+ 	return	data;
+ #else
+@@ -134,7 +134,7 @@ static	inline	u32 xspi_rd(struct xspi_dev *dev, unsigned int reg)
+ static	inline	void	xspi_wr(struct xspi_dev *dev, unsigned int reg, u32 val)
+ {
+ #ifdef	XSPI_DEBUG_REG
+-	printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, dev->reg_base + reg, val);
++	printk(KERN_ERR "# %s # reg[0x%x] = '0x%8.8x'\n", __func__, reg, val);
+ 
+ 	writel(val, dev->reg_base + reg);
+ #else
+@@ -517,6 +517,14 @@ static int xspi_probe(struct platform_device *pdev)
+ 	dev_info(&pdev->dev, "SPI_CLK1 %x\n", xspi_rd(xspi, SPI_CLK1));
+ 	dev_info(&pdev->dev, "SPI0CFG0 %x\n", xspi_rd(xspi, SPI_CFG));
+ 	dev_info(&pdev->dev, "SPI0CFG1 %x\n", xspi_rd(xspi, SPI_CFG+4));
++	dev_info(&pdev->dev, "SPI0CFG2 %x\n", xspi_rd(xspi, SPI_CFG+8));
++#if 0	/* ohkuma TEST */
++	{
++		u32	cfg2 = xspi_rd(xspi, SPI_CFG+4);
++		xspi_wr(xspi, SPI_CFG+8, cfg2);
++	}
++	dev_info(&pdev->dev, "SPI0CFG2 %x\n", xspi_rd(xspi, SPI_CFG+8));
++#endif
+ 	/* CS0 :SRAM,FRAM,MRAM */
+ //	xspi_wr(xspi, SPI_CLK0, 0x00002020); /* SPI mode 0 300MHz/32 */
+ //	xspi_wr(xspi, SPI_CFG, 0x80000000);
+@@ -591,6 +599,9 @@ static	int	xspi_read_prim(
+ 	int	shift;
+ 	u32	timeout;
+ 
++#if 0	/* ohkuma TEST */
++	cs=1;
++#endif
+ 	/* cmd = 0xe000c000; start bit and write and read  no int and big endian */
+ #ifdef	XSPI_DEBUG_FUNC
+ 	printk(KERN_ERR "# %s entry cs[%d] Width[%d] offset[%x] length[%d]\n",
+@@ -600,7 +611,6 @@ static	int	xspi_read_prim(
+ 
+ 	/* Endian */
+ 	reg = xspi_rd(xspi, SPI_CFG + reg_off);
+-//	reg |= 0xc8000000;
+ 	reg |= 0x08000000;
+ 	xspi_wr(xspi, SPI_CFG + reg_off, reg);
+ #if 0
+diff --git a/include/linux/spi/tpm_stm_st33_spi.h b/include/linux/spi/tpm_stm_st33_spi.h
+new file mode 100644
+index 0000000..4f49ea6
+--- /dev/null
++++ b/include/linux/spi/tpm_stm_st33_spi.h
+@@ -0,0 +1,46 @@
++/*
++* STMicroelectronics TPM SPI Linux driver for TPM ST33NP18
++* Copyright (C) 2009, 2010 STMicroelectronics
++* Christophe RICARD tpmsupport@st.com
++* This program is free software; you can redistribute it and/or modify
++* it under the terms of the GNU General Public License as published by
++* the Free Software Foundation; either version 2 of the License, or
++* (at your option) any later version.
++*
++* This program is distributed in the hope that it will be useful,
++* but WITHOUT ANY WARRANTY; without even the implied warranty of
++* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++* GNU General Public License for more details.
++*
++* You should have received a copy of the GNU General Public License along
++* with this program; if not, write to the Free Software Foundation, Inc.,
++* 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++*
++* STMicroelectronics version 1.2.0, Copyright (C) 2010
++* STMicroelectronics comes with ABSOLUTELY NO WARRANTY.
++* This is free software, and you are welcome to redistribute it
++* under certain conditions.
++*
++* @File: stm_st33_tpm_spi.h
++*
++* @Date: 06/15/2008
++*/
++#ifndef __STM_ST33_TPM_SPI_H__
++#define __STM_ST33_TPM_SPI_H__
++
++#include <linux/spi/spi.h>
++
++#define TPM_ST33_SPI	   	"st33zp24_spi"
++
++#ifndef __STM_ST33_TPM_I2C_H__
++struct st33zp24_platform_data {
++	int io_serirq;
++	int io_lpcpd;
++	int latency;
++	bool bChipF;
++	u8 *tpm_spi_buffer[2]; /* 0 Request 1 Response */
++	struct completion irq_detection;
++};
++#endif
++
++#endif /* __STM_ST33_TPM_SPI_H__ */
+-- 
+1.7.1
+

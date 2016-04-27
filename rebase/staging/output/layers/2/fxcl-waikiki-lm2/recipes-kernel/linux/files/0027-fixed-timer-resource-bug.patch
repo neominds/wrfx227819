@@ -1,0 +1,223 @@
+From 3361f01a468a0954d3d49923344a32c4398a823a Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:46:21 +0900
+Subject: [PATCH 028/169] 0027-fixed-timer-resource-bug
+
+
+diff --git a/drivers/rtc/rtc-quatro53xx.c b/drivers/rtc/rtc-quatro53xx.c
+index 7692a53..e760969 100644
+--- a/drivers/rtc/rtc-quatro53xx.c
++++ b/drivers/rtc/rtc-quatro53xx.c
+@@ -27,6 +27,11 @@
+ #include <linux/of_irq.h>
+ #include <linux/of_address.h>
+ #include <linux/irq.h>
++#include <linux/slab.h>
++
++#define	RTCCNT		0x010
++#define	RTCSECOND	0x018
++#define	RTCCTL		0x01c
+ 
+ #define	RTC_START	0x00000001	/* BY */
+ #define	RTC_RDWR_R	0x00000002	/* RW */
+@@ -38,7 +43,12 @@
+ #define	RTC_CODE_INPUT	0x40000000	/* CI */
+ #define	RTC_CODE_CLK	0x80000000	/* CC */
+ 
+-static	__iomem	*rtc_base;
++struct	lm2_rtc	{
++	void __iomem		*rtc_base;
++	struct rtc_device	*rtc;
++	unsigned long		count;
++};
++
+ /*
+  * rtc class menbers
+  */
+@@ -50,10 +60,11 @@ static	int	lm2_open(struct device *dev)
+ 
+ static	int	lm2_set_time(struct device *dev, struct rtc_time *tm)
+ {
++	struct lm2_rtc	*rtc = dev;
+ 	u32	current_sec;
+ 
+ 	current_sec = mktime(tm->tm_year, tm->tm_mon,tm->tm_mday,tm->tm_hour,tm->tm_min,tm->tm_sec);
+-	writel(current_sec,rtc_base);
++	writel(current_sec,rtc->rtc_base + RTCSECOND);
+ 
+ 	return	0;
+ }
+@@ -61,9 +72,14 @@ static	int	lm2_set_time(struct device *dev, struct rtc_time *tm)
+ 
+ static	int	lm2_get_time(struct device *dev, struct rtc_time *tm)
+ {
++	struct lm2_rtc	*rtc = dev;
+ 	u32	current_sec;
+ 
+-	current_sec = readl(rtc_base);
++	if(rtc->rtc_base == NULL){
++		dev_err(dev,"ioremap error lm2_rtc_get %x\n",rtc->rtc_base);
++		return 0;
++	}
++	current_sec = readl(rtc->rtc_base + RTCSECOND);
+ 	rtc_time_to_tm(current_sec,tm);
+ 
+ 	return	0;
+@@ -81,77 +97,111 @@ static const	struct	rtc_class_ops	lm2_rtc_ops = {
+ 
+ static void __init lm2_rtc_probe(struct platform_device *pdev)
+ {
+-	struct	rtc_device	*rtc;
+-	struct	resource	*mem;
++	struct lm2_rtc	*dev;
++	struct resource	*mem;
+ 	u32	val;
+ 
+-	rtc =devm_rtc_device_register(&pdev->dev, "lm2-rtc",&lm2_rtc_ops, THIS_MODULE);
+-	if(IS_ERR(rtc))
+-		return	-1;
++	dev_info(&pdev->dev,"RTC Driver Probing\n");
++
++	dev = kzalloc(sizeof(struct lm2_rtc), GFP_KERNEL);
++	if(!dev){
++		dev_err(&pdev->dev,"Could not allocate RTC driver space \n");
++		return	-ENOMEM;
++	}
++
++	dev_info(&pdev->dev,"RTC Driver Probing\n");
+ 	mem = platform_get_resource(pdev,IORESOURCE_MEM,0);
+ 	if(!mem){
+ 		dev_err(&pdev->dev,"no mmio space\n");
+ 		return	-EINVAL;
+ 	}
+-	rtc_base = devm_ioremap(pdev,mem->start,resource_size(mem));
+-	if(!rtc_base){
+-		dev_err(&pdev->dev,"can't mapping mmio\n");
+-		return	-ENOMEM;
+-	}
++
++	dev_info(&pdev->dev,"RTC Driver Probing\n");
++	dev->rtc_base = ioremap(mem->start,0x100);
++//	dev->rtc_base = devm_ioremap(pdev,mem->start,resource_size(mem));
++//	if(!dev->rtc_base){
++//		dev_err(&pdev->dev,"can't mapping mmio\n");
++//		return	-ENOMEM;
++//	}
++	dev->count = 0;
++
++	dev_info(&pdev->dev,"RTC Driver Probing\n");
++	platform_set_drvdata(pdev,dev);
++
++	dev->rtc = rtc_device_register("lm2-rtc", &pdev->dev, &lm2_rtc_ops, THIS_MODULE);
++#if 0 
++	rtc =devm_rtc_device_register(&pdev->dev, "lm2-rtc",&lm2_rtc_ops, THIS_MODULE);
++	if(IS_ERR(rtc))
++		return	-1;
++#endif
+ 	/*
+  	 * To Do check connection
+  	 */
++#if 0
+ 	val = RTC_CODE_CLK | RTC_CODE_INPUT | RTC_HTOL_START;
+- 	writel(RTC_CODE_CLK, rtc_base +8);
+- 	writel(RTC_CODE_CLK|RTC_CODE_INPUT, rtc_base +8);
+- 	writel(val, rtc_base +8);
+- 	writel(0 , rtc_base +8);
+- 	writel(RTC_CODE_CLK, rtc_base +8);
+- 	writel(RTC_CODE_CLK|RTC_CODE_INPUT, rtc_base +8);
+- 	writel(val, rtc_base +8);
+- 	writel(0, rtc_base +8);
++ 	writel(RTC_CODE_CLK, dev->rtc_base + RTCCTL);
++ 	writel(RTC_CODE_CLK|RTC_CODE_INPUT, dev->rtc_base + RTCCTL);
++ 	writel(val, dev->rtc_base + RTCCTL);
++ 	writel(0 , dev->rtc_base + RTCCTL);
++ 	writel(RTC_CODE_CLK, dev-> rtc_base + RTCCTL);
++ 	writel(RTC_CODE_CLK|RTC_CODE_INPUT, dev->rtc_base + RTCCTL);
++ 	writel(val, dev->rtc_base + RTCCTL);
++ 	writel(0, dev->rtc_base + RTCCTL);
+ 	msleep(300);	/* RTC establish wait */	
+- 	writel(RTC_CONNECT, rtc_base +8);
++ 	writel(RTC_CONNECT, dev->rtc_base + RTCCTL);
++#endif
+ }
+ 
+ static	int	__exit	lm2_rtc_remove(struct platform_device *dev)
+ {
++	struct lm2_rtc	*rtc = platform_get_drvdata(dev);
++
+ 	/*
+  	 * ToDo: remove or shutdown 
+  	 * internel counter backup for the battery ?
+  	 */
+ #if 0
+ 	u32	val;
+-	val = readl(rtc_base + 8);
++	val = readl(rtc->rtc_base + RTCCTL);
+ 
+ 	val = val | RTC_CODE_CLK;
+-	writel(val, rtc_base + 8);
++	writel(val, rtc->rtc_base + RTCCTL);
+ 	val &= ~RTC_CODE_CLK;
+-	writel(val, rtc_base + 8);
++	writel(val, rtc->rtc_base + RTCCTL);
+ 	val = val | RTC_CODE_CLK;
+-	writel(val, rtc_base + 8);
++	writel(val, rtc->rtc_base + RTCCTL);
+ 	val &= ~RTC_CODE_CLK;
+-	writel(val, rtc_base + 8);
++	writel(val, rtc->rtc_base + RTCCTL);
+ 	val = val | RTC_CODE_CLK;
+-	writel(val, rtc_base + 8);
++	writel(val, rtc->rtc_base + RTCCTL);
+ 	val &= ~RTC_CODE_CLK;
+-	writel(val, rtc_base + 8);
++	writel(val, rtc->rtc_base + RTCCTL);
+ 	val = val | RTC_CODE_CLK;
+-	writel(val, rtc_base + 8);
++	writel(val, rtc->rtc_base + RTCCTL);
+ 	val &= ~RTC_CODE_CLK;
+-	writel(val, rtc_base + 8);
++	writel(val, rtc->rtc_base + RTCCTL);
+ #endif
+ }
++static	const struct platform_device_id lm2_rtc_id_table[] = {
++	{ "lm2-rtc",},
++	{},
++};
+ 
+ static	struct	platform_driver lm2_rtc_driver = {
+ 	.driver = {
+ 		.name	= "lm2-rtc",
+ 		.owner	= THIS_MODULE,
+ 	},
+-	.remove	= __exit_p(lm2_rtc_remove),
++	.id_table	= lm2_rtc_id_table,
++	.probe		= lm2_rtc_probe,
++	.remove		= __exit_p(lm2_rtc_remove),
+ };
+ 
++#if 0
+ module_platform_driver_probe(lm2_rtc_driver,lm2_rtc_probe);
++#else
++module_platform_driver(lm2_rtc_driver);
++#endif
+ 
+ MODULE_LICENSE("GPL");
+-MODULE_ALIAS("platform:waikiki-rtc");
++MODULE_ALIAS("platform:lm2-rtc");
+diff --git a/drivers/watchdog/lm2_wdt.c b/drivers/watchdog/lm2_wdt.c
+index cbbabec..ecd0460 100644
+--- a/drivers/watchdog/lm2_wdt.c
++++ b/drivers/watchdog/lm2_wdt.c
+@@ -110,7 +110,7 @@ static int lm2_wdt_probe(struct platform_device *pdev)
+ 		return	-EINVAL;
+ 	}
+ 
+-	wdev->reg_base = devm_ioremap_resource(&pdev->dev,mem);
++	wdev->reg_base = ioremap(mem->start,0x100);
+ 
+ 	lm2_wdt->info		= &lm2_wdt_info;
+ 	lm2_wdt->ops		= &lm2_wdt_ops;
+-- 
+1.7.1
+

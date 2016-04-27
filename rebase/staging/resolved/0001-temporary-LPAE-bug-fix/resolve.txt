@@ -1,0 +1,6 @@
+Normal merge conflict for 'arch/arm/mm/ioremap.c':
+
+#ifdef CONFIG_ARM__LPAE changed to CONFIG_ARM_LPAE
+Other changes not required as RCPL27 uses phys_addr_t instead of unsigned long.
+
+/EOT

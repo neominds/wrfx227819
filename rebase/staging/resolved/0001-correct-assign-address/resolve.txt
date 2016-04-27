@@ -1,0 +1,28 @@
+Merging in 0001-correct-assign-address from br12_98 to br27_98 -new is br27_99
+CONFLICT (content): Merge conflict in drivers/pci/setup-res.c
+
+drivers/pci/setup-res.c
+=>
+
+Conflicts are because of 
+<<<<<<< HEAD
+#ifdef CONFIG_64BIT
+	/*
+	 * For 64-bit pci device, assign resource start from the next page
+	 * boundary above the maximum physical page address
+	 */
+	resource_size_t min_iomem;
+
+	min_iomem = (res->flags & IORESOURCE_MEM_64) ?
+		    (max_pfn + 1) << PAGE_SHIFT : PCIBIOS_MIN_MEM;
+	min = (res->flags & IORESOURCE_IO) ? PCIBIOS_MIN_IO : min_iomem;
+#else
+=======
+printk( KERN_ERR " $$$ %s : Entry\n",__FUNCTION__);
+>>>>>>> br12_98
+	min = (res->flags & IORESOURCE_IO) ? PCIBIOS_MIN_IO : PCIBIOS_MIN_MEM;
+#endif
+
+#ifdef statement was included in RCPL27 so kept the prink statement in the else part as it was included in the patch
+
+/EOT

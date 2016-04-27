@@ -1,0 +1,312 @@
+From 6caff76065cb3c668905930501784ab7983d6f2d Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:22:32 +0900
+Subject: [PATCH 064/170] 0001-remove-litaral-mode
+
+
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index bb96343..e62f404 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -43,34 +43,43 @@
+ 
+ /* Register offset Address */
+ /* configuration and clock */
+-#define	SPI_ERR		0x00
+-#define	SPI_CLK0	0x10
+-#define	SPI_CLK1	0x14
+-#define	SPI_XCFG	0x18	/* not used */
+-#define	SPI_CST		0x1c
++#define	SPI_ERR		0x000
++#define	SPI_CLK0	0x010
++#define	SPI_CLK1	0x014
++#define	SPI_XCFG	0x018	/* not used */
++
++#define	SPI_CST		0x01c
+ 
+ /* operation register */
+-#define	SPI_CFG		0x20
+-#define	SPI_STAT	0x30
+-#define	SPI_CMD		0x40	/* not used */
+-#define	SPI_LIT		0x50
+-#define	SPI_ROM		0x60	/* not used */
+-#define	SPI_PROG	0x70	/* not used */
++#define	SPI_CFG		0x020
++
++#define	SPI_STAT	0x030
++#define	SPI_CMD		0x040	/*  */
++#define	SPI_LIT		0x050
++#define	SPI_ROM		0x060	/* not used */
++#define	SPI_PROG	0x070	/* not used */
+ 
+ /* DMA control */
+-#define	SPI_DCTL	0x80
+-#define	SPI_DCMD	0x84
+-#define	SPI_DADDR	0x88
+-#define	SPI_RADDR	0x8c
+-#define	SPI_FIFO	0x90	/* direct mode used */
++#define	SPI_DCTL	0x080
++#define	SPI_DCMD	0x084
++#define	SPI_DADDR	0x088
++#define	SPI_RADDR	0x08c
++#define	SPI_FIFO	0x090	/* direct mode used */
+ 
+ /* Interrupt */
+-#define	SPI_SPIINT	0xa0	/* Interupt */
++#define	SPI_SPIINT	0x0a0	/* Interupt */
++
+ #define	SPI_SPIINT_DONE	0x02
+ #define	SPI_SPIINT_ERR	0x01
+ 
+ /* Boot device */
+-#define	SPI_ROMB	0xe0	/* not used */
++#define	SPI_ROMB	0x0e0	/* not used */
++
++#define	SPI_WR_CMD	2	/* Write */
++#define	SPI_RD_CMD	3	/* Read */
++#define	SPI_WRDI_CMD	4	/* Write Disable */
++#define	SPI_RDST_CMD	5	/* read status */
++#define	SPI_WREN_CMD	6	/* Write enable */
+ 
+ /* target memory type */
+ #define	TYPE_SRAM	0
+@@ -80,7 +89,8 @@
+ struct xspi_dev {
+ 	struct mutex		lock;
+ 	struct completion	done;
+-	void __iomem		*reg_base;
++	volatile void __iomem	*reg_base;
++//	volatile u32 __iomem	*reg_base;
+ 	int			irq;
+ 
+ 	int			mem_type;
+@@ -95,19 +105,22 @@ static	inline	u32 xspi_rd(struct xspi_dev *dev, unsigned int reg)
+ 	return	readl(dev->reg_base + reg);
+ }
+ 
+-static	inline	void	xspi_wr(struct xspi_dev * dev, unsigned int reg, u32 val)
++static	inline	void	xspi_wr(struct xspi_dev *dev, unsigned int reg, u32 val)
+ {
+-	writel(val, dev->reg_base + reg);
++//	*((unsigned int *)(dev->reg_base + reg)) = val;
++//	writel(val, dev->reg_base + reg);
++	__raw_writel(val, dev->reg_base + reg);
++	barrier();
+ }
+ 
+ static	void	xspi_clear_fifo(struct xspi_dev *dev)
+ {
+ 	int	cnt;
+ 
+-	for(cnt = 0 ; cnt < 64 ; cnt++ ){
++	for(cnt = 0 ; cnt < 0x20 ; cnt++ ){
+ 		xspi_wr(dev, SPI_FIFO, 0x00000000);
+-		xspi_wr(dev, SPI_DCTL, 0x00000080);
+ 	}
++	xspi_wr(dev, SPI_DCTL, 0x00000180);
+ }
+ 
+ static	irqreturn_t	xspi_interrupt(int irq, void *dev_id)
+@@ -127,18 +140,97 @@ static	irqreturn_t	xspi_interrupt(int irq, void *dev_id)
+ 	return	IRQ_HANDLED;
+ }
+ 
+-#define	CMD_START	0xe0000000
++static	int	xspi_read_trans(struct xspi_dev *xspi, int adr, int offset)
++{
++	unsigned int	reg;
++	unsigned int	cmd;
++
++	xspi_clear_fifo(xspi);  /* fifo clear */
++	/* err */
++	xspi_wr(xspi, SPI_ERR, 0x00);
++
++	/* Endian */
++	reg = xspi_rd(xspi, SPI_CFG + 4);
++	reg |= 0xca000007;
++	xspi_wr(xspi, SPI_CFG +4, reg);
++
++	/* DCTL */
++	reg = 0x100;
++	xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
++
++	/* DCTL */
++	reg = xspi_rd(xspi, SPI_DCTL);
++	reg |= 0x80;
++	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
++
++	/* SPI Command */
++	cmd = (SPI_RD_CMD << 24) | (adr << 16);
++//	dev_info(&spi->dev, "command = %x %x\n", cmd,adr);
++	xspi_wr(xspi, SPI_FIFO, cmd);
++
++	/* Operation */
++	cmd = 0xe00fc007;
++	xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
++
++	while(xspi_rd(xspi, SPI_CST) & 0xc000){};
++
++	return	(xspi_rd(xspi, SPI_FIFO) >> 24);
++}
++
++static	void	xspi_write_trans(struct xspi_dev *xspi, int adr, char dat, int offset)
++{
++	unsigned int	reg;
++	unsigned int	cmd;
++
++	xspi_clear_fifo(xspi);  /* fifo clear */
++	/* err */
++	xspi_wr(xspi, SPI_ERR, 0x00);
++
++	/* Endian */
++	reg = xspi_rd(xspi, SPI_CFG + 4);
++	reg |= 0xca000007;
++	xspi_wr(xspi, SPI_CFG +4, reg);
++
++	/* DCTL */
++	reg = 0x100;
++	xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
++
++	/* DCTL */
++	reg = xspi_rd(xspi, SPI_DCTL);
++	reg |= 0x80;
++	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
++
++	/* SPI Command */
++	cmd = (SPI_RD_CMD << 24) | (adr << 16) | dat << 8;
++//	dev_info(&spi->dev, "command = %x %x\n", cmd,adr);
++	xspi_wr(xspi, SPI_FIFO, cmd);
++
++	/* Operation */
++	cmd = 0xa017c000;
++	xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
++
++	while(xspi_rd(xspi, SPI_CST) & 0xc000){};
++
++	return;
++}
++
++#define	CMD_START	0x80000000
++#define	CMD_ARG		0x00000000
++#define	CMD_ARG_WD	0x20000000
++#define	CMD_RD		0x40000000
++#define	CMD_ARG_RD	0x60000000
+ #define	CMD_LEN		0x07000000
+-#define	CMD_RD		(0x03<<16)
+-#define	CMD_WR		(0x02<<16)
+ 
+-static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr, int dat_idx)
++#define	DIR_BUSY	0x00000000
++#define	DIR_WRITE	0x20000000
++#define	DIR_READ	0x40000000
++#define	DIR_WR_RD	0x60000000
++ 
++static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr, int addr)
+ {
+ 	struct xspi_dev	*xspi = spi_master_get_devdata(spi->master);
+-	u32	cmd = CMD_START;
++	char	*buf;
+ 	int	cnt;
+-	unsigned int	adr;
+-	char		dat;
+ 
+ 	dev_info(&spi->dev, "xspi_start_transfer\n");
+ 	dev_info(&spi->dev, "tfr->len %d\n",tfr->len);
+@@ -146,23 +238,35 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 	dev_info(&spi->dev, "tfr->bit_per_word %d\n",tfr->bits_per_word);
+ 	dev_info(&spi->dev, "tfr->delay_usec %d\n",tfr->delay_usecs);
+ 	dev_info(&spi->dev, "tfr->speed_hz %d\n",tfr->speed_hz);
+-	xspi->stat = 0;
+-	if(spi->chip_select != 0){	/* CPLD Literal 1byte read/write */
+-		adr = (dat_idx & 0x0000ff)<<8;
+-		if(tfr->tx_buf == NULL){	/* read */
+-			cmd = cmd | CMD_RD | CMD_LEN | adr;
+-		}else{
+-			dat = ((char *)tfr->tx_buf)[dat_idx];
+-			cmd = cmd | CMD_WR | CMD_LEN | adr | dat;
+-		}
+-		dev_info(&spi->dev,"command = %x\n", cmd);
+-		xspi->len = 1;
+ 
+-		xspi_wr(xspi, SPI_LIT+4, cmd);
+-	}else{	/* SRAM */
+-	/*	dev_info("SRAM Access\n");*/
++	xspi_wr(xspi, SPI_ERR, 0x00000000);	/* error clear */
++	xspi_clear_fifo(xspi);
++	xspi_wr(xspi, SPI_DCTL, 0x00000100);	/* No DMA mode */
++
++	if(tfr->rx_buf == NULL){	/* write */
++		buf = (char *)tfr->tx_buf;
++		for( cnt = 0 ; cnt < tfr->len ; cnt++ ){
++			if(spi->chip_select == 1){
++				xspi_write_trans(xspi, addr, *buf, 4);
++			}else{
++				xspi_write_trans(xspi, addr, *buf, 0);
++			}
++			addr++;
++			buf++;
++		}
++	}else{				/* read */
++		buf = (char *)tfr->rx_buf;
++		for(cnt = 0 ; cnt < tfr->len ;cnt++){
++			if(spi->chip_select == 1){
++				*buf = (char)xspi_read_trans(xspi, addr, 4);
++			}else{
++				*buf = (char)xspi_read_trans(xspi, addr, 0);
++			}
++			addr++;
++			buf++;
++		}
+ 	}
+-dev_info(&spi->dev,"command = %x\n", cmd);
++	xspi->len = tfr->len;	
+ 	return	0;
+ }
+ 
+@@ -171,7 +275,7 @@ static	int	xspi_transfer_one(struct spi_master *master, struct spi_message *msg)
+ 	struct xspi_dev *xspi = spi_master_get_devdata(master);
+ 	struct spi_transfer	*tfr;
+ 	struct spi_device	*spi = msg->spi;
+-	int	err;
++	int	err,dat;
+ 
+ 	dev_info(&spi->dev,"xspi_transfer_one call\n");
+ 	dev_info(&spi->dev,"actual_length=%d\n",msg->actual_length);
+@@ -184,19 +288,23 @@ static	int	xspi_transfer_one(struct spi_master *master, struct spi_message *msg)
+ 			err = xspi_start_transfer(spi, tfr, msg->actual_length);
+ 			if(err)
+ 				goto out;
++
+ //			wait_for_completion(&xspi->done);
+-			err = xspi_rd(xspi, SPI_STAT+4);
+-			dev_info(&spi->dev,"status read =%x\n",err);
+-			while(err & 0x80000000){
+-				err = xspi_rd(xspi, SPI_STAT+4);
+-				dev_info(&spi->dev, ".");
+-			}
+-			if(xspi->stat){
+-				msg->status = -1;
+-				goto	out;
+-			}
++//
++//			if(xspi->stat){
++//				msg->status = -1;
++//				goto	out;
++//			}
++//			if(spi->chip_select != 0){	/* CPLD */
++//				err = xspi_rd(xspi, SPI_STAT + 4);
++//				dev_info(&spi->dev,"data = %x\n",err);
++//				dat = xspi_rd(xspi, SPI_FIFO); 	
++//				dev_info(&spi->dev,"data = %x\n",dat);
++//			}else{
++//
++//			}
+ 			msg->actual_length += xspi->len;
+-		}while(msg->actual_length <= tfr->len);
++		}while(msg->actual_length < tfr->len);
+ 	}
+ 	msg->status = 0;
+ out:
+-- 
+1.7.1
+

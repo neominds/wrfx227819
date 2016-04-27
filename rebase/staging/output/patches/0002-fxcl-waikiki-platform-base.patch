@@ -1,0 +1,675 @@
+From 34908657547efff440e823f41bc99362e4629943 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:21:10 +0900
+Subject: [PATCH 003/170] 0002-fxcl-waikiki-platform-base
+
+
+diff --git a/arch/arm/plat-waikiki/Kconfig b/arch/arm/plat-waikiki/Kconfig
+new file mode 100644
+index 0000000..0b03a3a
+--- /dev/null
++++ b/arch/arm/plat-waikiki/Kconfig
+@@ -0,0 +1,6 @@
++if PLAT_WAIKIKI
++
++config PLAT_VERSATILE_SCHED_CLOCK
++	def_bool y
++
++endif
+diff --git a/arch/arm/plat-waikiki/Makefile b/arch/arm/plat-waikiki/Makefile
+new file mode 100644
+index 0000000..e0f6353
+--- /dev/null
++++ b/arch/arm/plat-waikiki/Makefile
+@@ -0,0 +1,3 @@
++obj-y	:= clock.o time.o
++obj-$(CONFIG_PLAT_VERSATILE_SCHED_CLOCK) += sched-clock.o
++obj-$(CONFIG_SMP) += headsmp.o platsmp.o
+diff --git a/arch/arm/plat-waikiki/clock.c b/arch/arm/plat-waikiki/clock.c
+new file mode 100644
+index 0000000..5c8b656
+--- /dev/null
++++ b/arch/arm/plat-waikiki/clock.c
+@@ -0,0 +1,74 @@
++/*
++ *  linux/arch/arm/plat-versatile/clock.c
++ *
++ *  Copyright (C) 2004 ARM Limited.
++ *  Written by Deep Blue Solutions Limited.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/errno.h>
++#include <linux/clk.h>
++#include <linux/mutex.h>
++
++#include <asm/hardware/icst.h>
++
++#include <mach/clkdev.h>
++
++int clk_enable(struct clk *clk)
++{
++	return 0;
++}
++EXPORT_SYMBOL(clk_enable);
++
++void clk_disable(struct clk *clk)
++{
++}
++EXPORT_SYMBOL(clk_disable);
++
++unsigned long clk_get_rate(struct clk *clk)
++{
++	return clk->rate;
++}
++EXPORT_SYMBOL(clk_get_rate);
++
++long clk_round_rate(struct clk *clk, unsigned long rate)
++{
++	long ret = -EIO;
++	if (clk->ops && clk->ops->round)
++		ret = clk->ops->round(clk, rate);
++	return ret;
++}
++EXPORT_SYMBOL(clk_round_rate);
++
++int clk_set_rate(struct clk *clk, unsigned long rate)
++{
++	int ret = -EIO;
++	if (clk->ops && clk->ops->set)
++		ret = clk->ops->set(clk, rate);
++	return ret;
++}
++EXPORT_SYMBOL(clk_set_rate);
++
++long icst_clk_round(struct clk *clk, unsigned long rate)
++{
++	struct icst_vco vco;
++	vco = icst_hz_to_vco(clk->params, rate);
++	return icst_hz(clk->params, vco);
++}
++EXPORT_SYMBOL(icst_clk_round);
++
++int icst_clk_set(struct clk *clk, unsigned long rate)
++{
++	struct icst_vco vco;
++
++	vco = icst_hz_to_vco(clk->params, rate);
++	clk->rate = icst_hz(clk->params, vco);
++	clk->ops->setvco(clk, vco);
++
++	return 0;
++}
++EXPORT_SYMBOL(icst_clk_set);
+diff --git a/arch/arm/plat-waikiki/headsmp.S b/arch/arm/plat-waikiki/headsmp.S
+new file mode 100644
+index 0000000..c805e0c
+--- /dev/null
++++ b/arch/arm/plat-waikiki/headsmp.S
+@@ -0,0 +1,41 @@
++/*
++ *  linux/arch/arm/plat-versatile/headsmp.S
++ *
++ *  Copyright (c) 2003 ARM Limited
++ *  All Rights Reserved
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++#include <linux/linkage.h>
++#include <linux/init.h>
++
++	__INIT
++
++/*
++ * Realview/Versatile Express specific entry point for secondary CPUs.
++ * This provides a "holding pen" into which all secondary cores are held
++ * until we're ready for them to initialise.
++ */
++ENTRY(versatile_secondary_startup)
++	mrc	p15, 0, r0, c0, c0, 5
++	bfc	r0, #24, #8
++	adr	r4, 1f
++	ldmia	r4, {r5, r6}
++	sub	r4, r4, r5
++	add	r6, r6, r4
++pen:	ldr	r7, [r6]
++	cmp	r7, r0
++	bne	pen
++
++	/*
++	 * we've been released from the holding pen: secondary_stack
++	 * should now contain the SVC stack for this core
++	 */
++	b	secondary_startup
++
++	.align
++1:	.long	.
++	.long	pen_release
++ENDPROC(versatile_secondary_startup)
+diff --git a/arch/arm/plat-waikiki/include/plat/clcd.h b/arch/arm/plat-waikiki/include/plat/clcd.h
+new file mode 100644
+index 0000000..6bb6a1d
+--- /dev/null
++++ b/arch/arm/plat-waikiki/include/plat/clcd.h
+@@ -0,0 +1,9 @@
++#ifndef PLAT_CLCD_H
++#define PLAT_CLCD_H
++
++struct clcd_panel *versatile_clcd_get_panel(const char *);
++int versatile_clcd_setup_dma(struct clcd_fb *, unsigned long);
++int versatile_clcd_mmap_dma(struct clcd_fb *, struct vm_area_struct *);
++void versatile_clcd_remove_dma(struct clcd_fb *);
++
++#endif
+diff --git a/arch/arm/plat-waikiki/include/plat/clock.h b/arch/arm/plat-waikiki/include/plat/clock.h
+new file mode 100644
+index 0000000..3cfb024
+--- /dev/null
++++ b/arch/arm/plat-waikiki/include/plat/clock.h
+@@ -0,0 +1,15 @@
++#ifndef PLAT_CLOCK_H
++#define PLAT_CLOCK_H
++
++#include <asm/hardware/icst.h>
++
++struct clk_ops {
++	long	(*round)(struct clk *, unsigned long);
++	int	(*set)(struct clk *, unsigned long);
++	void	(*setvco)(struct clk *, struct icst_vco);
++};
++
++int icst_clk_set(struct clk *, unsigned long);
++long icst_clk_round(struct clk *, unsigned long);
++
++#endif
+diff --git a/arch/arm/plat-waikiki/include/plat/fpga-irq.h b/arch/arm/plat-waikiki/include/plat/fpga-irq.h
+new file mode 100644
+index 0000000..627fafd
+--- /dev/null
++++ b/arch/arm/plat-waikiki/include/plat/fpga-irq.h
+@@ -0,0 +1,12 @@
++#ifndef PLAT_FPGA_IRQ_H
++#define PLAT_FPGA_IRQ_H
++
++struct fpga_irq_data {
++	void __iomem *base;
++	unsigned int irq_start;
++	struct irq_chip chip;
++};
++
++void fpga_irq_init(int, u32, struct fpga_irq_data *);
++
++#endif
+diff --git a/arch/arm/plat-waikiki/include/plat/sched_clock.h b/arch/arm/plat-waikiki/include/plat/sched_clock.h
+new file mode 100644
+index 0000000..5c3e4fc
+--- /dev/null
++++ b/arch/arm/plat-waikiki/include/plat/sched_clock.h
+@@ -0,0 +1,6 @@
++#ifndef ARM_PLAT_SCHED_CLOCK_H
++#define ARM_PLAT_SCHED_CLOCK_H
++
++void versatile_sched_clock_init(void __iomem *, unsigned long);
++
++#endif
+diff --git a/arch/arm/plat-waikiki/platsmp.c b/arch/arm/plat-waikiki/platsmp.c
+new file mode 100644
+index 0000000..3e0241d
+--- /dev/null
++++ b/arch/arm/plat-waikiki/platsmp.c
+@@ -0,0 +1,105 @@
++/*
++ *  linux/arch/arm/plat-versatile/platsmp.c
++ *
++ *  Copyright (C) 2002 ARM Ltd.
++ *  All Rights Reserved
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++#include <linux/init.h>
++#include <linux/errno.h>
++#include <linux/delay.h>
++#include <linux/device.h>
++#include <linux/jiffies.h>
++#include <linux/smp.h>
++
++#include <asm/cacheflush.h>
++#include <asm/smp_plat.h>
++#include <asm/hardware/gic.h>
++
++/*
++ * control for which core is the next to come out of the secondary
++ * boot "holding pen"
++
++volatile int __cpuinitdata pen_release = -1;
++*/
++/*
++ * Write pen_release in a way that is guaranteed to be visible to all
++ * observers, irrespective of whether they're taking part in coherency
++ * or not.  This is necessary for the hotplug code to work reliably.
++ */
++static void __cpuinit write_pen_release(int val)
++{
++	pen_release = val;
++	smp_wmb();
++	__cpuc_flush_dcache_area((void *)&pen_release, sizeof(pen_release));
++	outer_clean_range(__pa(&pen_release), __pa(&pen_release + 1));
++}
++
++static DEFINE_SPINLOCK(boot_lock);
++
++void __cpuinit waikiki_secondary_init(unsigned int cpu)
++{
++	/*
++	 * if any interrupts are already enabled for the primary
++	 * core (e.g. timer irq), then they will not have been enabled
++	 * for us: do so
++	 * gic_secondary_init(0); comment out
++	 */
++	/*
++	 * let the primary processor know we're out of the
++	 * pen, then head off into the C entry point
++	 */
++	write_pen_release(-1);
++
++	/*
++	 * Synchronise with the boot thread.
++	 */
++	spin_lock(&boot_lock);
++	spin_unlock(&boot_lock);
++}
++
++int __cpuinit waikiki_boot_secondary(unsigned int cpu, struct task_struct *idle)
++{
++	unsigned long timeout;
++
++	/*
++	 * Set synchronisation state between this boot processor
++	 * and the secondary one
++	 */
++	spin_lock(&boot_lock);
++
++	/*
++	 * This is really belt and braces; we hold unintended secondary
++	 * CPUs in the holding pen until we're ready for them.  However,
++	 * since we haven't sent them a soft interrupt, they shouldn't
++	 * be there.
++	 */
++	write_pen_release(cpu_logical_map(cpu));
++
++	/*
++	 * Send the secondary CPU a soft interrupt, thereby causing
++	 * the boot monitor to read the system wide flags register,
++	 * and branch to the address found there.
++	 */
++	gic_raise_softirq(cpumask_of(cpu), 1);
++
++	timeout = jiffies + (1 * HZ);
++	while (time_before(jiffies, timeout)) {
++		smp_rmb();
++		if (pen_release == -1)
++			break;
++
++		udelay(10);
++	}
++
++	/*
++	 * now the secondary core is starting up let it run its
++	 * calibrations, then wait for it to finish
++	 */
++	spin_unlock(&boot_lock);
++
++	return pen_release != -1 ? -ENOSYS : 0;
++}
+diff --git a/arch/arm/plat-waikiki/sched-clock.c b/arch/arm/plat-waikiki/sched-clock.c
+new file mode 100644
+index 0000000..b33b74c
+--- /dev/null
++++ b/arch/arm/plat-waikiki/sched-clock.c
+@@ -0,0 +1,41 @@
++/*
++ *  linux/arch/arm/plat-versatile/sched-clock.c
++ *
++ *  Copyright (C) 1999 - 2003 ARM Limited
++ *  Copyright (C) 2000 Deep Blue Solutions Ltd
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++#include <linux/kernel.h>
++#include <linux/io.h>
++
++#include <asm/sched_clock.h>
++#include <plat/sched_clock.h>
++
++static void __iomem *ctr;
++
++static u32 notrace versatile_read_sched_clock(void)
++{
++	if (ctr)
++		return readl(ctr);
++
++	return 0;
++}
++
++void __init versatile_sched_clock_init(void __iomem *reg, unsigned long rate)
++{
++	ctr = reg;
++	setup_sched_clock(versatile_read_sched_clock, 32, rate);
++}
+diff --git a/arch/arm/plat-waikiki/time.c b/arch/arm/plat-waikiki/time.c
+new file mode 100644
+index 0000000..0ea6173
+--- /dev/null
++++ b/arch/arm/plat-waikiki/time.c
+@@ -0,0 +1,288 @@
++/*
++ * arch/arm/plat-waikiki/time.c
++ *
++ * Copyright (C) 2014 Wind River Systems, Inc.
++ * Koki Yamano <koki.yamano@windriver.com>
++ *
++ * This file is licensed under the terms of the GNU General Public
++ * License version 2. This program is licensed "as is" without any
++ * warranty of any kind, whether express or implied.
++ */
++
++#include <linux/clk.h>
++#include <linux/clockchips.h>
++#include <linux/clocksource.h>
++#include <linux/err.h>
++#include <linux/init.h>
++#include <linux/interrupt.h>
++#include <linux/ioport.h>
++#include <linux/io.h>
++#include <linux/kernel.h>
++#include <linux/of_irq.h>
++#include <linux/of_address.h>
++#include <linux/time.h>
++#include <linux/irq.h>
++#include <asm/mach/time.h>
++
++/*
++ * We would use TIMER0 and TIMER1 as clockevent and clocksource.
++ * Timer0 and Timer1 both belong to same gpt block in cpu subbsystem. Further
++ * they share same functional clock. Any change in one's functional clock will
++ * also affect other timer.
++ */
++
++#define	SYSCLK		(300*1000*1000)	/* 300MHz */
++#define	DIVISOR		3000	/* 100KHz 10msec */
++#define	PRESCALE	6	/* 50MHz 20nsec */
++
++/* Register offsets, x is channel number */
++#define	PRESCL(x)	((x)+0)
++#define	HTCNTR_H(x)	((x)+0x04)
++#define	HTCNTR_L(x)	((x)+0x08)
++#define	HTCTLR(x)		((x)+0x0c)
++
++#define CTLR(x)		((x)+8)
++#define LOAD(x)		((x)+0)
++#define COUNT(x)	((x)+4)
++
++/* Controll Register bit definitions */
++#define	HTCTLR_START		0x00000002
++#define	HTCTLR_CLR		0x00000001
++#define	HTCTLR_STOP		0x00000000
++
++#define CTLR_LOAD		0x00000001
++#define CTLR_START		0x00000002
++#define CTLR_CONTINOUS		0x00000004
++
++
++extern	lm2_printk(unsigned long base, const char *str);
++
++static	void __iomem *clksrc_base;
++static	void __iomem *clkevt_base;
++
++static void clockevent_set_mode(enum clock_event_mode mode,
++				struct clock_event_device *clk_event_dev);
++static int clockevent_next_event(unsigned long evt,
++				 struct clock_event_device *clk_event_dev);
++
++/*
++ * Clock source driver (kernel timer)
++ */
++void	lm2_clocksource_init(__iomem void *gpt_base)
++{
++	u32	tick_rate;
++	u32	val;
++	int	result;
++
++	/* secured memory I/O base */
++	clksrc_base = gpt_base;
++	/* To Do : find out actual clock driving Timer driver/clk */
++	/* 
++ 	 * of_clk_init and clocksource_of_init with flattend device tree
++ 	 */
++
++	/* Timer stop (initialize) */
++	writel(HTCTLR_STOP,HTCTLR(clksrc_base));
++
++	/* prescale setting */
++	writel(PRESCALE-1,PRESCL(clksrc_base));
++
++	/* Start Timer */
++	writel(HTCTLR_START,HTCTLR(clksrc_base));
++
++	/* rate culculate */
++	tick_rate = SYSCLK / PRESCALE;
++
++	/* register the clocksource */
++	result = clocksource_mmio_init(HTCNTR_L(clksrc_base),"system_timer",tick_rate,
++		200, 32, clocksource_mmio_readl_up);
++
++	if(result != 0){
++		lm2_printk(0xfc000000,"clocksource error \n");
++	}
++}
++
++static struct clock_event_device clkevt = {
++	.name = "tmr0",
++	.features = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT,
++	.set_mode = clockevent_set_mode,
++	.set_next_event = clockevent_next_event,
++	.shift = 0,	/* to be computed */
++};
++
++static void clockevent_set_mode(enum clock_event_mode mode,
++				struct clock_event_device *clk_event_dev)
++{
++	u32	period;
++	u32	val;
++
++	/* stop the timer */
++	val = readl(CTLR(clkevt_base));
++	val &= ~CTLR_START;
++	writel(val, CTLR(clkevt_base));
++
++	switch (mode) {
++	case CLOCK_EVT_MODE_PERIODIC:
++		writel((SYSCLK/DIVISOR), LOAD(clkevt_base));
++lm2_printk(0xfc000000,"clockevent_set_mode:MODE PERIODIC\n");
++		val = readl( CTLR(clkevt_base));
++/*		val |= CTLR_START | CTLR_CONTINOUS | CTLR_LOAD;*/
++		val = CTLR_START | CTLR_LOAD;
++		writel(val, CTLR(clkevt_base));
++
++		break;
++	case CLOCK_EVT_MODE_ONESHOT:
++lm2_printk(0xfc000000,"clockevent_set_mode:MODE ONESHOT\n");
++//		val = readl(CTLR(clkevt_base));
++//		val &= ~CTLR_CONTINOUS;
++		val = CTLR_START | CTLR_LOAD; 
++		writel(val, CTLR(clkevt_base));
++
++		break;
++	case CLOCK_EVT_MODE_UNUSED:
++	case CLOCK_EVT_MODE_SHUTDOWN:
++	case CLOCK_EVT_MODE_RESUME:
++
++		break;
++	default:
++		pr_err("Invalid mode requested\n");
++		break;
++	}
++}
++
++static int clockevent_next_event(unsigned long cycles,
++				 struct clock_event_device *clk_event_dev)
++{
++	u32	val;
++	char	buf[128];
++
++	val = readl(CTLR(clkevt_base));
++
++	if (val & CTLR_START)
++		writew(val & ~CTLR_START, CTLR(clkevt_base));
++#if 0	/* yamano debug */
++sprintf(buf,"clockevent_next_event cycle=%x\n",cycles);
++lm2_printk(0xfc000000,buf);
++#endif	/* yamano debug */
++	writel(cycles, LOAD(clkevt_base));
++
++	val = CTLR_LOAD;
++	writel(val, CTLR(clkevt_base));
++	val = CTLR_START;
++	writel(val, CTLR(clkevt_base));
++
++	return 0;
++}
++
++/*
++ * Interrupt handler by general timer
++ */
++static	u32	int_cnt=0;
++
++static irqreturn_t lm2_timer_interrupt(int irq, void *dev_id)
++{
++	unsigned long	val;
++
++	struct clock_event_device *evt = &clkevt;
++
++	evt->event_handler(evt);
++#if 0	/* yamano debug */
++if(int_cnt >1000){
++	lm2_printk(0xfc000000,".");
++	int_cnt =0;
++}else{
++	int_cnt++;
++}
++#endif	/* yamano debug */
++#if 0
++	val = readl(CTLR(clkevt_base));
++#endif	/* yamano debug */
++	val = CTLR_LOAD|CTLR_START;
++//	val = CTLR_START;
++	writel(val,CTLR(clkevt_base));
++	return IRQ_HANDLED;
++}
++
++/*
++ * Interrupt resource for general timer
++ */
++static struct irqaction lm2_timer_irq = {
++	.name = "timer",
++	.flags = IRQF_DISABLED | IRQF_TIMER,
++	.handler = lm2_timer_interrupt,
++	.dev_id		= &clkevt,
++};
++
++/*
++ * kernel timer event initialyzer
++ */
++void __init lm2_clockevent_init(int irq,void __iomem *gpt_base)
++{
++	u32 tick_rate;
++
++	clkevt_base = gpt_base;
++
++	tick_rate = SYSCLK / DIVISOR;
++
++	clkevt.cpumask = cpumask_of(0);
++
++	clockevents_config_and_register(&clkevt, tick_rate, 30, SYSCLK);
++
++	/* register interrupt */
++	setup_irq(irq, &lm2_timer_irq);
++}
++
++
++#if 0	/* yamano debug */
++const static struct of_device_id timer_of_match[] __initconst = {
++	{ .compatible = "quatro55xx,lm2-timer", },
++	{ },
++};
++
++void __init lm2_setup_of_timer(void)
++{
++	struct device_node *np;
++	int irq, ret;
++
++	np = of_find_matching_node(NULL, timer_of_match);
++	if (!np) {
++		pr_err("%s: No timer passed via DT\n", __func__);
++		return;
++	}
++
++	irq = irq_of_parse_and_map(np, 0);
++	if (!irq) {
++		pr_err("%s: No irq passed for timer via DT\n", __func__);
++		return;
++	}
++
++	gpt_base = of_iomap(np, 0);
++	if (!gpt_base) {
++		pr_err("%s: of iomap failed\n", __func__);
++		return;
++	}
++
++	gpt_clk = clk_get_sys("gpt0", NULL);
++	if (!gpt_clk) {
++		pr_err("%s:couldn't get clk for gpt\n", __func__);
++		goto err_iomap;
++	}
++
++	ret = clk_prepare_enable(gpt_clk);
++	if (ret < 0) {
++		pr_err("%s:couldn't prepare-enable gpt clock\n", __func__);
++		goto err_prepare_enable_clk;
++	}
++
++	spear_clockevent_init(irq);
++	spear_clocksource_init();
++
++	return;
++
++err_prepare_enable_clk:
++	clk_put(gpt_clk);
++err_iomap:
++	iounmap(gpt_base);
++}
++#endif
++
+-- 
+1.7.1
+

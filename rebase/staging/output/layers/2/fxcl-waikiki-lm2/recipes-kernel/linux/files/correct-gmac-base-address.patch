@@ -1,0 +1,37 @@
+From 8cf90ec8f7125533f7c0f9aae255dc2496c892be Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:46:31 +0900
+Subject: [PATCH 035/169] correct-gmac-base-address
+
+
+diff --git a/arch/arm/mach-lm2/include/mach/motherboard.h b/arch/arm/mach-lm2/include/mach/motherboard.h
+index d93012f..7bcdd97 100644
+--- a/arch/arm/mach-lm2/include/mach/motherboard.h
++++ b/arch/arm/mach-lm2/include/mach/motherboard.h
+@@ -54,6 +54,7 @@
+ #define	LM2_GIC_BASE		(LM2_REGS_0 + 0x00300000)
+ #define	LM2_USB3_PHY		(LM2_REGS_0 + 0x00400000)
+ #define	LM2_USB2_PHY		(LM2_REGS_0 + 0x00408000)
++#define	LM2_GMAC_BASE		(LM2_REGS_0 + 0x00410000)
+ #define	LM2_USB3		(LM2_REGS_0 + 0x00500000)
+ #define	LM2_USB2		(LM2_REGS_0 + 0x00600000)
+ #define LM2_SDIO0_BASE          (LM2_REGS_0 + 0x00440200)       /* SD0 slot1 */
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index cb6f69a..84d4237 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -171,6 +171,11 @@ static int	__init lm2_console_init(void)
+  * Ethernet Controller
+  */
+ static struct resource lm2_eth_resources[] = {
++        {
++                .start  = LM2_GMAC_BASE,
++                .end    = LM2_GMAC_BASE + SZ_64K - 1,
++                .flags  = IORESOURCE_MEM,
++        },
+ 	{
+ 		.name	="macirq",
+ 		.start	= LM2_IRQ_GMACK_STAT,
+-- 
+1.7.1
+

@@ -1,0 +1,55 @@
+From 427048c5ebd8f559ef895e7c5ad6f1c17dc4631d Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:49:03 +0900
+Subject: [PATCH 154/169] 0001-e1000e_TxQue_calc_change
+
+
+diff --git a/drivers/net/ethernet/intel/e1000e/e1000.h b/drivers/net/ethernet/intel/e1000e/e1000.h
+index ec8de69..7f2ed08 100644
+--- a/drivers/net/ethernet/intel/e1000e/e1000.h
++++ b/drivers/net/ethernet/intel/e1000e/e1000.h
+@@ -150,7 +150,6 @@ struct e1000_ps_page {
+ };
+ 
+ #define	WR_E1000E_WORKAROUND
+-#define	WR_E1000E_WORKAROUND2
+ /* wrappers around a pointer to a socket buffer,
+  * so a DMA handle can be stored along with the buffer
+  */
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index 25ab83d..5b94959 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -5510,7 +5510,11 @@ static netdev_tx_t e1000_xmit_frame(struct sk_buff *skb,
+ 		count++;
+ 	count++;
+ 
++#ifdef WR_E1000E_WORKAROUND
++	count += DIV_ROUND_UP(len, 256);
++#else
+ 	count += DIV_ROUND_UP(len, adapter->tx_fifo_limit);
++#endif
+ 
+ 	nr_frags = skb_shinfo(skb)->nr_frags;
+ 	for (f = 0; f < nr_frags; f++)
+@@ -6652,7 +6656,7 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 			 "PHY reset is blocked due to SOL/IDER session.\n");
+ 
+ 	/* Set initial default active device features */
+-#ifdef WR_E1000E_WORKAROUND2	/* Workaround */
++#ifdef WR_E1000E_WORKAROUND	/* Workaround */
+ 	netdev->features = (
+ #else
+ 	netdev->features = (NETIF_F_SG |
+@@ -6674,7 +6678,7 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 	if (adapter->flags & FLAG_HAS_HW_VLAN_FILTER)
+ 		netdev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+ 
+-#ifdef WR_E1000E_WORKAROUND2	/* Workaround */
++#ifdef WR_E1000E_WORKAROUND	/* Workaround */
+ 	netdev->vlan_features |= (
+ #else
+ 	netdev->vlan_features |= (NETIF_F_SG |
+-- 
+1.7.1
+

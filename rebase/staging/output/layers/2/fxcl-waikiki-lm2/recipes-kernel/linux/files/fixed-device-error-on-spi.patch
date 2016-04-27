@@ -1,0 +1,48 @@
+From e02c964d44534a62d7406e27871b6aa83f11a6dd Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:46:55 +0900
+Subject: [PATCH 054/169] fixed-device-error-on-spi
+
+
+diff --git a/arch/arm/mach-lm2/xspi.c b/arch/arm/mach-lm2/xspi.c
+index 21936dc..f261b4b 100644
+--- a/arch/arm/mach-lm2/xspi.c
++++ b/arch/arm/mach-lm2/xspi.c
+@@ -47,18 +47,18 @@ static	struct platform_device	lm2_xspi_device = {
+ 	.num_resources	= ARRAY_SIZE( lm2_xspi_resource ),
+ 	.resource	= lm2_xspi_resource,
+ };
+-
++#if 0
+ static	struct platform_device	lm2_spidev_device = {
+ 	.name	= "spidev",
+ 	.id	= -1,
+ };
+-
++#endif
+ int	__init lm2_xspi_register(void)
+ {
+ 	int	result;
+ 
+ 	spi_register_board_info(lm2_spi_devices,ARRAY_SIZE(lm2_spi_devices));
+-	result = platform_device_register( &lm2_spidev_device );
++//	result = platform_device_register( &lm2_spidev_device );
+ 	result = platform_device_register( &lm2_xspi_device );
+ 	return	result;
+ }
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index 4ec619d..4267a43 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -173,7 +173,7 @@ static int xspi_probe(struct platform_device *pdev)
+ //	master->dev.of_node = pdev->dev.of_node;
+ 	master->mode_bits = SPI_MODE_0;
+ //	master->bits_per_word_mask = BIT(8 - 1);
+-	master->bus_num = -1;
++	master->bus_num = pdev->id;
+ 	master->num_chipselect = 2;
+ 	master->transfer_one_message = xspi_transfer_one;
+ 	platform_set_drvdata(pdev, master);
+-- 
+1.7.1
+

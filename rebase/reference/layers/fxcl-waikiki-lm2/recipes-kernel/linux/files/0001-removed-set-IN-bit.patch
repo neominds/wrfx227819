@@ -1,0 +1,74 @@
+From 680d388c583ee658367fc0b3ef976c6a188ae795 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Tue, 7 Apr 2015 14:15:50 +0900
+Subject: [PATCH 1/1] removed set IN bit
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/rtc/rtc-quatro53xx.c |   29 ++++++++++++++---------------
+ 1 files changed, 14 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/rtc/rtc-quatro53xx.c b/drivers/rtc/rtc-quatro53xx.c
+index 03b007b..2de5bd2 100644
+--- a/drivers/rtc/rtc-quatro53xx.c
++++ b/drivers/rtc/rtc-quatro53xx.c
+@@ -211,20 +211,17 @@ static	int	lm2_set_time(struct device *dev, struct rtc_time *tm)
+ 		return	-1;
+ 	}
+ 
++/* Issue List 10 delete set IN bit */
+ 	/* stored to RTC Block counter */
+-
+-//	reg = readl(rtc->rtc_base + RTCCTL);
+-//	reg |= RTC_INIT;
+-//	writel(reg, rtc->rtc_base + RTCCTL);
+-	writeb(RTC_IN, rtc->rtc_base + RTCCTL_CTL);
+-	barrier();
+-	udelay(1);
+-	result = rtc_busy(rtc->rtc_base);
+-	if(result != 0){
+-		printk(KERN_ERR "No responce store operation Watch Dog Timer\n");
+-		mutex_unlock(&rtc->lock);
+-		return	-1;
+-	}
++//	writeb(RTC_IN, rtc->rtc_base + RTCCTL_CTL);
++//	barrier();
++//	udelay(1);
++//	result = rtc_busy(rtc->rtc_base);
++//	if(result != 0){
++//		printk(KERN_ERR "No responce store operation Watch Dog Timer\n");
++//		mutex_unlock(&rtc->lock);
++//		return	-1;
++//	}
+ 
+ 	rtc_disconnect(rtc->rtc_base);
+ 
+@@ -518,20 +515,22 @@ static int __init lm2_rtc_probe(struct platform_device *pdev)
+  	 */
+ 	rtc_connect(dev->rtc_base);
+ 	rtc_busy(dev->rtc_base);
++#if 0	/* Issue list No 10 RTC voltage check delete RTC_IN bit setting */
+ 	reg = readb(dev->rtc_base + RTCCTL_CTL);
+ 	if((reg & 0x04) == 0){
+ 		printk( KERN_WARNING "RTC first time access\n");
+ 		writel(0x00000000,dev->rtc_base + RTCCNT);
+ 		barrier();
+-		writeb(0x01, dev->rtc_base + RTCCTL_CTL);
++		writeb(RTC_BY, dev->rtc_base + RTCCTL_CTL);
+ 		barrier();
+ 		udelay(1);
+ 		rtc_busy(dev->rtc_base);
+-		writeb(0x04, dev->rtc_base + RTCCTL_CTL);
++		writeb(RTC_IN, dev->rtc_base + RTCCTL_CTL);
+ 		barrier();
+ 		udelay(1);
+ 		rtc_busy(dev->rtc_base);
+ 	}
++#endif
+  	writeb(0x03, dev->rtc_base + RTCCTL_CTL);
+ 	rtc_busy(dev->rtc_base);
+ 	barrier();
+-- 
+1.7.1
+

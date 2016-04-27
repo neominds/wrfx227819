@@ -1,0 +1,13 @@
+define KMACHINE fxcl-honolulu-lm2
+define KTYPE preempt-rt
+define KARCH arm
+
+include ktypes/preempt-rt
+
+patch 0000-set-preempt-kernel-type.patch
+
+include fxcl-honolulu-lm2.scc
+
+patch 0200-fx_wrl6.0_Common.patch
+patch 0201-fx_wrl6.0_preempt.patch
+include fxcl-honolulu-lm2_new.scc

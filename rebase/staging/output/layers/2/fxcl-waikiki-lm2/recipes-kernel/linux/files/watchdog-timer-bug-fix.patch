@@ -1,0 +1,81 @@
+From ee5362610239f7e36d25582680689e307dd20d78 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:46:51 +0900
+Subject: [PATCH 051/169] watchdog-timer-bug-fix
+
+
+diff --git a/drivers/watchdog/lm2_wdt.c b/drivers/watchdog/lm2_wdt.c
+index 8398879..045013b 100644
+--- a/drivers/watchdog/lm2_wdt.c
++++ b/drivers/watchdog/lm2_wdt.c
+@@ -39,13 +39,14 @@
+ #define	WDTLD		0x08C
+ #define	WDTBND		0x090
+ 
+-#define	WDT_TIMER_LOAD	0x00007a1c
++// #define	WDT_TIMER_LOAD	0x00007a1c
++#define	WDT_TIMER_LOAD	0x7a1c
+ 
+ //#define	DEFAULT_TIMEOUT_10s	32*1000*10	/* 32KHz from RTCCLK2 */
+ #define	DEFAULT_TIMEOUT_10s	1	/* 32KHz from RTCCLK2 */
+ 
+ struct lm2_wdt_dev {
+-	volatile u32 __iomem	*reg_base;
++	volatile void __iomem	*reg_base;
+ 	struct device		*dev;
+ 	unsigned int		timeout;
+ };
+@@ -59,7 +60,8 @@ static int lm2_wdt_start(struct watchdog_device *wdog)
+ //	printk(KERN_WARNING "Watch Dog Start\n");
+ 	writel(WDT_TIMER_START, wdev->reg_base + WDTEN);
+ 	barrier();
+-	writel(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
++//	writel(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
++	writew(WDT_TIMER_LOAD, wdev->reg_base + WDTLD);
+ 	barrier();
+ 
+ 	return 0;
+@@ -83,6 +85,8 @@ static int lm2_wdt_set_timeout(struct watchdog_device *wdog,
+ 	printk(KERN_WARNING "Watch Dog Timer Set %d\n",timeout);
+ 	wdog->timeout = timeout;
+ 
++	writel(WDT_TIMER_STOP, wdev->reg_base + WDTEN);
++	barrier();
+ 	writel(timeout, wdev->reg_base + WDTTC);
+ 	barrier();
+ 
+@@ -112,12 +116,14 @@ static int lm2_wdt_probe(struct platform_device *pdev)
+ 
+ 	lm2_wdt = devm_kzalloc(&pdev->dev, sizeof(*lm2_wdt), GFP_KERNEL);
+ 	if (!lm2_wdt){
++		dev_err(&pdev->dev,"could not get IOMEM space\n");
+ 		printk( KERN_ERR "Watch Dog Timer NOMEM install failed\n");
+ 		return -ENOMEM;
+ 	}
+ 
+ 	wdev = devm_kzalloc(&pdev->dev, sizeof(*wdev), GFP_KERNEL);
+ 	if (!wdev){
++		dev_err(&pdev->dev,"could not get IOMEM space\n");
+ 		printk(KERN_ERR "Watch Dog driver could not allocate private memory\n");
+ 		return -ENOMEM;
+ 	}
+@@ -149,12 +155,12 @@ static int lm2_wdt_probe(struct platform_device *pdev)
+ 		return ret;
+ 
+ 	/* init */
+-	writel(0x00, wdev->reg_base + WDTEN);
+-	barrier();
+-	writel(WDT_MAX_TIMER, wdev->reg_base + WDTBND);
++	writeb(0x00, wdev->reg_base + WDTEN);
+ 	barrier();
+ 	writel(DEFAULT_TIMEOUT_10s, wdev->reg_base + WDTTC);
+-
++	barrier();
++	writel(WDT_MAX_TIMER, wdev->reg_base + WDTBND);
++	dev_info(&pdev->dev,"Watch Dog Timer Installed Virt =%x\n",wdev->reg_base);
+ 	return 0;
+ }
+ 
+-- 
+1.7.1
+

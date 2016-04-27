@@ -1,0 +1,907 @@
+From 980651e583c613b766980fb619df7987410b033f Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:47:02 +0900
+Subject: [PATCH 060/169] memory-and-tlb-bug
+
+
+diff --git a/arch/arm/include/asm/memory.h b/arch/arm/include/asm/memory.h
+index 2436e54..2111ed7 100644
+--- a/arch/arm/include/asm/memory.h
++++ b/arch/arm/include/asm/memory.h
+@@ -209,7 +209,7 @@ static inline unsigned long __phys_to_virt(unsigned long x)
+ #else	/* CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY */	/* yamano */
+ extern phys_addr_t  __pv_phys_offset;
+ #define PHYS_OFFSET __pv_phys_offset
+-#define __virt_to_phys(x)	(phys_addr_t)((x) - PAGE_OFFSET + PHYS_OFFSET)
++#define __virt_to_phys(x)	(phys_addr_t)((phys_addr_t)(x) - PAGE_OFFSET + PHYS_OFFSET)
+ #define __phys_to_virt(x)	((phys_addr_t)(x) - PHYS_OFFSET + PAGE_OFFSET)
+ #endif	/* CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY */	/* yamano */
+ #endif
+diff --git a/arch/arm/include/uapi/asm/setup.h b/arch/arm/include/uapi/asm/setup.h
+index 979ff40..2b46f21 100644
+--- a/arch/arm/include/uapi/asm/setup.h
++++ b/arch/arm/include/uapi/asm/setup.h
+@@ -40,7 +40,8 @@ struct tag_core {
+ 
+ struct tag_mem32 {
+ 	__u32	size;
+-	__u32	start;	/* physical start address */
++//	__u32	start;	/* physical start address */
++	phys_addr_t	start;	/* physical start address */
+ };
+ 
+ /* VGA text type displays */
+diff --git a/arch/arm/kernel/atags_parse.c b/arch/arm/kernel/atags_parse.c
+index bad47d9..99b9854 100644
+--- a/arch/arm/kernel/atags_parse.c
++++ b/arch/arm/kernel/atags_parse.c
+@@ -50,7 +50,7 @@ static struct {
+ };
+ #else
+ #ifndef	MEM_SIZE
+-#define	MEM_SIZE	(512*1024*1024)		/* 512M */
++#define	MEM_SIZE	(768*1024*1024)		/* 2G */
+ #endif	/* MEM_SIZE */
+ static	struct {
+ 	struct	tag_header	hdr1;
+@@ -235,6 +235,7 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 	char	buf[256];	/* yamano debug */
+ 
+ 	default_tags.mem.start = PHYS_OFFSET;
++//	default_tags.mem.start = 0x0000000890000000ULL;
+ 	sprintf(buf,"machine_nr:%x\n",machine_nr);
+ 	putstr(buf);
+ 	machine_nr = 0x157c;	/* yamano debug */
+@@ -249,7 +250,7 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 			break;
+ 		}else{	/* yamano debug */
+ 			putstr(p->name);
+-			sprintf(buf,"%x",p->nr);
++			sprintf(buf,"==%x==",p->nr);
+ 			putstr(buf);
+ 		}
+ 
+@@ -258,12 +259,14 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 			    " (r1 = 0x%08x).\n\n", machine_nr);
+ 		dump_machine_table(); /* does not return */
+ 	}
+-
+-	if (__atags_pointer)
++#if 1
++	if (__atags_pointer){
++	putstr("atags point vaild\n");
+ 		tags = phys_to_virt(__atags_pointer);
+-	else if (mdesc->atag_offset)
++	}else if (mdesc->atag_offset){
++	putstr("atag offset valid\n");
+ 		tags = (void *)(PAGE_OFFSET + mdesc->atag_offset);
+-
++	}
+ #if defined(CONFIG_DEPRECATED_PARAM_STRUCT)
+ 	/*
+ 	 * If we have the old style parameters, convert them to
+@@ -273,9 +276,11 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 		convert_to_tag_list(tags);
+ #endif
+ 	if (tags->hdr.tag != ATAG_CORE) {
++	putstr("atag header invalid end\n");
+ 		early_print("Warning: Neither atags nor dtb found\n");
+ 		tags = (struct tag *)&default_tags;
+ 	}
++#endif
+ 	if (mdesc->fixup)
+ 		mdesc->fixup(tags, &from, &meminfo);
+ 
+@@ -286,6 +291,7 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 		parse_tags(tags);
+ 	}
+ 
++	putstr("atag execution end\n");
+ 	/* parse_early_param needs a boot_command_line */
+ 	strlcpy(boot_command_line, from, COMMAND_LINE_SIZE);
+ 
+diff --git a/arch/arm/kernel/head.S b/arch/arm/kernel/head.S
+index 3364690..6771fa9 100644
+--- a/arch/arm/kernel/head.S
++++ b/arch/arm/kernel/head.S
+@@ -671,6 +671,7 @@ ENDPROC(fixup_pv_table)
+ 	.type	__pv_phys_offset, %object
+ __pv_phys_offset:
+ 	.long	0
++	.long	0
+ 	.size	__pv_phys_offset, . - __pv_phys_offset
+ __pv_offset:
+ 	.long	0
+diff --git a/arch/arm/kernel/setup.c b/arch/arm/kernel/setup.c
+index 2ded688..96d7c6d 100644
+--- a/arch/arm/kernel/setup.c
++++ b/arch/arm/kernel/setup.c
+@@ -117,7 +117,7 @@ EXPORT_SYMBOL(outer_cache);
+ 
+ #if 1 /* yamano */
+ #define UART_BASE       0xfc160000
+-#define	UART_BASE2	0xfc000000
++#define	UART_BASE2	0xffc10000
+ #define UART_DATA(base) (*(volatile unsigned char *)((base) + 0x10))
+ #define UART_STAT(base) (*(volatile unsigned char *)((base) + 0x15))
+ 
+@@ -856,11 +856,14 @@ void __init setup_arch(char **cmdline_p)
+ 	*cmdline_p = cmd_line;
+ 	parse_early_param();
+ 
+-
++putstr(UART_BASE,"parse_early_param\n");
+ 	sort(&meminfo.bank, meminfo.nr_banks, sizeof(meminfo.bank[0]), meminfo_cmp, NULL);
+ 	sanity_check_meminfo();
++putstr(UART_BASE,"sanity_check_meminfo_OK\n");
+ 	arm_memblock_init(&meminfo, mdesc);
++putstr(UART_BASE,"arm_memblock_init\n");
+ 	paging_init(mdesc);	/* reset debug I/O memory page  yamano */
++putstr(UART_BASE2,"paging_init\n");
+ 	request_standard_resources(mdesc);
+ 	if (mdesc->restart)
+ 		arm_pm_restart = mdesc->restart;
+diff --git a/arch/arm/mach-lm2/Makefile.boot b/arch/arm/mach-lm2/Makefile.boot
+index 2f03fc7..4ea1013 100644
+--- a/arch/arm/mach-lm2/Makefile.boot
++++ b/arch/arm/mach-lm2/Makefile.boot
+@@ -1,5 +1,8 @@
+ # Those numbers are used only by the non-DT V2P-CA9 platform
+ # The DT-enabled ones require CONFIG_AUTO_ZRELADDR=y
++#   zreladdr-y	+= 0x05008000
++#params_phys-y	:= 0x05000100
++#initrd_phys-y	:= 0x05000000
+    zreladdr-y	+= 0x90008000
+ params_phys-y	:= 0x90000100
+ initrd_phys-y	:= 0x90000000
+diff --git a/arch/arm/mach-lm2/include/mach/memory.h b/arch/arm/mach-lm2/include/mach/memory.h
+index a47c913..9fadc74 100644
+--- a/arch/arm/mach-lm2/include/mach/memory.h
++++ b/arch/arm/mach-lm2/include/mach/memory.h
+@@ -9,11 +9,12 @@
+ 
+ /*
+  * BSP original macro
+- */
++
+ #define	LM2_PHYS_MEM_START	0x0000000800000000ULL
+ #define	LM2_PHYS_MEM_END	0x0000000bffffffffULL
+ 
+ #define	KERNEL_PHYS_OFFSET	0x0000000880000000ULL
++*/
+ 
+ /*
+  * Linux Standard macro
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 27a92ea..39041cc 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -84,8 +84,14 @@ void	lm2_printk(unsigned long base, const char *ptr)
+  */
+ static struct map_desc lm2_io_desc[] __initdata = {
+ 	{
++		.virtual	= 0xffc00000,
++		.pfn		= __phys_to_pfn(0x0000000004060000ULL),
++		.length		= SZ_64K,
++		.type		= MT_DEVICE,
++	},
++	{
+ /*		.virtual	= LM2_DEBUG_SERIAL_VIRT,	*/
+-		.virtual	= 0xfc000000,
++		.virtual	= 0xffc10000,
+ 		.pfn		= __phys_to_pfn(0x04160000ULL),
+ 		.length		= SZ_4K,
+ 		.type		= MT_DEVICE,
+@@ -287,7 +293,7 @@ static	struct platform_device lm2_i2c_device = {
+ 
+ static void __init lm2_init_early(void)
+ {
+-	lm2_printk(0xfc000000,"lm2_init_early\n");
++//	lm2_printk(0xfc000000,"lm2_init_early\n");
+ }
+ 
+ static void lm2_power_off(void)
+@@ -320,9 +326,9 @@ static void __init lm2_init_irq(void)
+ 	virt_dist = ioremap(LM2_GIC_DIST,SZ_4K);
+ 	virt_cpui = ioremap(LM2_GIC_CPU,SZ_4K);
+ 
+-	lm2_printk(0xfc000000,"lm2_init_irq\n");
++//	lm2_printk(0xfc000000,"lm2_init_irq\n");
+ 	gic_init_bases(0,29,ioremap(LM2_GIC_DIST,SZ_4K),ioremap(LM2_GIC_CPU,SZ_4K),0,NULL);
+-	lm2_printk(0xfc000000,"lm2_init_irq end\n");
++//	lm2_printk(0xfc000000,"lm2_init_irq end\n");
+ }
+ 
+ /*
+@@ -335,8 +341,10 @@ static	void __init lm2_fixup_mem(struct tag *tags, char **form, struct meminfo *
+ {
+ #if 1	/* yamano debug */
+ 	meminfo->bank[0].start = 0x890000000ULL;
+-	meminfo->bank[0].size = SZ_512M;
+-	meminfo->nr_banks = 1;
++	meminfo->bank[0].size = 512*1024*1024;
++//	meminfo->bank[1].start = 0x8b0000000ULL;
++//	meminfo->bank[1].size = SZ_512M+SZ_512M+SZ_256M;
++	meminfo->nr_banks =1;
+ #endif /* yamano debug */
+ 	return;
+ }
+@@ -368,9 +376,6 @@ static void __init lm2_init(void)
+ #ifdef	CONFIG_SPI_XSPI
+ 	lm2_xspi_register();
+ #endif	/* CONFIG_SPI_XSPI */
+-#ifdef	CONFIG_LM2_GPDMA
+-	lm2_dma_register();
+-#endif
+ 
+ }
+ 
+@@ -458,7 +463,7 @@ static void __init lm2_dt_timer_init(void)
+ static void __init lm2_dt_init(void)
+ {
+ 
+-	l2x0_of_init(0x00400000, 0xfe0fffff);
++//	l2x0_of_init(0x00400000, 0xfe0fffff);
+ }
+ 
+ /*
+diff --git a/arch/arm/mm/init.c b/arch/arm/mm/init.c
+index 8b4160b..0d23f0f 100644
+--- a/arch/arm/mm/init.c
++++ b/arch/arm/mm/init.c
+@@ -38,7 +38,7 @@
+ 
+ #if 1 /* yamano */
+ #define UART_BASE       0xfc160000
+-#define UART_BASE2      0xfc000000
++#define UART_BASE2      0xffc10000
+ #define UART_DATA(base) (*(volatile unsigned char *)((base) + 0x10))
+ #define UART_STAT(base) (*(volatile unsigned char *)((base) + 0x15))
+ 
+diff --git a/arch/arm/mm/mmu.c b/arch/arm/mm/mmu.c
+index 698de35..b69dbe6 100644
+--- a/arch/arm/mm/mmu.c
++++ b/arch/arm/mm/mmu.c
+@@ -43,7 +43,6 @@
+  */
+ struct page *empty_zero_page;
+ EXPORT_SYMBOL(empty_zero_page);
+-static int	yamadebug = 0;
+ /*
+  * The pmd table for the upper-most set of pages.
+  */
+@@ -73,6 +72,46 @@ struct cachepolicy {
+ 	pteval_t	pte;
+ 	pteval_t	pte_s2;
+ };
++#if 1 /* yamano */
++#define UART_BASE       0xfc160000
++#define UART_BASE2      0xffc10000
++#define UART_DATA(base) (*(volatile unsigned char *)((base) + 0x10))
++#define UART_STAT(base) (*(volatile unsigned char *)((base) + 0x15))
++
++static int	yamadebug = 0;
++static  void    putchar(u32 base, int c)
++{
++        while((UART_STAT(base) & 0x40) == 0)
++                barrier();
++        UART_DATA(base) = c;
++        return;
++}
++
++static  void    flush(u32 base)
++{
++        while((UART_STAT(base) & 0x40) == 0)
++                barrier();
++}
++
++static  void    putstr(u32 base, const char *ptr)
++{
++        char    c;
++
++        while((c = *ptr++) != '\0'){
++                if(c == '\n')
++                        putchar(base,'\r');
++                putchar(base,c);
++        }
++        flush(base);
++}
++
++static  int     getchar(u32 base)
++{
++        while((UART_STAT(base) & 0x01) == 0)
++                barrier();
++        return  UART_DATA(base);
++}
++#endif  /* yamano */
+ 
+ #ifdef CONFIG_ARM_LPAE
+ #define s2_policy(policy)	policy
+@@ -596,18 +635,30 @@ EXPORT_SYMBOL(phys_mem_access_prot);
+ 
+ static void __init *early_alloc_aligned(unsigned long sz, unsigned long align)
+ {
++if(yamadebug == 0)
++putstr(UART_BASE,"early_alloc_aligned\n");
+ 	void *ptr = __va(memblock_alloc(sz, align));
++if(yamadebug == 0)
++putstr(UART_BASE,"alloc\n");
+ 	memset(ptr, 0, sz);
++if(yamadebug == 0)
++putstr(UART_BASE,"memset\n");
+ 	return ptr;
+ }
+ 
+ static void __init *early_alloc(unsigned long sz)
+ {
++if(yamadebug == 0)
++putstr(UART_BASE,"early_alloc\n");
++else
++putstr(UART_BASE2,"early_alloc\n");
+ 	return early_alloc_aligned(sz, sz);
+ }
+ 
+ static pte_t * __init early_pte_alloc(pmd_t *pmd, unsigned long addr, unsigned long prot)
+ {
++if(yamadebug == 1)
++putstr(UART_BASE2,"early_pte_alloc\n");
+ 	if (pmd_none(*pmd)) {
+ 		pte_t *pte = early_alloc(PTE_HWTABLE_OFF + PTE_HWTABLE_SIZE);
+ 		__pmd_populate(pmd, __pa(pte), prot);
+@@ -1003,6 +1054,11 @@ void __init sanity_check_meminfo(void)
+ {
+ 	int i, j, highmem = 0;
+ 	phys_addr_t vmalloc_limit = __pa(vmalloc_min - 1) + 1;
++	char	buf[256];	/* yamano debug */
++
++putstr(UART_BASE, "sanity\n");
++sprintf(buf, "%llx vmlimit\n", vmalloc_limit);
++putstr(UART_BASE, buf);
+ 
+ 	for (i = 0, j = 0; i < meminfo.nr_banks; i++) {
+ 		struct membank *bank = &meminfo.bank[j];
+@@ -1018,6 +1074,13 @@ void __init sanity_check_meminfo(void)
+ 
+ 		bank->highmem = highmem;
+ 
++putstr(UART_BASE, "meminfo->start");
++sprintf(buf, "%llx\n", bank->start);
++putstr(UART_BASE, buf);
++putstr(UART_BASE, "meminfo->highmem");
++sprintf(buf, "%lx\n", bank->highmem);
++putstr(UART_BASE, buf);
++
+ #ifdef CONFIG_HIGHMEM
+ 		/*
+ 		 * Split those memory banks which are partially overlapping
+@@ -1038,6 +1101,15 @@ void __init sanity_check_meminfo(void)
+ 				j++;
+ 			}
+ 			bank->size = size_limit;
++putstr(UART_BASE, "meminfo->start");
++sprintf(buf, "%llx\n", bank->start);
++putstr(UART_BASE, buf);
++putstr(UART_BASE, "meminfo->size");
++sprintf(buf, "%llx\n", bank->size);
++putstr(UART_BASE, buf);
++putstr(UART_BASE, "meminfo->highmem");
++sprintf(buf, "%lx\n", bank->highmem);
++putstr(UART_BASE, buf);
+ 		}
+ #else
+ 		/*
+@@ -1170,15 +1242,20 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	phys_addr_t	paddr;
+ 	void *vectors;
+ 
++putstr(UART_BASE,"devicemaps_init_entry\n");
+ 	/*
+ 	 * Allocate the vector page early.
+ 	 */
+ 	vectors = early_alloc(PAGE_SIZE * 2);
++putstr(UART_BASE,"early_alloc for vector\n");
++
+ 	early_trap_init(vectors);
++putstr(UART_BASE,"early_trap_init\n");
+ 
+ 	for (addr = VMALLOC_START; addr; addr += PMD_SIZE)
+ 		pmd_clear(pmd_off_k(addr));
+ 
++putstr(UART_BASE,"pmd_clear\n");
+ 	/*
+ 	 * Map the kernel if it is XIP.
+ 	 * It is always first in the modulearea.
+@@ -1190,7 +1267,7 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	map.type = MT_ROM;
+ 	create_mapping(&map);
+ #endif
+-
++putstr(UART_BASE,"XIP\n");
+ 	/*
+ 	 * Map the cache flushing regions.
+ 	 */
+@@ -1208,6 +1285,7 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	map.type = MT_MINICLEAN;
+ 	create_mapping(&map);
+ #endif
++putstr(UART_BASE,"FLASH\n");
+ 
+ 	/*
+ 	 * Create a mapping for the machine vectors at the high-vectors
+@@ -1215,8 +1293,8 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	 * create a mapping at the low-vectors virtual address.
+ 	 */
+ 	map.pfn = __phys_to_pfn(virt_to_phys(vectors));
+-	paddr = virt_to_phys(vectors);
+-	map.pfn = __phys_to_pfn(paddr);
++//	paddr = virt_to_phys(vectors);
++//	map.pfn = __phys_to_pfn(paddr);
+ 	map.virtual = 0xffff0000;
+ 	map.length = PAGE_SIZE;
+ #ifdef CONFIG_KUSER_HELPERS
+@@ -1225,6 +1303,8 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	map.type = MT_LOW_VECTORS;
+ #endif
+ 	create_mapping(&map);
++putstr(UART_BASE,"vector\n");
++
+ 	if (!vectors_high()) {
+ 		map.virtual = 0;
+ 		map.length = PAGE_SIZE * 2;
+@@ -1238,6 +1318,7 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	map.length = PAGE_SIZE;
+ 	map.type = MT_LOW_VECTORS;
+ 	create_mapping(&map);
++putstr(UART_BASE,"read only\n");
+ 	/*
+ 	 * Ask the machine support to map in the statically mapped devices.
+ 	 */
+@@ -1245,8 +1326,10 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 		mdesc->map_io();
+ 	fill_pmd_gaps();
+ 
++putstr(UART_BASE,"fill_pmd_gaps\n");
+ 	/* Reserve fixed i/o space in VMALLOC region */
+ 	pci_reserve_io();
++putstr(UART_BASE,"pci_reserve_io\n");
+ 
+ 	/*
+ 	 * Finally flush the caches and tlb to ensure that we're in a
+@@ -1261,6 +1344,7 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ static void __init kmap_init(void)
+ {
+ #ifdef CONFIG_HIGHMEM
++putstr(UART_BASE2,"kmap_init entry\n");
+ 	pkmap_page_table = early_pte_alloc(pmd_off_k(PKMAP_BASE),
+ 		PKMAP_BASE, _PAGE_KERNEL_TABLE);
+ 
+@@ -1301,19 +1385,30 @@ void __init paging_init(struct machine_desc *mdesc)
+ 	char	buf[64];
+ 	int c;
+ 
++putstr(UART_BASE,"paging_init\n");
+ 	memblock_set_current_limit(arm_lowmem_limit);
+-
++putstr(UART_BASE,"memblock_set_current_limit\n");
+ 	build_mem_type_table();
++putstr(UART_BASE,"build_mem_type_table\n");
+ 	prepare_page_table();
++putstr(UART_BASE,"prepare_page_table\n");
+ 	map_lowmem();
++putstr(UART_BASE,"map_lowmem\n");
+ 	dma_contiguous_remap();
+-	devicemaps_init(mdesc);
++putstr(UART_BASE,"dma_contiguous_remap\n");
++	devicemaps_init(mdesc);	/* reset debug I/O map yamano befor used UART_BASE2 */
++	yamadebug = 1;
++putstr(UART_BASE2,"devicemaps_init\n");
+ 	kmap_init();
++putstr(UART_BASE2,"kmap_init\n");
+ 	tcm_init();
++putstr(UART_BASE2,"tcm_init\n");
+ 	top_pmd = pmd_off_k(0xffff0000);
++putstr(UART_BASE2,"top_off_k\n");
+ 
+ 	/* allocate the zero page. */
+ 	zero_page = early_alloc(PAGE_SIZE);
++putstr(UART_BASE2,"early_alloc\n");
+ 
+ 	bootmem_init();
+ 
+diff --git a/arch/arm/mm/mmu.c.orig b/arch/arm/mm/mmu.c.orig
+index b99d9dc..8e396c6 100644
+--- a/arch/arm/mm/mmu.c.orig
++++ b/arch/arm/mm/mmu.c.orig
+@@ -43,7 +43,7 @@
+  */
+ struct page *empty_zero_page;
+ EXPORT_SYMBOL(empty_zero_page);
+-
++static int	yamadebug = 0;
+ /*
+  * The pmd table for the upper-most set of pages.
+  */
+@@ -610,6 +610,7 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
+ 				  unsigned long end, unsigned long pfn,
+ 				  const struct mem_type *type)
+ {
++	char buf[128];
+ 	pte_t *pte = early_pte_alloc(pmd, addr, type->prot_l1);
+ 	do {
+ 		set_pte_ext(pte, pfn_pte(pfn, __pgprot(type->prot_pte)), 0);
+@@ -648,9 +649,9 @@ static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
+ 				      unsigned long end, phys_addr_t phys,
+ 				      const struct mem_type *type)
+ {
++	char	buf[128];
+ 	pmd_t *pmd = pmd_offset(pud, addr);
+ 	unsigned long next;
+-
+ 	do {
+ 		/*
+ 		 * With LPAE, we must loop over to map
+@@ -764,6 +765,7 @@ static void __init create_mapping(struct map_desc *md)
+ 	phys_addr_t phys;
+ 	const struct mem_type *type;
+ 	pgd_t *pgd;
++	char	buf[128];	/* yamano */
+ 
+ 	if (md->virtual != vectors_base() && md->virtual < TASK_SIZE) {
+ 		printk(KERN_WARNING "BUG: not creating mapping for 0x%08llx"
+@@ -802,7 +804,6 @@ static void __init create_mapping(struct map_desc *md)
+ 		       (long long)__pfn_to_phys(md->pfn), addr);
+ 		return;
+ 	}
+-
+ 	pgd = pgd_offset_k(addr);
+ 	end = addr + length;
+ 	do {
+@@ -1087,13 +1088,13 @@ static inline void prepare_page_table(void)
+ {
+ 	unsigned long addr;
+ 	phys_addr_t end;
++	char	buf[64];
+ 
+ 	/*
+ 	 * Clear out all the mappings below the kernel image.
+ 	 */
+ 	for (addr = 0; addr < MODULES_VADDR; addr += PMD_SIZE)
+ 		pmd_clear(pmd_off_k(addr));
+-
+ #ifdef CONFIG_XIP_KERNEL
+ 	/* The XIP kernel is mapped in the module area -- skip over it */
+ 	addr = ((unsigned long)_etext + PMD_SIZE - 1) & PMD_MASK;
+@@ -1156,13 +1157,13 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ {
+ 	struct map_desc map;
+ 	unsigned long addr;
++	phys_addr_t	paddr;
+ 	void *vectors;
+ 
+ 	/*
+ 	 * Allocate the vector page early.
+ 	 */
+ 	vectors = early_alloc(PAGE_SIZE * 2);
+-
+ 	early_trap_init(vectors);
+ 
+ 	for (addr = VMALLOC_START; addr; addr += PMD_SIZE)
+@@ -1204,6 +1205,8 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	 * create a mapping at the low-vectors virtual address.
+ 	 */
+ 	map.pfn = __phys_to_pfn(virt_to_phys(vectors));
++	paddr = virt_to_phys(vectors);
++	map.pfn = __phys_to_pfn(paddr);
+ 	map.virtual = 0xffff0000;
+ 	map.length = PAGE_SIZE;
+ #ifdef CONFIG_KUSER_HELPERS
+@@ -1212,7 +1215,6 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	map.type = MT_LOW_VECTORS;
+ #endif
+ 	create_mapping(&map);
+-
+ 	if (!vectors_high()) {
+ 		map.virtual = 0;
+ 		map.length = PAGE_SIZE * 2;
+@@ -1226,7 +1228,6 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
+ 	map.length = PAGE_SIZE;
+ 	map.type = MT_LOW_VECTORS;
+ 	create_mapping(&map);
+-
+ 	/*
+ 	 * Ask the machine support to map in the statically mapped devices.
+ 	 */
+@@ -1272,12 +1273,10 @@ static void __init map_lowmem(void)
+ 			end = arm_lowmem_limit;
+ 		if (start >= end)
+ 			break;
+-
+ 		map.pfn = __phys_to_pfn(start);
+ 		map.virtual = __phys_to_virt(start);
+ 		map.length = end - start;
+ 		map.type = MT_MEMORY;
+-
+ 		create_mapping(&map);
+ 	}
+ }
+@@ -1289,6 +1288,8 @@ static void __init map_lowmem(void)
+ void __init paging_init(struct machine_desc *mdesc)
+ {
+ 	void *zero_page;
++	char	buf[64];
++	int c;
+ 
+ 	memblock_set_current_limit(arm_lowmem_limit);
+ 
+@@ -1299,7 +1300,6 @@ void __init paging_init(struct machine_desc *mdesc)
+ 	devicemaps_init(mdesc);
+ 	kmap_init();
+ 	tcm_init();
+-
+ 	top_pmd = pmd_off_k(0xffff0000);
+ 
+ 	/* allocate the zero page. */
+diff --git a/arch/arm/plat-waikiki/Makefile b/arch/arm/plat-waikiki/Makefile
+index e0f6353..3d5a296 100644
+--- a/arch/arm/plat-waikiki/Makefile
++++ b/arch/arm/plat-waikiki/Makefile
+@@ -1,3 +1,4 @@
+ obj-y	:= clock.o time.o
+-obj-$(CONFIG_PLAT_VERSATILE_SCHED_CLOCK) += sched-clock.o
++#obj-y	:= time.o
++#obj-$(CONFIG_PLAT_VERSATILE_SCHED_CLOCK) += sched-clock.o
+ obj-$(CONFIG_SMP) += headsmp.o platsmp.o
+diff --git a/arch/arm/plat-waikiki/clock.c b/arch/arm/plat-waikiki/clock.c
+index 5c8b656..ca194fc 100644
+--- a/arch/arm/plat-waikiki/clock.c
++++ b/arch/arm/plat-waikiki/clock.c
+@@ -31,15 +31,21 @@ EXPORT_SYMBOL(clk_disable);
+ 
+ unsigned long clk_get_rate(struct clk *clk)
+ {
++#if 0
+ 	return clk->rate;
++#else
++	return	100;
++#endif
+ }
+ EXPORT_SYMBOL(clk_get_rate);
+ 
+ long clk_round_rate(struct clk *clk, unsigned long rate)
+ {
+ 	long ret = -EIO;
++#if 0
+ 	if (clk->ops && clk->ops->round)
+ 		ret = clk->ops->round(clk, rate);
++#endif
+ 	return ret;
+ }
+ EXPORT_SYMBOL(clk_round_rate);
+@@ -47,28 +53,35 @@ EXPORT_SYMBOL(clk_round_rate);
+ int clk_set_rate(struct clk *clk, unsigned long rate)
+ {
+ 	int ret = -EIO;
++#if 0
+ 	if (clk->ops && clk->ops->set)
+ 		ret = clk->ops->set(clk, rate);
++#endif
+ 	return ret;
+ }
+ EXPORT_SYMBOL(clk_set_rate);
+ 
+ long icst_clk_round(struct clk *clk, unsigned long rate)
+ {
++#if 0
+ 	struct icst_vco vco;
+ 	vco = icst_hz_to_vco(clk->params, rate);
+ 	return icst_hz(clk->params, vco);
++#else
++	return	100;
++#endif
+ }
+ EXPORT_SYMBOL(icst_clk_round);
+ 
+ int icst_clk_set(struct clk *clk, unsigned long rate)
+ {
++#if 0
+ 	struct icst_vco vco;
+ 
+ 	vco = icst_hz_to_vco(clk->params, rate);
+ 	clk->rate = icst_hz(clk->params, vco);
+ 	clk->ops->setvco(clk, vco);
+-
++#endif
+ 	return 0;
+ }
+ EXPORT_SYMBOL(icst_clk_set);
+diff --git a/arch/arm/plat-waikiki/time.c b/arch/arm/plat-waikiki/time.c
+index 1c093ef..504d939 100644
+--- a/arch/arm/plat-waikiki/time.c
++++ b/arch/arm/plat-waikiki/time.c
+@@ -97,9 +97,9 @@ void	lm2_clocksource_init(__iomem void *gpt_base)
+ 	result = clocksource_mmio_init(HTCNTR_L(clksrc_base),"system_timer",tick_rate,
+ 		200, 32, clocksource_mmio_readl_up);
+ 
+-	if(result != 0){
+-		lm2_printk(0xfc000000,"clocksource error \n");
+-	}
++//	if(result != 0){
++//		lm2_printk(0xfc000000,"clocksource error \n");
++//	}
+ }
+ 
+ static struct clock_event_device clkevt = {
+diff --git a/drivers/gpio/gpio-lm2.c b/drivers/gpio/gpio-lm2.c
+index a1c4d92..9dfe1d8 100644
+--- a/drivers/gpio/gpio-lm2.c
++++ b/drivers/gpio/gpio-lm2.c
+@@ -166,7 +166,7 @@ static	int	gpio_probe(struct platform_device *pdev)
+ 	}else{
+ 		dev_info(&pdev->dev,"GPIO mapped\n");
+ 	}
+-
++	return	0;
+ }
+ 
+ static	int	gpio_remove(struct platform_device *pdev)
+diff --git a/drivers/irqchip/irq-gic.c b/drivers/irqchip/irq-gic.c
+index 1275013..e1f4004 100644
+--- a/drivers/irqchip/irq-gic.c
++++ b/drivers/irqchip/irq-gic.c
+@@ -41,6 +41,7 @@
+ #include <linux/slab.h>
+ #include <linux/irqchip/chained_irq.h>
+ #include <linux/irqchip/arm-gic.h>
++#include <linux/printk.h>
+ 
+ #include <asm/cputype.h>
+ #include <asm/irq.h>
+@@ -932,6 +933,7 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
+ 	gic->gic_irqs = gic_irqs;
+ 
+ 	gic_irqs -= hwirq_base; /* calculate # of irqs to allocate */
++printk("irq_alloc_descs\n");
+ 	irq_base = irq_alloc_descs(irq_start, 16, gic_irqs, numa_node_id());
+ 	if (IS_ERR_VALUE(irq_base)) {
+ 		WARN(1, "Cannot allocate irq_descs @ IRQ%d, assuming pre-allocated\n",
+diff --git a/drivers/tty/serial/8250/8250_core.c b/drivers/tty/serial/8250/8250_core.c
+index a89bdae..f61e2fc 100644
+--- a/drivers/tty/serial/8250/8250_core.c
++++ b/drivers/tty/serial/8250/8250_core.c
+@@ -47,7 +47,6 @@
+ #include <asm/irq.h>
+ 
+ #include "8250.h"
+-extern	void	lm2_printk(unsigned long ptr, const char *str);
+ /*
+  * Configuration:
+  *   share_irqs - whether we pass IRQF_SHARED to request_irq().  This option
+diff --git a/drivers/tty/serial/8250/8250_core.c.orig b/drivers/tty/serial/8250/8250_core.c.orig
+index 0510f8b..bfa514d 100644
+--- a/drivers/tty/serial/8250/8250_core.c.orig
++++ b/drivers/tty/serial/8250/8250_core.c.orig
+@@ -47,7 +47,7 @@
+ #include <asm/irq.h>
+ 
+ #include "8250.h"
+-
++extern	void	lm2_printk(unsigned long ptr, const char *str);
+ /*
+  * Configuration:
+  *   share_irqs - whether we pass IRQF_SHARED to request_irq().  This option
+diff --git a/init/main.c b/init/main.c
+index 8508aa4..b6b2fb0 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -164,7 +164,7 @@ extern const struct obs_kernel_param __setup_start[], __setup_end[];
+ 
+ #if 1 /* yamano */
+ #define	UART_BASE	0xfc160000
+-#define	UART_BASE2	0xfc000000
++#define	UART_BASE2	0xffc10000
+ #define	UART_DATA(base)	(*(volatile unsigned char *)((base) + 0x10))
+ #define	UART_STAT(base)	(*(volatile unsigned char *)((base) + 0x15))
+ 
+@@ -514,6 +514,9 @@ asmlinkage void __init start_kernel(void)
+ 	 * Need to run as early as possible, to initialize the
+ 	 * lockdep hash:
+ 	 */
++#if 1	/* ohkuma to TLB Flush */
++	asm volatile("mcr p15,0,r0,c8,c6,0");
++#endif
+ 	PHYS_OFFSET = 0x0000000890000000ULL;	/* yamano debug */
+ 	lockdep_init();
+ 	smp_setup_processor_id();
+diff --git a/init/main.c.orig b/init/main.c.orig
+index 0767655..e617623 100644
+--- a/init/main.c.orig
++++ b/init/main.c.orig
+@@ -162,6 +162,40 @@ static const char *panic_later, *panic_param;
+ 
+ extern const struct obs_kernel_param __setup_start[], __setup_end[];
+ 
++#if 1 /* yamano */
++#define	UART_BASE	0xfc160000
++#define	UART_BASE2	0xfc000000
++#define	UART_DATA(base)	(*(volatile unsigned char *)((base) + 0x10))
++#define	UART_STAT(base)	(*(volatile unsigned char *)((base) + 0x15))
++
++static	void	putchar(u32 base,int c)
++{
++	while((UART_STAT(base) & 0x40) == 0)
++		barrier();
++	UART_DATA(base) = c;
++	return;
++}
++
++static	void	flush(u32 base)
++{
++	while((UART_STAT(base) & 0x40) == 0)
++		barrier();
++}
++
++static	void	putstr(u32 base, const char *ptr)
++{
++	char	c;
++
++	while((c = *ptr++) != '\0'){
++		if(c == '\n')
++			putchar(base,'\r');
++		putchar(base,c);
++	}
++	flush(base);
++}
++extern	lm2_printk(unsigned long ptr,const char *str);
++#endif	/* yamano */
++
+ static int __init obsolete_checksetup(char *line)
+ {
+ 	const struct obs_kernel_param *p;
+@@ -475,11 +509,12 @@ asmlinkage void __init start_kernel(void)
+ {
+ 	char * command_line;
+ 	extern const struct kernel_param __start___param[], __stop___param[];
+-
++	char	buf[128];
+ 	/*
+ 	 * Need to run as early as possible, to initialize the
+ 	 * lockdep hash:
+ 	 */
++	PHYS_OFFSET = 0x0000000890000000ULL;	/* yamano debug */
+ 	lockdep_init();
+ 	smp_setup_processor_id();
+ 	debug_objects_early_init();
+@@ -490,7 +525,6 @@ asmlinkage void __init start_kernel(void)
+ 	boot_init_stack_canary();
+ 
+ 	cgroup_init_early();
+-
+ 	local_irq_disable();
+ 	early_boot_irqs_disabled = true;
+ 
+@@ -744,14 +778,12 @@ static void __init do_initcall_level(int level)
+ {
+ 	extern const struct kernel_param __start___param[], __stop___param[];
+ 	initcall_t *fn;
+-
+ 	strcpy(static_command_line, saved_command_line);
+ 	parse_args(initcall_level_names[level],
+ 		   static_command_line, __start___param,
+ 		   __stop___param - __start___param,
+ 		   level, level,
+ 		   &repair_env_string);
+-
+ 	for (fn = initcall_levels[level]; fn < initcall_levels[level+1]; fn++)
+ 		do_one_initcall(*fn);
+ }
+@@ -815,6 +847,7 @@ static noinline void __init kernel_init_freeable(void);
+ 
+ static int __ref kernel_init(void *unused)
+ {
++
+ 	kernel_init_freeable();
+ 	/* need to finish all async __init code before freeing the memory */
+ 	async_synchronize_full();
+-- 
+1.7.1
+

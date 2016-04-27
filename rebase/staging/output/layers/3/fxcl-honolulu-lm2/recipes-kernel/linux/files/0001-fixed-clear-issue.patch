@@ -1,0 +1,166 @@
+From 621757e5fdd21a10c4b16c9fb952c52ebeba58b4 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:23:45 +0900
+Subject: [PATCH 121/170] 0001-fixed-clear-issue
+
+
+diff --git a/drivers/rtc/rtc-quatro53xx.c b/drivers/rtc/rtc-quatro53xx.c
+index 2de5bd2..80478d0 100644
+--- a/drivers/rtc/rtc-quatro53xx.c
++++ b/drivers/rtc/rtc-quatro53xx.c
+@@ -34,9 +34,6 @@
+ #include <linux/printk.h>
+ #include <asm/barrier.h>
+ 
+-#define	LM2_INFOREG1_READ	0x0100
+-#define	LM2_INFOREG2_READ	0x0200
+-
+ #define	LM2_GET		0
+ #define	LM2_SET		1
+ 
+@@ -184,7 +181,7 @@ static	int	lm2_set_time(struct device *dev, struct rtc_time *tm)
+ 	int	result;
+ 	u32	reg;
+ 
+-	printk( KERN_WARNING "RTC set date and time\n");
++//	printk( KERN_WARNING "RTC set date and time\n");
+ 	result = rtc_tm_to_time(tm, &current_sec);
+ 	if(result){
+ 		printk(KERN_WARNING "wrong Date and time\n");
+@@ -227,7 +224,7 @@ static	int	lm2_set_time(struct device *dev, struct rtc_time *tm)
+ 
+ 	mutex_unlock(&rtc->lock);
+ 
+-	printk( KERN_WARNING "RTC set date and timecompleted\n");
++//	printk( KERN_WARNING "RTC set date and time completed\n");
+ 	
+ 	return	0;
+ }
+@@ -275,7 +272,7 @@ static	int	lm2_read_alarm(struct device *dev, struct rtc_wkalrm *alm)
+ {
+ 	struct lm2_rtc *rtc = dev_get_drvdata(dev);
+ 
+-	dev_info(dev, "lm2_read_alarm call\n");
++//	dev_info(dev, "lm2_read_alarm call\n");
+ 	rtc_time_to_tm(rtc->alm_sec, &alm->time);
+ 
+ 	return	0;
+@@ -288,7 +285,7 @@ static	int	lm2_set_alarm(struct device *dev, struct rtc_wkalrm *alm)
+ 	u32	current_sec;
+ 	int	result;
+ 
+-	dev_info(dev, "lm2_set_alarm call %lx \n", alm->time);
++//	dev_info(dev, "lm2_set_alarm call %lx \n", alm->time);
+ 	rtc_tm_to_time(&alm->time, &time);
+ 	rtc->alm_sec = time;
+ 	result = rtc_busy(rtc->rtc_base);
+@@ -310,8 +307,8 @@ static	int	lm2_alarm_enable(struct device *dev, unsigned int enable)
+ {
+ 	struct lm2_rtc *rtc = dev_get_drvdata(dev);
+ 
+-	dev_info(dev, "lm2_alarm_enable call % d\n", enable);
+-	dev_info(dev, "lm2_alarm tim_en %d\n",rtc->tim_en);
++	//dev_info(dev, "lm2_alarm_enable call % d\n", enable);
++	//dev_info(dev, "lm2_alarm tim_en %d\n",rtc->tim_en);
+ 	if(enable == 1){
+ 		//if(request_irq(rtc->irq, lm2_timer_irq_handler, 0, "lm2_rtc", rtc)){
+ 		//	return	-EINVAL;
+@@ -353,43 +350,6 @@ void lm2_timer_do_work(struct work_struct *work)
+ 	//printk("lm2_timer_do_work done\n");
+ }
+ 
+-static	int	lm2_get_inforeg(struct device *dev, unsigned long value, int info)
+-{
+-	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
+-	int	result;
+-	void __user *uarg = (void __user *)value;
+-	unsigned int	reg;
+-
+-	mutex_lock(&rtc->lock);
+-	rtc_connect(rtc->rtc_base);
+-	writeb(RTC_IN, rtc->rtc_base + RTCCTL_CTL);
+-	barrier();
+-	udelay(1);
+-	result = rtc_busy(rtc->rtc_base);
+-	if(result != 0){
+-		printk(KERN_ERR "Time out error\n");
+-		rtc_disconnect(rtc->rtc_base);
+-		mutex_unlock(&rtc->lock);
+-		return	-1;
+-	}
+-	writeb(info, rtc->rtc_base + RTCCTL_TM);
+-	udelay(1);
+-	writeb(RTC_RW|RTC_BY, rtc->rtc_base + RTCCTL_CTL);
+-	result = rtc_busy(rtc->rtc_base);
+-	if(result != 0){
+-		printk(KERN_ERR "Time out error\n");
+-		rtc_disconnect(rtc->rtc_base);
+-		mutex_unlock(&rtc->lock);
+-		return	-1;
+-	}
+-	reg = readl(rtc->rtc_base + RTCCNT);
+-	put_user(reg, (int *)value);
+-//	copy_to_user(uarg, &reg, sizeof(int));
+-	rtc_disconnect(rtc->rtc_base);
+-	mutex_unlock(&rtc->lock);
+-	return	0;
+-}
+-
+ static	int	lm2_voltage_status(struct device *dev, unsigned long value, int flag)
+ {
+ 	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
+@@ -399,9 +359,8 @@ static	int	lm2_voltage_status(struct device *dev, unsigned long value, int flag)
+ 
+ 	mutex_lock(&rtc->lock);
+ 	if(flag){
+-//		printk("Clear\n");
+ 		result = readb(rtc->rtc_base + RTCCTL_CTL);
+-		result &= ~RTC_IN; 
++		result |= RTC_IN; 
+ 		writeb(result, rtc->rtc_base + RTCCTL_CTL);
+ 	}else{
+ 		result = readb(rtc->rtc_base + RTCCTL_CTL);
+@@ -410,7 +369,6 @@ static	int	lm2_voltage_status(struct device *dev, unsigned long value, int flag)
+ 		else
+ 			reg = 0;
+ 		put_user(reg, (int *)value);
+-//		copy_to_user(uarg, &reg, sizeof(int));
+ 	}
+ 	mutex_unlock(&rtc->lock);
+ 	return	0;
+@@ -422,14 +380,7 @@ static	int	lm2_ioctl(struct device *dev, unsigned int opecode, unsigned long val
+ 
+ 
+ 	switch(opecode){
+-	case	LM2_INFOREG1_READ:
+-		result = lm2_get_inforeg(dev, value, 0x04);
+-		break;
+-	case	LM2_INFOREG2_READ:
+-		result = lm2_get_inforeg(dev, value, 0x06);
+-		break;
+ 	case	RTC_VL_READ:
+-//		printk("RTC_VL_READ\n");
+ 		result = lm2_voltage_status(dev, value, LM2_GET); 
+ 		break;
+ 	case	RTC_VL_CLR:
+@@ -451,7 +402,7 @@ const static struct of_device_id rtc_of_match[] __initconst = {
+ static const	struct	rtc_class_ops	lm2_rtc_ops = {
+ 	.read_time	= lm2_get_time,
+ 	.set_time	= lm2_set_time,
+-	.ioctl		=lm2_ioctl,
++	.ioctl		= lm2_ioctl,
+ 	.read_alarm	= lm2_read_alarm,
+ 	.set_alarm	= lm2_set_alarm,
+ 	.alarm_irq_enable	= lm2_alarm_enable,
+@@ -465,7 +416,7 @@ static int __init lm2_rtc_probe(struct platform_device *pdev)
+ 	u32	val;
+ 	u8	reg;
+ 	
+-	dev_info(&pdev->dev,"RTC Driver Probing\n");
++//	dev_info(&pdev->dev,"# %s # RTC Driver Probing\n",__func__);
+ 
+ 	/* Private date get */
+ 	dev = devm_kzalloc(&pdev->dev,sizeof(struct lm2_rtc), GFP_KERNEL);
+-- 
+1.7.1
+

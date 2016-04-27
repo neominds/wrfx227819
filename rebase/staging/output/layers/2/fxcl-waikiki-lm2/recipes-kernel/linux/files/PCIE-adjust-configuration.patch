@@ -1,0 +1,175 @@
+From 612fcee5954ca43704a19ee65992161d46dc4971 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:46:59 +0900
+Subject: [PATCH 057/169] PCIE-adjust-configuration
+
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index a50ed42..ba9e4e5 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -373,6 +373,7 @@ config ARCH_LM2
+         select GENERIC_CLOCKEVENTS
+         select HAVE_CLK
+         select HAVE_PATA_PLATFORM
++	select MIGHT_HAVE_PCI
+         select ICST
+         select NO_IOPORT
+         select PLAT_WAIKIKI
+diff --git a/arch/arm/Kconfig.orig b/arch/arm/Kconfig.orig
+index 0665e9f..da9702d 100644
+--- a/arch/arm/Kconfig.orig
++++ b/arch/arm/Kconfig.orig
+@@ -267,6 +267,12 @@ config PHYS_OFFSET
+ 	  Please provide the physical address corresponding to the
+ 	  location of main memory in your system.
+ 
++config  ARM_LPAE_HIGH_ADDR_MEMORY
++        bool
++        depends on ARM_LPAE
++        help
++        use high address memori device by kernel.
++
+ config GENERIC_BUG
+ 	def_bool y
+ 	depends on BUG
+@@ -353,6 +359,26 @@ config ARCH_VERSATILE
+ 	help
+ 	  This enables support for ARM Ltd Versatile board.
+ 
++config ARCH_LM2
++        bool "FujiXerox Co., Ltd. Waikiki LM2 family"
++        select NEED_MACH_MEMORY_H
++        select ARM_LPAE_HIGH_ADDR_MEMORY
++        select ARCH_HAS_CPUFREQ
++        select ARCH_WANT_OPTIONAL_GPIOLIB
++        select ARM_AMBA
++        select ARM_TIMER_SP804
++        select CLKDEV_LOOKUP
++        select HAVE_MACH_CLKDEV
++        select GENERIC_CLOCKEVENTS
++        select HAVE_CLK
++        select HAVE_PATA_PLATFORM
++        select ICST
++        select NO_IOPORT
++        select PLAT_WAIKIKI
++        select ARCH_DMA_ADDR_T_64BIT
++        help
++          This enables support for the Fuji Xerox Co., Ltd Waikiki LM2 boards.
++
+ config ARCH_AT91
+ 	bool "Atmel AT91"
+ 	select ARCH_REQUIRE_GPIOLIB
+@@ -1080,6 +1106,9 @@ source "arch/arm/mach-versatile/Kconfig"
+ source "arch/arm/mach-vexpress/Kconfig"
+ source "arch/arm/plat-versatile/Kconfig"
+ 
++source "arch/arm/mach-lm2/Kconfig"
++source "arch/arm/plat-waikiki/Kconfig"
++
+ source "arch/arm/mach-virt/Kconfig"
+ 
+ source "arch/arm/mach-vt8500/Kconfig"
+@@ -1113,6 +1142,9 @@ config PLAT_PXA
+ config PLAT_VERSATILE
+ 	bool
+ 
++config PLAT_WAIKIKI
++        bool
++
+ config ARM_TIMER_SP804
+ 	bool
+ 	select CLKSRC_MMIO
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index 3c5593b..fbcd867 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -220,4 +220,25 @@
+ 		reg = <0x0 0x04440000 0x0 0x500>;
+ 		interrupts = <131 132>;
+ 	};
++        pcie@290000 {
++                compatible = "synopsys,exynos5440-pcie", "snps,dw-pcie";
++                reg = <0x290000 0x1000
++                        0x270000 0x1000
++                        0x271000 0x40>;
++                interrupts = <0 20 0>, <0 21 0>, <0 22 0>;
++/*                clocks = <&clock CLK_PR0_250_O>, <&clock CLK_PB0_250_O>; */
++/*                clock-names = "pcie", "pcie_bus"; */
++                #address-cells = <3>;
++                #size-cells = <2>;
++                device_type = "pci";
++                ranges = <0x00000800 0 0x40000000 0x40000000 0 0x00001000   /* configuration space */
++                          0x81000000 0 0          0x40001000 0 0x00010000   /* downstream I/O */
++                          0x82000000 0 0x40011000 0x40011000 0 0x1ffef000>; /* non-prefetchable memory */
++                #interrupt-cells = <1>;
++                interrupt-map-mask = <0 0 0 0>;
++                interrupt-map = <0x0 0 &gic 53>;
++                num-lanes = <4>;
++                status = "disabled";
++        };
++
+ };
+diff --git a/drivers/pci/pcie/Kconfig b/drivers/pci/pcie/Kconfig
+index 569f82f..dd6d6ef 100644
+--- a/drivers/pci/pcie/Kconfig
++++ b/drivers/pci/pcie/Kconfig
+@@ -30,6 +30,11 @@ source "drivers/pci/pcie/aer/Kconfig"
+ #
+ # PCI Express ASPM
+ #
++config PCIE_LM2
++	bool "PCI Express host contorl"
++	depends on ARCH_LM2
++	help
++
+ config PCIEASPM
+ 	bool "PCI Express ASPM control" if EXPERT
+ 	depends on PCI && PCIEPORTBUS
+diff --git a/drivers/pci/pcie/Makefile b/drivers/pci/pcie/Makefile
+index 00c62df..c177518 100644
+--- a/drivers/pci/pcie/Makefile
++++ b/drivers/pci/pcie/Makefile
+@@ -10,6 +10,8 @@ pcieportdrv-$(CONFIG_ACPI)	+= portdrv_acpi.o
+ 
+ obj-$(CONFIG_PCIEPORTBUS)	+= pcieportdrv.o
+ 
++obj-$(CONFIG_PCIE_LM2)		+= synopsys_pcie.o
++
+ # Build PCI Express AER if needed
+ obj-$(CONFIG_PCIEAER)		+= aer/
+ 
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 7fa50ce..e4f67bd 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -1200,7 +1200,7 @@ static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ {
+ 	struct pcie_port *pp;
+-#if 1
++#if 0
+ #else
+ 	struct device_node *np = pdev->dev.of_node;
+ 	struct of_pci_range range;
+@@ -1218,7 +1218,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 
+ 	pp->dev = &pdev->dev;
+ 
+-#if 1
++#if 0
+ 	pp->resetgen.name       = "resetgen";
+ 	pp->resetgen.start      = max_t(resource_size_t, PCIBIOS_MIN_IO, RSTGEN_BASE);
+ 	pp->resetgen.end        = min_t(resource_size_t, IO_SPACE_LIMIT, RSTGEN_BASE + 0x10000);
+@@ -1353,7 +1353,7 @@ static struct platform_driver synopsys_pcie_driver = {
+ 	.driver = {
+ 		.name	= "synopsys-pcie",
+ 		.owner	= THIS_MODULE,
+-//		.of_match_table = of_match_ptr(synopsys_pcie_of_match),
++		.of_match_table = of_match_ptr(synopsys_pcie_of_match),
+ 	},
+ };
+ 
+-- 
+1.7.1
+

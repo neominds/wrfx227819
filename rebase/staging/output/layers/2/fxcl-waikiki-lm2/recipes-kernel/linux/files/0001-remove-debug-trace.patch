@@ -1,0 +1,48 @@
+From 6824ede9c6cb7489062f5011d4ece360da1c8783 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:47:41 +0900
+Subject: [PATCH 090/169] 0001-remove-debug-trace
+
+
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 5229d10..f35e6cb 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -225,7 +225,7 @@ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int
+ 		return PCIBIOS_DEVICE_NOT_FOUND;
+ 	}
+ 	if(bus->number != pp->root_bus_nr){
+-		dev_err(pp->dev, "endpoint read access\n");
++//		dev_err(pp->dev, "endpoint read access\n");
+ 		pcieconf_base = (void __iomem *)((u32)pp->va_cfg + bdf_adr + where);
+ //		msleep(1);
+ //		goto	out;
+@@ -278,7 +278,7 @@ static int synopsys_pcie_wr_conf(struct pci_bus *bus, u32 devfn,
+ 		return PCIBIOS_DEVICE_NOT_FOUND;
+ 
+ 	if(bus->number != pp->root_bus_nr){
+-		dev_err(pp->dev, "endpoint write access\n");
++//		dev_err(pp->dev, "endpoint write access\n");
+ 		pcieconf_base = (void __iomem *)((u32)pp->va_cfg + bdf_adr + where);
+ //		msleep(1);
+ //		goto	out;
+@@ -940,7 +940,7 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ 	u32 val;
+ 	u64	adr_base;
+ 	void __iomem *resetgen_base  = pp->resetgen_base;
+-//	void __iomem *pciewrap_base  = pp->pciewrap_base;
++	void __iomem *pciewrap_base  = pp->pciewrap_base;
+ 	void __iomem *pciegen3_base1 = pp->pciegen3_base1;
+ 	void __iomem *pciegen3_base2 = pp->pciegen3_base2;
+ //	void __iomem *pciegen3_base3 = pp->pciegen3_base3;
+@@ -1023,6 +1023,7 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ //	val &= PCIE1_MISC_CTRL__PIOS_CONV_SEL__INV_MASK;
+ //	val |= (0x1 << PCIE1_MISC_CTRL__PIOS_CONV_SEL__SHIFT);
+ //	synopsys_writel(resetgen_base + PCIE1_MISC_CTRL, val);
++	while(synopsys_readl(pciewrap_base + PCIE1_MISC_STAT) != PCIE1_MISC_STAT__GDA_PAB_DL_UP__MASK){};
+ //
+ //	adr_base = 0x400000000ULL;
+ //	conFig = ioremap(adr_base, 0x10000000);
+-- 
+1.7.1
+

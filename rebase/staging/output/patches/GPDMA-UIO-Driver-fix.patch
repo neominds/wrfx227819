@@ -1,0 +1,299 @@
+From 84f82e57140bfe6ea3ce140170adcb812f3005d7 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:22:21 +0900
+Subject: [PATCH 056/170] GPDMA-UIO-Driver-fix
+
+
+diff --git a/arch/arm/mach-lm2/Makefile b/arch/arm/mach-lm2/Makefile
+index 0478781..95b012d 100644
+--- a/arch/arm/mach-lm2/Makefile
++++ b/arch/arm/mach-lm2/Makefile
+@@ -7,3 +7,4 @@ obj-$(CONFIG_SMP)			+= platsmp.o
+ obj-$(CONFIG_SATA_AHCI_PLATFORM)	+= sata.o
+ obj-$(CONFIG_MMC_SDHCI_PLTFM)		+= sdhci.o
+ obj-$(CONFIG_SPI_XSPI)			+= xspi.o
++obj-$(CONFIG_LM2_GPDMA)			+= dma.o
+diff --git a/arch/arm/mach-lm2/core.h b/arch/arm/mach-lm2/core.h
+index 3432744..647586b 100644
+--- a/arch/arm/mach-lm2/core.h
++++ b/arch/arm/mach-lm2/core.h
+@@ -32,4 +32,7 @@ extern	int	lm2_sdhci_init(void);
+ #ifdef	CONFIG_SPI_XSPI
+ extern	int	lm2_xspi_register(void);
+ #endif	/* CONFIG_SPI_XSPI */
++#ifdef	CONFIG_LM2_GPDMA
++extern	int	lm2_dma_register(void);
++#endif
+ #endif
+diff --git a/arch/arm/mach-lm2/dma.c b/arch/arm/mach-lm2/dma.c
+new file mode 100644
+index 0000000..8f034c0
+--- /dev/null
++++ b/arch/arm/mach-lm2/dma.c
+@@ -0,0 +1,84 @@
++/*
++ * dma.c - dma driver register stub
++ * Copyright (C) Wind River Systems, Inc.
++ *
++ */
++#include <linux/kernel.h>
++#include <linux/platform_device.h>
++#include <linux/platform_data/uio_dmem_genirq.h>
++#include <linux/module.h>
++
++#include "mach/irqs.h"
++#include "mach/motherboard.h"
++
++static	struct resource	lm2_dma_resource[] = {
++	{
++		.start	= LM2_GPDMA_0_BASE,
++		.end	= LM2_GPDMA_0_BASE + 0x100,
++		.flags	= IORESOURCE_MEM,
++	},
++#ifdef CONFIG_UIO_DMEM_GENIRQ
++#else
++	{
++		.start	= 59,
++		.end	= 59,
++		.flags	= IORESOURCE_IRQ,
++	},
++#endif
++};
++
++static	struct platform_device	lm2_dma_device = {
++	.name	= "quatro-gpdma",
++	.id	= 0,
++	.num_resources	= ARRAY_SIZE( lm2_dma_resource ),
++	.resource	= lm2_dma_resource,
++};
++
++
++static	struct resource	lm2_uiodma_resource[] = {
++	{
++		.start	= LM2_GPDMA_0_BASE,
++		.end	= LM2_GPDMA_0_BASE + 0x100,
++		.flags	= IORESOURCE_MEM,
++	},
++};
++
++static unsigned int region_sizes[] = {
++	0x4000,
++};
++
++static struct uio_dmem_genirq_pdata lm2_platform_data = {
++	.uioinfo = {
++		.name = "quatro-gpdma",
++		.version = "0",
++#ifdef CONFIG_UIO_DMEM_GENIRQ
++		.irq = 59,
++#else
++		.irq = -1,
++#endif
++	},
++	.dynamic_region_sizes = region_sizes,
++	.num_dynamic_regions = ARRAY_SIZE(region_sizes),
++};
++
++
++static	struct platform_device	lm2_uiodma_device = {
++	.name	= "uio_dmem_genirq",
++	.id	= 0,
++	.dev = {
++		.platform_data = &lm2_platform_data,
++		},
++	.num_resources	= ARRAY_SIZE( lm2_uiodma_resource ),
++	.resource	= lm2_uiodma_resource,
++};
++
++
++int	__init lm2_dma_register(void)
++{
++	int	result;
++	
++	result = platform_device_register( &lm2_dma_device );
++	result = platform_device_register( &lm2_uiodma_device );
++	return	result;
++}
++
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index ae9369f..27a92ea 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -368,6 +368,9 @@ static void __init lm2_init(void)
+ #ifdef	CONFIG_SPI_XSPI
+ 	lm2_xspi_register();
+ #endif	/* CONFIG_SPI_XSPI */
++#ifdef	CONFIG_LM2_GPDMA
++	lm2_dma_register();
++#endif
+ 
+ }
+ 
+diff --git a/drivers/dma/gpdma.c b/drivers/dma/gpdma.c
+index b089db3..101a39f 100644
+--- a/drivers/dma/gpdma.c
++++ b/drivers/dma/gpdma.c
+@@ -97,6 +97,8 @@ struct gpdma_quatro {
+ #define GPD_DST	(0x00000014)
+ #define GPD_SZE	(0x00000018)
+ #define GPD_CST	(0x0000001c)
++#define GPD_SRCE	(0x00000020)
++#define GPD_DSTE	(0x00000024)
+ 
+ static inline int gpdmaRead32(struct gpdma_quatro* dma, u32 reg, volatile unsigned* val)
+ {
+@@ -467,6 +469,7 @@ static int __init quatro_gpdma_probe(struct platform_device *pdev)
+ 		dev_dbg(&pdev->dev, "out of memory\n");
+ 		return -ENOMEM;
+ 	}
++#if 0	/* ohkuma Change */
+ 	cdev_init(&dma->cdev, &quatro_gpdma_ops);
+ 	dman = MKDEV(QGPDMA_MAJOR, ndmas);
+ 	ret = cdev_add(&dma->cdev, dman, 1);
+@@ -474,6 +477,21 @@ static int __init quatro_gpdma_probe(struct platform_device *pdev)
+ 		dev_dbg(&pdev->dev, "could not create char dev %d\n", ndmas);
+ 		goto out_err;
+ 	}
++#else
++	dman = MKDEV(QGPDMA_MAJOR, ndmas);
++	ret = register_chrdev_region(dman, 1, "gpdma");
++	if (ret) {
++		dev_dbg(&pdev->dev, "could not create char dev %d\n", ndmas);
++		goto out_err;
++	}
++	cdev_init(&dma->cdev, &quatro_gpdma_ops);
++	dma->cdev.owner = THIS_MODULE;
++	ret = cdev_add(&dma->cdev, dman, 1);
++	if (ret) {
++		dev_dbg(&pdev->dev, "could not create char dev %d\n", ndmas);
++		goto out_err;
++	}
++#endif
+ 	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!regs) {
+ 		dev_dbg(&pdev->dev, "no mmio reg resource defined\n");
+@@ -490,15 +508,20 @@ static int __init quatro_gpdma_probe(struct platform_device *pdev)
+ 		goto out_ioerr;
+ 	}
+ 
++#ifndef	CONFIG_UIO_DMEM_GENIRQ
+ 	dma->irq = platform_get_irq(pdev, 0);
+ 	if (dma->irq < 0) {
+ 		dev_dbg(&pdev->dev, "could not get irq\n");
+ 		ret = -ENXIO;
+ 		goto out_ioerr;
+ 	}
++#else
++	dma->irq = 0;
++#endif
+ 	spin_lock_init(&dma->lock);
+ 	init_waitqueue_head(&dma->mbq);
+ 
++#ifndef	CONFIG_UIO_DMEM_GENIRQ
+ 	ret = request_irq(dma->irq, quatro_gpdma_interrupt,
+ 		IRQF_DISABLED, "gpdma", dma);
+ 	if (ret) {
+@@ -506,6 +529,7 @@ static int __init quatro_gpdma_probe(struct platform_device *pdev)
+ 		dma->irq = -1;
+ 		goto out_ioerr;
+ 	}
++#endif
+ 	platform_set_drvdata(pdev, dma);
+ 	printk("QGPDMA %d - mapped at %p, irq %d\n", ndmas, dma->regs, dma->irq);
+ 	ndmas++;
+diff --git a/drivers/uio/uio.c b/drivers/uio/uio.c
+index 21239a5..429b9b4 100644
+--- a/drivers/uio/uio.c
++++ b/drivers/uio/uio.c
+@@ -597,7 +597,6 @@ static ssize_t uio_write(struct file *filep, const char __user *buf,
+ static int uio_find_mem_index(struct vm_area_struct *vma)
+ {
+ 	struct uio_device *idev = vma->vm_private_data;
+-
+ 	if (vma->vm_pgoff < MAX_UIO_MAPS) {
+ 		if (idev->info->mem[vma->vm_pgoff].size == 0)
+ 			return -1;
+@@ -672,6 +671,10 @@ static int uio_mmap_physical(struct vm_area_struct *vma)
+ 		return -EINVAL;
+ 	mem = idev->info->mem + mi;
+ 
++#if 1	/* ohkuma (kernel 3.18.1 patch) */
++	if (mem->addr & ~PAGE_MASK)
++		return -ENODEV;
++#endif
+ 	if (vma->vm_end - vma->vm_start > mem->size)
+ 		return -EINVAL;
+ 
+@@ -711,7 +714,11 @@ static int uio_mmap(struct file *filep, struct vm_area_struct *vma)
+ 	if (mi < 0)
+ 		return -EINVAL;
+ 
++#if 1	/* ohkuma (kernel 3.18.1 patch) */
++	requested_pages = vma_pages(vma);
++#else
+ 	requested_pages = (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
++#endif
+ 	actual_pages = ((idev->info->mem[mi].addr & ~PAGE_MASK)
+ 			+ idev->info->mem[mi].size + PAGE_SIZE -1) >> PAGE_SHIFT;
+ 	if (requested_pages > actual_pages)
+diff --git a/drivers/uio/uio_dmem_genirq.c b/drivers/uio/uio_dmem_genirq.c
+index 252434c..ef87c11 100644
+--- a/drivers/uio/uio_dmem_genirq.c
++++ b/drivers/uio/uio_dmem_genirq.c
+@@ -27,6 +27,7 @@
+ #include <linux/of.h>
+ #include <linux/of_platform.h>
+ #include <linux/of_address.h>
++#include <linux/platform_device.h>
+ 
+ #define DRIVER_NAME "uio_dmem_genirq"
+ #define DMEM_MAP_ERROR (~0)
+@@ -146,7 +147,7 @@ static int uio_dmem_genirq_irqcontrol(struct uio_info *dev_info, s32 irq_on)
+ 
+ static int uio_dmem_genirq_probe(struct platform_device *pdev)
+ {
+-	struct uio_dmem_genirq_pdata *pdata = pdev->dev.platform_data;
++	struct uio_dmem_genirq_pdata *pdata = dev_get_platdata(&pdev->dev);
+ 	struct uio_info *uioinfo = &pdata->uioinfo;
+ 	struct uio_dmem_genirq_platdata *priv;
+ 	struct uio_mem *uiomem;
+@@ -192,7 +193,11 @@ static int uio_dmem_genirq_probe(struct platform_device *pdev)
+ 		goto bad0;
+ 	}
+ 
++#if 0
+ 	dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
++#else
++	dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64));
++#endif
+ 
+ 	priv->uioinfo = uioinfo;
+ 	spin_lock_init(&priv->lock);
+@@ -204,7 +209,7 @@ static int uio_dmem_genirq_probe(struct platform_device *pdev)
+ 		ret = platform_get_irq(pdev, 0);
+ 		if (ret < 0) {
+ 			dev_err(&pdev->dev, "failed to get IRQ\n");
+-			goto bad0;
++			goto bad1;
+ 		}
+ 		uioinfo->irq = ret;
+ 	}
+@@ -347,12 +352,15 @@ static struct platform_driver uio_dmem_genirq = {
+ 		.name = DRIVER_NAME,
+ 		.owner = THIS_MODULE,
+ 		.pm = &uio_dmem_genirq_dev_pm_ops,
++#ifdef CONFIG_OF	/* ohkuma */
+ 		.of_match_table = uio_of_genirq_match,
++#endif
+ 	},
+ };
+ 
+ module_platform_driver(uio_dmem_genirq);
+ 
++
+ MODULE_AUTHOR("Damian Hobson-Garcia");
+ MODULE_DESCRIPTION("Userspace I/O platform driver with dynamic memory.");
+ MODULE_LICENSE("GPL v2");
+-- 
+1.7.1
+

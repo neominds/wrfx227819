@@ -1,0 +1,26 @@
+From ac24033d22ff093a4ce21d735ba348d1039b1a51 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:38 +0900
+Subject: [PATCH 135/169] 0001-delete-debug-comment
+
+
+diff --git a/drivers/char/lm2-seeprom.c b/drivers/char/lm2-seeprom.c
+index 76f9001..ebf4acf 100644
+--- a/drivers/char/lm2-seeprom.c
++++ b/drivers/char/lm2-seeprom.c
+@@ -116,9 +116,9 @@ static void lm2_i2c_mrecv(struct lm2_i2c_seeprom *id)
+ 	u32	reg;
+ 
+ //	dev_info(id->adap.dev.parent, "mrecv call\n");
+-printk("read transaction \n");
+-printk("read count = %d offset address %d chip address %x\n",
+-	id->len,id->addr,id->cadr);
++//printk("read transaction \n");
++//printk("read count = %d offset address %d chip address %x\n",
++//	id->len,id->addr,id->cadr);
+ 	/* set the read count and address width */
+ 	reg = readl(id->iobase + EMSR);
+ 	reg |= ((id->len-1) << 14);
+-- 
+1.7.1
+

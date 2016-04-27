@@ -1,0 +1,201 @@
+From 1d1f20b8605aa3aed0e59ff6ed25116d7f9a03c1 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:47:43 +0900
+Subject: [PATCH 092/169] 0001-remove-debug-infomations
+
+
+diff --git a/drivers/ata/ahci_platform.c b/drivers/ata/ahci_platform.c
+index 8c7e05b..2c46180 100644
+--- a/drivers/ata/ahci_platform.c
++++ b/drivers/ata/ahci_platform.c
+@@ -204,23 +204,23 @@ static int ahci_probe(struct platform_device *pdev)
+ 		if (!(hpriv->port_map & (1 << i)))
+ 			ap->ops = &ata_dummy_port_ops;
+ 	}
+-dev_info(dev,"prepare reset controller\n");
++//dev_info(dev,"prepare reset controller\n");
+ 	rc = ahci_reset_controller(host);
+ 	if (rc)
+ 		goto pdata_exit;
+ 
+-dev_info(dev,"controlleri init\n");
++//dev_info(dev,"controlleri init\n");
+ 	ahci_init_controller(host);
+-dev_info(dev,"capabilities information\n");
++//dev_info(dev,"capabilities information\n");
+ 	ahci_print_info(host, "platform");
+ 
+-dev_info(dev,"Activate controller\n");
++//dev_info(dev,"Activate controller\n");
+ 	rc = ata_host_activate(host, irq, ahci_interrupt, IRQF_SHARED,
+ 			       &ahci_platform_sht);
+ 	if (rc)
+ 		goto pdata_exit;
+ 
+-dev_info(dev,"Activate controller finished\n");
++//dev_info(dev,"Activate controller finished\n");
+ 	return 0;
+ pdata_exit:
+ 	if (pdata && pdata->exit)
+diff --git a/drivers/ata/libata-core.c b/drivers/ata/libata-core.c
+index dd3501f..1f27e5e 100644
+--- a/drivers/ata/libata-core.c
++++ b/drivers/ata/libata-core.c
+@@ -3764,7 +3764,7 @@ int sata_link_hardreset(struct ata_link *link, const unsigned long *timing,
+ 	int rc;
+ 
+ 	DPRINTK("ENTER\n");
+-printk("##### %s enter \n",__FUNCTION__);
++//printk("##### %s enter \n",__FUNCTION__);
+ 	if (online)
+ 		*online = false;
+ 
+@@ -3778,7 +3778,7 @@ printk("##### %s enter \n",__FUNCTION__);
+ 			goto out;
+ 
+ 		scontrol = (scontrol & 0x0f0) | 0x304;
+-printk("##### %s set needed spd scontrole = %x \n",__FUNCTION__,scontrol); /* yamano */
++//printk("##### %s set needed spd scontrole = %x \n",__FUNCTION__,scontrol); /* yamano */
+ 		if ((rc = sata_scr_write(link, SCR_CONTROL, scontrol)))
+ 			goto out;
+ 
+@@ -3791,7 +3791,7 @@ printk("##### %s set needed spd scontrole = %x \n",__FUNCTION__,scontrol); /* ya
+ 
+ //	scontrol = (scontrol & 0x0f0) | 0x301;
+ 	scontrol = (scontrol & 0x0f0) | 0x321;
+-printk("##### %s scontrole = %x \n",__FUNCTION__,scontrol); /* yamano */
++//printk("##### %s scontrole = %x \n",__FUNCTION__,scontrol); /* yamano */
+ 
+ 	if ((rc = sata_scr_write_flush(link, SCR_CONTROL, scontrol)))
+ 		goto out;
+diff --git a/drivers/ata/libata-eh.c b/drivers/ata/libata-eh.c
+index 39e3c7a..c378c9f 100644
+--- a/drivers/ata/libata-eh.c
++++ b/drivers/ata/libata-eh.c
+@@ -2832,7 +2832,7 @@ int ata_eh_reset(struct ata_link *link, int classify,
+ 			classes[dev->devno] = ATA_DEV_SEMB_UNSUP;
+ 	}
+ 
+-printk("##### %s cur link speed \n",__FUNCTION__);	/* yamano */
++//printk("##### %s cur link speed \n",__FUNCTION__);	/* yamano */
+ 	/* record current link speed */
+ 	if (sata_scr_read(link, SCR_STATUS, &sstatus) == 0)
+ 		link->sata_spd = (sstatus >> 4) & 0xf;
+@@ -2840,11 +2840,11 @@ printk("##### %s cur link speed \n",__FUNCTION__);	/* yamano */
+ 		slave->sata_spd = (sstatus >> 4) & 0xf;
+ 
+ 	/* thaw the port */
+-printk("##### %s host link call \n",__FUNCTION__);	/* yamano */
++//printk("##### %s host link call \n",__FUNCTION__);	/* yamano */
+ 	if (ata_is_host_link(link))
+ 		ata_eh_thaw_port(ap);
+ 
+-printk("##### %s host link exit \n",__FUNCTION__);	/* yamano */
++//printk("##### %s host link exit \n",__FUNCTION__);	/* yamano */
+ 	/* postreset() should clear hardware SError.  Although SError
+ 	 * is cleared during link resume, clearing SError here is
+ 	 * necessary as some PHYs raise hotplug events after SRST.
+@@ -2854,14 +2854,14 @@ printk("##### %s host link exit \n",__FUNCTION__);	/* yamano */
+ 	 */
+ 	if (postreset) {
+ 		postreset(link, classes);
+-printk("##### %s host link reset exit \n",__FUNCTION__);	/* yamano */
++//printk("##### %s host link reset exit \n",__FUNCTION__);	/* yamano */
+ 		if (slave){
+ 			postreset(slave, classes);
+-printk("##### %s slave link reset exit \n",__FUNCTION__);	/* yamano */
++//printk("##### %s slave link reset exit \n",__FUNCTION__);	/* yamano */
+ 		}
+ 	}
+ 
+-printk("##### %s postreset exit \n",__FUNCTION__);	/* yamano */
++//printk("##### %s postreset exit \n",__FUNCTION__);	/* yamano */
+ 	/*
+ 	 * Some controllers can't be frozen very well and may set spurious
+ 	 * error conditions during reset.  Clear accumulated error
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 3c3d332..bad0700 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -28,7 +28,7 @@
+ #include <linux/types.h>
+ #include "synopsys_pcie.h"
+ 
+-#define	DEBUG_TRACE
++#undef	DEBUG_TRACE
+ #undef	DEBUG_RW
+ 
+ #define	PCIE_PORT1	1
+@@ -227,8 +227,6 @@ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int
+ 	if(bus->number != pp->root_bus_nr){
+ //		dev_err(pp->dev, "endpoint read access\n");
+ 		pcieconf_base = (void __iomem *)((u32)pp->va_cfg + bdf_adr + where);
+-//		msleep(1);
+-//		goto	out;
+ 	}else{
+ 		if(devfn != 0)	return	PCIBIOS_DEVICE_NOT_FOUND;
+ //		dev_err(pp->dev, "root read access");
+@@ -280,8 +278,6 @@ static int synopsys_pcie_wr_conf(struct pci_bus *bus, u32 devfn,
+ 	if(bus->number != pp->root_bus_nr){
+ //		dev_err(pp->dev, "endpoint write access\n");
+ 		pcieconf_base = (void __iomem *)((u32)pp->va_cfg + bdf_adr + where);
+-//		msleep(1);
+-//		goto	out;
+ 	}else{
+ 		if(devfn != 0)	return	PCIBIOS_DEVICE_NOT_FOUND;
+ //		dev_err(pp->dev, "Root write access");
+@@ -332,7 +328,9 @@ static int synopsys_pcie_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
+ {
+ 	struct pcie_port *pp = sys_to_pcie(dev->bus->sysdata);
+ 
++#ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "%s entry\n",__FUNCTION__);
++#endif
+ 	return pp->irq;
+ }
+ 
+@@ -532,7 +530,7 @@ static void synopsys_pcie_deassert_gpex_reset(struct pcie_port *pp, int which, i
+ 							  PCIE1_SW_RST__PBUS_N__MASK &
+ 						      PCIE1_SW_RST__LINK_N__MASK);
+ 			}
+-			dev_err(pp->dev, "synopsys_pcie_deassert_gpex_reset:  %d \n",regVal);
++//			dev_err(pp->dev, "synopsys_pcie_deassert_gpex_reset:  %d \n",regVal);
+ 			synopsys_writel(pciewrap_base + PCIE1_SW_RST, regVal);
+ 		        break;
+ 		case 2:
+@@ -978,11 +976,11 @@ static int  synopsys_pcie_host_init(struct pcie_port *pp)
+ 	}
+ 	synopsys_writel(pciegen3_base1 + PCIE_GPEXD_CLASSCODE, 0xffffffff);
+ 	val = synopsys_readl(pciegen3_base1 + PCIE_GPEXD_CLASSCODE);
+-	dev_err(pp->dev, "PCIE_GPEXD_CLASSCODE 0x%x\n",val);
++//	dev_err(pp->dev, "PCIE_GPEXD_CLASSCODE 0x%x\n",val);
+ 
+         synopsys_writel(pciegen3_base1 + PCIE_GPEXP_CFG_BASE2_PRIBUS, 0x00010100);
+         val = synopsys_readl(pciegen3_base1 + PCIE_GPEXP_CFG_BASE2_PRIBUS);
+-        dev_err(pp->dev, "PCIE_GPEXP_CFG_BASE2_PRIBUS 0x%x\n",val);
++//      dev_err(pp->dev, "PCIE_GPEXP_CFG_BASE2_PRIBUS 0x%x\n",val);
+ 
+ 	/* SET GPEXD_CFG_RDY bit */
+ 	val = synopsys_readl(pciegen3_base1 + PCIE_GPEXD_CFG_RDY);
+@@ -1146,16 +1144,15 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ {
+ 	struct pcie_port *pp;
+ #if 1
++#ifdef	DEBUG_TRACE
+ 	dev_info(&pdev->dev, "synopsys_pcie_probe :Start\n");
++#endif
+ #else
+ 	struct device_node *np = pdev->dev.of_node;
+ 	struct of_pci_range range;
+ 	struct of_pci_range_parser parser;
+ #endif
+ 	int ret;
+-#ifdef	DEBUG_TRACE
+-	printk(KERN_ERR "synopsys_pcie_probe: Start\n");
+-#endif
+ 	pp = devm_kzalloc(&pdev->dev, sizeof(*pp), GFP_KERNEL);
+ 	if (!pp) {
+ 		dev_err(pp->dev, "synopsys_pcie_probe: no memory for pcie port\n");
+-- 
+1.7.1
+

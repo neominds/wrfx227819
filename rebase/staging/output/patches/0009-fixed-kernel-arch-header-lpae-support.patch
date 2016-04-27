@@ -1,0 +1,145 @@
+From aad16c012001a38bf5bd979c53c6cf8ddef7566a Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:21:21 +0900
+Subject: [PATCH 010/170] 0009-fixed-kernel-arch-header-lpae-support
+
+
+diff --git a/arch/arm/include/asm/io.h b/arch/arm/include/asm/io.h
+index d070741..d134ea0 100644
+--- a/arch/arm/include/asm/io.h
++++ b/arch/arm/include/asm/io.h
+@@ -130,17 +130,32 @@ static inline u32 __raw_readl(const volatile void __iomem *addr)
+  */
+ extern void __iomem *__arm_ioremap_pfn_caller(unsigned long, unsigned long,
+ 	size_t, unsigned int, void *);
++#ifdef	CONFIG_ARM_LPAE
+ extern void __iomem *__arm_ioremap_caller(phys_addr_t, size_t, unsigned int,
+ 	void *);
++#else
++extern void __iomem *__arm_ioremap_caller(unsigned long, size_t, unsigned int,
++	void *);
++#endif	/* CONFIG_ARM_LPAE yamano */
+ 
++#ifdef	CONFIG_ARM_LPAE
+ extern void __iomem *__arm_ioremap_pfn(unsigned long, unsigned long, size_t, unsigned int);
+ extern void __iomem *__arm_ioremap(phys_addr_t, size_t, unsigned int);
+ extern void __iomem *__arm_ioremap_exec(phys_addr_t, size_t, bool cached);
+ extern void __iounmap(volatile void __iomem *addr);
+ extern void __arm_iounmap(volatile void __iomem *addr);
+-
+ extern void __iomem * (*arch_ioremap_caller)(phys_addr_t, size_t,
+ 	unsigned int, void *);
++#else
++extern void __iomem *__arm_ioremap_pfn(unsigned long, unsigned long, size_t, unsigned int);
++extern void __iomem *__arm_ioremap(unsigned long, size_t, unsigned int);
++extern void __iomem *__arm_ioremap_exec(unsigned long, size_t, bool cached);
++extern void __iounmap(volatile void __iomem *addr);
++extern void __arm_iounmap(volatile void __iomem *addr);
++extern void __iomem * (*arch_ioremap_caller)(unsigned long, size_t,
++	unsigned int, void *);
++#endif	/* CONFIG_ARM_LPAE yamano */
++
+ extern void (*arch_iounmap)(volatile void __iomem *);
+ 
+ /*
+diff --git a/arch/arm/include/asm/mach/map.h b/arch/arm/include/asm/mach/map.h
+index 2fe141f..76df77b 100644
+--- a/arch/arm/include/asm/mach/map.h
++++ b/arch/arm/include/asm/mach/map.h
+@@ -52,8 +52,14 @@ extern const struct mem_type *get_mem_type(unsigned int type);
+ /*
+  * external interface to remap single page with appropriate type
+  */
++#ifdef	CONFIG_ARM_LPAE
++extern int ioremap_page(unsigned long virt, phys_addr_t phys,
++			const struct mem_type *mtype);
++#else
+ extern int ioremap_page(unsigned long virt, unsigned long phys,
+ 			const struct mem_type *mtype);
++#endif	/* CONFIG_ARM_LPAE yamano */
++
+ #else
+ #define iotable_init(map,num)	do { } while (0)
+ #define vm_reserve_area_early(a,s,c)	do { } while (0)
+diff --git a/arch/arm/include/asm/memory.h b/arch/arm/include/asm/memory.h
+index 584786f..2436e54 100644
+--- a/arch/arm/include/asm/memory.h
++++ b/arch/arm/include/asm/memory.h
+@@ -134,9 +134,13 @@
+ /*
+  * Convert a physical address to a Page Frame Number and back
+  */
++#ifdef	CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY
++#define	__phys_to_pfn(paddr)	((unsigned long)(((phys_addr_t)(paddr)) >> PAGE_SHIFT))
++#define	__pfn_to_phys(pfn)	((phys_addr_t)(pfn) << PAGE_SHIFT)
++#else
+ #define	__phys_to_pfn(paddr)	((unsigned long)((paddr) >> PAGE_SHIFT))
+ #define	__pfn_to_phys(pfn)	((phys_addr_t)(pfn) << PAGE_SHIFT)
+-
++#endif	/* yamano debug */
+ /*
+  * Convert a page to/from a physical address
+  */
+@@ -165,8 +169,8 @@
+  * files.  Use virt_to_phys/phys_to_virt/__pa/__va instead.
+  */
+ #ifndef __virt_to_phys
++#ifndef	CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY
+ #ifdef CONFIG_ARM_PATCH_PHYS_VIRT
+-
+ /*
+  * Constants used to force the right instruction encodings and shifts
+  * so that all we need to do is modify the 8-bit constant field.
+@@ -201,7 +205,13 @@ static inline unsigned long __phys_to_virt(unsigned long x)
+ #else
+ #define __virt_to_phys(x)	((x) - PAGE_OFFSET + PHYS_OFFSET)
+ #define __phys_to_virt(x)	((x) - PHYS_OFFSET + PAGE_OFFSET)
+-#endif
++#endif	/* CONFIG_ARM_PATCH_PHYS_VIRT */
++#else	/* CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY */	/* yamano */
++extern phys_addr_t  __pv_phys_offset;
++#define PHYS_OFFSET __pv_phys_offset
++#define __virt_to_phys(x)	(phys_addr_t)((x) - PAGE_OFFSET + PHYS_OFFSET)
++#define __phys_to_virt(x)	((phys_addr_t)(x) - PHYS_OFFSET + PAGE_OFFSET)
++#endif	/* CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY */	/* yamano */
+ #endif
+ #endif /* __ASSEMBLY__ */
+ 
+@@ -223,7 +233,11 @@ static inline unsigned long __phys_to_virt(unsigned long x)
+  * direct-mapped view.  We assume this is the first page
+  * of RAM in the mem_map as well.
+  */
++#if 1	/* yamano debug */
++#define PHYS_PFN_OFFSET	((phys_addr_t)(PHYS_OFFSET >> PAGE_SHIFT))
++#else
+ #define PHYS_PFN_OFFSET	((unsigned long)(PHYS_OFFSET >> PAGE_SHIFT))
++#endif	/* yamano debug */
+ 
+ /*
+  * These are *only* valid on the kernel direct mapped RAM memory.
+@@ -238,14 +252,22 @@ static inline phys_addr_t virt_to_phys(const volatile void *x)
+ 
+ static inline void *phys_to_virt(phys_addr_t x)
+ {
++#ifdef	CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY
++	return (void *)(__phys_to_virt((phys_addr_t)(x)));
++#else
+ 	return (void *)(__phys_to_virt((unsigned long)(x)));
++#endif
+ }
+ 
+ /*
+  * Drivers should NOT use these either.
+  */
+ #define __pa(x)			__virt_to_phys((unsigned long)(x))
++#ifdef	CONFIG_ARM_LPAE_HIGH_ADDR_MEMORY
++#define __va(x)			((void *)__phys_to_virt((phys_addr_t)(x)))
++#else
+ #define __va(x)			((void *)__phys_to_virt((unsigned long)(x)))
++#endif
+ #define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
+ 
+ /*
+-- 
+1.7.1
+

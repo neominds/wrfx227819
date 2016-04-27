@@ -1,0 +1,794 @@
+From e141f5c7807444a5c1cdae9c3481504fa22b3acc Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 17:48:04 +0900
+Subject: [PATCH 108/169] 0001-adjust-timing-for-e1000e
+
+
+diff --git a/arch/arm/kernel/bios32.c b/arch/arm/kernel/bios32.c
+index 8823831..4232d74 100644
+--- a/arch/arm/kernel/bios32.c
++++ b/arch/arm/kernel/bios32.c
+@@ -145,7 +145,7 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_WINBOND2, PCI_DEVICE_ID_WINBOND2_89C940F,
+ static void pci_fixup_quatro(struct pci_dev *dev)
+ {
+ 	int i;
+-printk(KERN_ERR "pci fixup function for quatro\n");
++//printk(KERN_ERR "pci fixup function for quatro\n");
+ 	if (dev->devfn == 0) {
+ //		dev->resource[0].flags = IORESOURCE_MEM;
+ //		dev->resource[1].flags = IORESOURCE_IO;
+@@ -638,7 +638,7 @@ int pcibios_enable_device(struct pci_dev *dev, int mask)
+ 	u16 cmd, old_cmd;
+ 	int idx;
+ 	struct resource *r;
+-printk(KERN_ERR "<<<<< %s Entry\n",__FUNCTION__);
++//printk(KERN_ERR "<<<<< %s Entry\n",__FUNCTION__);
+ 	pci_read_config_word(dev, PCI_COMMAND, &cmd);
+ 	old_cmd = cmd;
+ 	for (idx = 0; idx < 6; idx++) {
+@@ -669,7 +669,7 @@ printk(KERN_ERR "<<<<< %s Entry\n",__FUNCTION__);
+ 		       pci_name(dev), old_cmd, cmd);
+ 		pci_write_config_word(dev, PCI_COMMAND, cmd);
+ 	}
+-printk(KERN_ERR ">>>>> %s Exit\n",__FUNCTION__);
++//printk(KERN_ERR ">>>>> %s Exit\n",__FUNCTION__);
+ 	return 0;
+ }
+ 
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index 390e0b1..985ff03 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -6507,6 +6507,7 @@ printk(KERN_ERR "###>>> %s Entry\n",__FUNCTION__);
+ 	if (aspm_disable_flag)
+ 		e1000e_disable_aspm(pdev, aspm_disable_flag);
+ 
++printk(KERN_ERR "###>>> %s PCI enable\n",__FUNCTION__);
+ 	err = pci_enable_device_mem(pdev);
+ 	if (err)
+ 		return err;
+@@ -6539,6 +6540,7 @@ printk(KERN_ERR "###>>> %s Entry\n",__FUNCTION__);
+ 	/* AER (Advanced Error Reporting) hooks */
+ 	pci_enable_pcie_error_reporting(pdev);
+ 
++printk(KERN_ERR "###>>> %s PCI master enable\n",__FUNCTION__);
+ 	pci_set_master(pdev);
+ 	/* PCI config space info */
+ 	err = pci_save_state(pdev);
+@@ -6601,12 +6603,14 @@ printk(KERN_ERR "pci resource start : 0x%llx len : 0x%x \n",mmio_start,mmio_len)
+ 	adapter->bd_number = cards_found++;
+ 
+ 	e1000e_check_options(adapter);
++printk(KERN_ERR "____ %s check option\n",__FUNCTION__);
+ 
+ 	/* setup adapter struct */
+ 	err = e1000_sw_init(adapter);
+ 	if (err)
+ 		goto err_sw_init;
+ 
++printk(KERN_ERR "____ %s setup adapter\n",__FUNCTION__);
+ 	memcpy(&hw->mac.ops, ei->mac_ops, sizeof(hw->mac.ops));
+ 	memcpy(&hw->nvm.ops, ei->nvm_ops, sizeof(hw->nvm.ops));
+ 	memcpy(&hw->phy.ops, ei->phy_ops, sizeof(hw->phy.ops));
+@@ -6621,7 +6625,7 @@ printk(KERN_ERR "pci resource start : 0x%llx len : 0x%x \n",mmio_start,mmio_len)
+ 
+ 	hw->mac.ops.get_bus_info(&adapter->hw);
+ 
+-	adapter->hw.phy.autoneg_wait_to_complete = 0;
++	adapter->hw.phy.autoneg_wait_to_complete = 1;	/* yamano debug 0-> 1*/
+ 
+ 	/* Copper options */
+ 	if (adapter->hw.phy.media_type == e1000_media_type_copper) {
+@@ -6630,10 +6634,11 @@ printk(KERN_ERR "pci resource start : 0x%llx len : 0x%x \n",mmio_start,mmio_len)
+ 		adapter->hw.phy.ms_type = e1000_ms_hw_default;
+ 	}
+ 
+-	if (hw->phy.ops.check_reset_block && hw->phy.ops.check_reset_block(hw))
++	if (hw->phy.ops.check_reset_block && hw->phy.ops.check_reset_block(hw)){
++printk(KERN_ERR "____ %s PHY reset is blocked\n",__FUNCTION__);
+ 		dev_info(&pdev->dev,
+ 			 "PHY reset is blocked due to SOL/IDER session.\n");
+-
++}
+ 	/* Set initial default active device features */
+ 	netdev->features = (NETIF_F_SG |
+ 			    NETIF_F_HW_VLAN_CTAG_RX |
+diff --git a/drivers/net/ethernet/intel/e1000e/phy.c b/drivers/net/ethernet/intel/e1000e/phy.c
+index c3305d2..5f916de 100644
+--- a/drivers/net/ethernet/intel/e1000e/phy.c
++++ b/drivers/net/ethernet/intel/e1000e/phy.c
+@@ -28,6 +28,8 @@
+ 
+ #include "e1000.h"
+ 
++#undef	YAMADEBUG
++#undef	YAMADEBUG_DELAY
+ static s32 e1000_wait_autoneg(struct e1000_hw *hw);
+ static s32 e1000_access_phy_wakeup_reg_bm(struct e1000_hw *hw, u32 offset,
+ 					  u16 *data, bool read, bool page_set);
+@@ -144,7 +146,9 @@ s32 e1000e_read_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 *data)
+ {
+ 	struct e1000_phy_info *phy = &hw->phy;
+ 	u32 i, mdic = 0;
+-
++#ifdef	YAMADEBUG
++printk(KERN_ERR "=== %s Entry\n",__FUNCTION__);
++#endif
+ 	if (offset > MAX_PHY_REG_ADDRESS) {
+ 		e_dbg("PHY Address %d is out of range\n", offset);
+ 		return -E1000_ERR_PARAM;
+@@ -158,6 +162,9 @@ s32 e1000e_read_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 *data)
+ 		(phy->addr << E1000_MDIC_PHY_SHIFT) |
+ 		(E1000_MDIC_OP_READ));
+ 
++#ifdef	YAMADEBUG
++printk(KERN_ERR "=== %s write MDIO offset %x addr %x\n",__FUNCTION__,offset, phy->addr);
++#endif
+ 	ew32(MDIC, mdic);
+ 
+ 	/* Poll the ready bit to see if the MDI read completed
+@@ -165,21 +172,32 @@ s32 e1000e_read_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 *data)
+ 	 * the lower time out
+ 	 */
+ 	for (i = 0; i < (E1000_GEN_POLL_TIMEOUT * 3); i++) {
++#ifdef	YAMADEBUG_DELAY
++		udelay(900);/* yamano debug orig 50 */
++		msleep(1000);	/* yamano */
++#else
+ 		udelay(50);
++#endif
++#ifdef	YAMADEBUG
++printk(KERN_ERR "=== %s Read status MDIO\n",__FUNCTION__);
++#endif
+ 		mdic = er32(MDIC);
+ 		if (mdic & E1000_MDIC_READY)
+ 			break;
+ 	}
+ 	if (!(mdic & E1000_MDIC_READY)) {
+ 		e_dbg("MDI Read did not complete\n");
++		printk(KERN_ERR "=== %s MDI Read did not complete\n",__FUNCTION__);
+ 		return -E1000_ERR_PHY;
+ 	}
+ 	if (mdic & E1000_MDIC_ERROR) {
+ 		e_dbg("MDI Error\n");
++		printk(KERN_ERR "=== %s MDI Error\n",__FUNCTION__);
+ 		return -E1000_ERR_PHY;
+ 	}
+ 	if (((mdic & E1000_MDIC_REG_MASK) >> E1000_MDIC_REG_SHIFT) != offset) {
+-		e_dbg("MDI Read offset error - requested %d, returned %d\n",
++//		e_dbg("MDI Read offset error - requested %d, returned %d\n",
++		printk(KERN_ERR "MDI Read offset error - requested %d, returned %d\n",
+ 		      offset,
+ 		      (mdic & E1000_MDIC_REG_MASK) >> E1000_MDIC_REG_SHIFT);
+ 		return -E1000_ERR_PHY;
+@@ -189,9 +207,13 @@ s32 e1000e_read_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 *data)
+ 	/* Allow some time after each MDIC transaction to avoid
+ 	 * reading duplicate data in the next MDIC transaction.
+ 	 */
+-	if (hw->mac.type == e1000_pch2lan)
++	if (hw->mac.type == e1000_pch2lan){
++		printk(KERN_ERR "=== %s e1000_pch2len\n",__FUNCTION__);
+ 		udelay(100);
+-
++	}
++#ifdef	YAMADEBUG
++printk(KERN_ERR "=== %s Normal Exit %x\n",__FUNCTION__,*data);
++#endif
+ 	return 0;
+ }
+ 
+@@ -208,6 +230,9 @@ s32 e1000e_write_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 data)
+ 	struct e1000_phy_info *phy = &hw->phy;
+ 	u32 i, mdic = 0;
+ 
++#ifdef	YAMADEBUG
++printk(KERN_ERR "=== %s Normal Entry %x\n",__FUNCTION__,data);
++#endif
+ 	if (offset > MAX_PHY_REG_ADDRESS) {
+ 		e_dbg("PHY Address %d is out of range\n", offset);
+ 		return -E1000_ERR_PARAM;
+@@ -222,6 +247,9 @@ s32 e1000e_write_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 data)
+ 		(phy->addr << E1000_MDIC_PHY_SHIFT) |
+ 		(E1000_MDIC_OP_WRITE));
+ 
++#ifdef	YAMADEBUG
++printk(KERN_ERR "=== %s write MDIO offset %x addr %x\n",__FUNCTION__,offset, phy->addr);
++#endif
+ 	ew32(MDIC, mdic);
+ 
+ 	/* Poll the ready bit to see if the MDI read completed
+@@ -229,21 +257,32 @@ s32 e1000e_write_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 data)
+ 	 * the lower time out
+ 	 */
+ 	for (i = 0; i < (E1000_GEN_POLL_TIMEOUT * 3); i++) {
++#ifdef	YAMADEBUG_DELAY
++		udelay(900);	/* yamano modified orig 50 */
++		msleep(1000);	/* yamano debug */
++#else
+ 		udelay(50);
++#endif
+ 		mdic = er32(MDIC);
++#ifdef	YAMADEBUG
++printk(KERN_ERR "=== %s Read status MDIO\n",__FUNCTION__);
++#endif
+ 		if (mdic & E1000_MDIC_READY)
+ 			break;
+ 	}
+ 	if (!(mdic & E1000_MDIC_READY)) {
+ 		e_dbg("MDI Write did not complete\n");
++		printk(KERN_ERR "=== %s MDI Write did not complete\n",__FUNCTION__);
+ 		return -E1000_ERR_PHY;
+ 	}
+ 	if (mdic & E1000_MDIC_ERROR) {
+ 		e_dbg("MDI Error\n");
++		printk(KERN_ERR "=== %s MDI Error\n",__FUNCTION__);
+ 		return -E1000_ERR_PHY;
+ 	}
+ 	if (((mdic & E1000_MDIC_REG_MASK) >> E1000_MDIC_REG_SHIFT) != offset) {
+-		e_dbg("MDI Write offset error - requested %d, returned %d\n",
++//		e_dbg("MDI Write offset error - requested %d, returned %d\n",
++		printk(KERN_ERR "=== %s MDI Write offset error - requested %d, returned %d\n",__FUNCTION__,
+ 		      offset,
+ 		      (mdic & E1000_MDIC_REG_MASK) >> E1000_MDIC_REG_SHIFT);
+ 		return -E1000_ERR_PHY;
+@@ -252,9 +291,13 @@ s32 e1000e_write_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 data)
+ 	/* Allow some time after each MDIC transaction to avoid
+ 	 * reading duplicate data in the next MDIC transaction.
+ 	 */
+-	if (hw->mac.type == e1000_pch2lan)
++	if (hw->mac.type == e1000_pch2lan){
++		printk(KERN_ERR "=== %s e1000_pch2len\n",__FUNCTION__);
+ 		udelay(100);
+-
++	}
++#ifdef	YAMADEBUG
++printk(KERN_ERR "=== %s Normal Exit %x\n",__FUNCTION__,data);
++#endif
+ 	return 0;
+ }
+ 
+@@ -272,15 +315,17 @@ s32 e1000e_read_phy_reg_m88(struct e1000_hw *hw, u32 offset, u16 *data)
+ {
+ 	s32 ret_val;
+ 
++printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
+ 	ret_val = hw->phy.ops.acquire(hw);
+ 	if (ret_val)
+ 		return ret_val;
+-
++printk(KERN_ERR "___%s read phy\n",__FUNCTION__);
+ 	ret_val = e1000e_read_phy_reg_mdic(hw, MAX_PHY_REG_ADDRESS & offset,
+ 					   data);
+ 
+ 	hw->phy.ops.release(hw);
+ 
++printk(KERN_ERR "___%s Exit\n",__FUNCTION__);
+ 	return ret_val;
+ }
+ 
+@@ -342,7 +387,7 @@ static s32 __e1000e_read_phy_reg_igp(struct e1000_hw *hw, u32 offset, u16 *data,
+ 				     bool locked)
+ {
+ 	s32 ret_val = 0;
+-
++printk(KERN_ERR "___%s Entry \n",__FUNCTION__);
+ 	if (!locked) {
+ 		if (!hw->phy.ops.acquire)
+ 			return 0;
+@@ -946,6 +991,8 @@ static s32 e1000_phy_setup_autoneg(struct e1000_hw *hw)
+ 	u16 mii_autoneg_adv_reg;
+ 	u16 mii_1000t_ctrl_reg = 0;
+ 
++printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
++
+ 	phy->autoneg_advertised &= phy->autoneg_mask;
+ 
+ 	/* Read the MII Auto-Neg Advertisement Register (Address 4). */
+@@ -1077,7 +1124,7 @@ static s32 e1000_phy_setup_autoneg(struct e1000_hw *hw)
+ 
+ 	if (phy->autoneg_mask & ADVERTISE_1000_FULL)
+ 		ret_val = e1e_wphy(hw, MII_CTRL1000, mii_1000t_ctrl_reg);
+-
++printk(KERN_ERR "___%s Normal Exit\n",__FUNCTION__);
+ 	return ret_val;
+ }
+ 
+@@ -1095,7 +1142,7 @@ static s32 e1000_copper_link_autoneg(struct e1000_hw *hw)
+ 	struct e1000_phy_info *phy = &hw->phy;
+ 	s32 ret_val;
+ 	u16 phy_ctrl;
+-
++printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
+ 	/* Perform some bounds checking on the autoneg advertisement
+ 	 * parameter.
+ 	 */
+@@ -1139,6 +1186,7 @@ static s32 e1000_copper_link_autoneg(struct e1000_hw *hw)
+ 	}
+ 
+ 	hw->mac.get_link_status = true;
++printk(KERN_ERR "___%s Normal Exit\n",__FUNCTION__);
+ 
+ 	return ret_val;
+ }
+@@ -1157,6 +1205,7 @@ s32 e1000e_setup_copper_link(struct e1000_hw *hw)
+ 	s32 ret_val;
+ 	bool link;
+ 
++printk(KERN_ERR "___%s Entry\n",__FUNCTION__);	/* yamano */
+ 	if (hw->mac.autoneg) {
+ 		/* Setup autoneg and flow control advertisement and perform
+ 		 * autonegotiation.
+@@ -1192,6 +1241,7 @@ s32 e1000e_setup_copper_link(struct e1000_hw *hw)
+ 		e_dbg("Unable to establish link!!!\n");
+ 	}
+ 
++printk(KERN_ERR "___%s Normal Exit\n",__FUNCTION__);	/* yamano */
+ 	return ret_val;
+ }
+ 
+@@ -1727,7 +1777,11 @@ static s32 e1000_wait_autoneg(struct e1000_hw *hw)
+ 			break;
+ 		if (phy_status & BMSR_ANEGCOMPLETE)
+ 			break;
++#ifdef	YAMADEBUG_DELAY
++		msleep(100*50);	/* yamano */
++#else
+ 		msleep(100);
++#endif
+ 	}
+ 
+ 	/* PHY_AUTO_NEG_TIME expiration doesn't guarantee auto-negotiation
+@@ -1750,7 +1804,9 @@ s32 e1000e_phy_has_link_generic(struct e1000_hw *hw, u32 iterations,
+ {
+ 	s32 ret_val = 0;
+ 	u16 i, phy_status;
++#ifdef	YAMADEBUG
+ printk(KERN_ERR " $$$ <<< %s Entry iterations %d usec = %d\n",__FUNCTION__,iterations,usec_interval);
++#endif
+ 	for (i = 0; i < iterations; i++) {
+ 		/* Some PHYs require the MII_BMSR register to be read
+ 		 * twice due to the link bit being sticky.  No harm doing
+@@ -1768,6 +1824,9 @@ printk(KERN_ERR " $$$ <<< %s Entry iterations %d usec = %d\n",__FUNCTION__,itera
+ 				udelay(usec_interval);
+ 		}
+ 		ret_val = e1e_rphy(hw, MII_BMSR, &phy_status);
++#ifdef	YAMADEBUG
++printk(KERN_ERR " $$$ <<< %s phy status 0x%x\n",__FUNCTION__,phy_status);
++#endif
+ 		if (ret_val)
+ 			break;
+ 		if (phy_status & BMSR_LSTATUS)
+@@ -1779,8 +1838,9 @@ printk(KERN_ERR " $$$ <<< %s Entry iterations %d usec = %d\n",__FUNCTION__,itera
+ 	}
+ 
+ 	*success = (i < iterations);
++#ifdef	YAMADEBUG
+ printk(KERN_ERR " $$$ >>>  %s Exit phy status = %x\n",__FUNCTION__,phy_status);
+-
++#endif
+ 	return ret_val;
+ }
+ 
+@@ -1806,15 +1866,21 @@ s32 e1000e_get_cable_length_m88(struct e1000_hw *hw)
+ 	u16 phy_data, index;
+ 
+ 	ret_val = e1e_rphy(hw, M88E1000_PHY_SPEC_STATUS, &phy_data);
+-	if (ret_val)
++	if (ret_val){
++#ifndef	YAMADEBUG
++printk(KERN_ERR "___%s Phys accress Error return %x\n",__FUNCTION__,ret_val);
++#endif
+ 		return ret_val;
+-
++	}
+ 	index = ((phy_data & M88E1000_PSSR_CABLE_LENGTH) >>
+ 		 M88E1000_PSSR_CABLE_LENGTH_SHIFT);
+-
+-	if (index >= M88E1000_CABLE_LENGTH_TABLE_SIZE - 1)
++printk(KERN_ERR "___%s cable %d  %x\n",__FUNCTION__,index,phy_data);
++	if(index >=M88E1000_CABLE_LENGTH_TABLE_SIZE - 1)
++		index = 3;
++	if (index >= M88E1000_CABLE_LENGTH_TABLE_SIZE - 1){
++printk(KERN_ERR "___%s cable table out of range %d\n",__FUNCTION__,index);
+ 		return -E1000_ERR_PHY;
+-
++	}
+ 	phy->min_cable_length = e1000_m88_cable_length_table[index];
+ 	phy->max_cable_length = e1000_m88_cable_length_table[index + 1];
+ 
+@@ -2487,14 +2553,19 @@ s32 e1000e_read_phy_reg_bm2(struct e1000_hw *hw, u32 offset, u16 *data)
+ 	s32 ret_val;
+ 	u16 page = (u16)(offset >> IGP_PAGE_SHIFT);
+ 
++#ifdef	YAMADEBUG
++printk(KERN_ERR "___%s Entry \n",__FUNCTION__);
++#endif
+ 	ret_val = hw->phy.ops.acquire(hw);
+-	if (ret_val)
++	if (ret_val){
++printk(KERN_ERR "___%s acquire err \n",__FUNCTION__);
+ 		return ret_val;
+-
++	}
+ 	/* Page 800 works differently than the rest so it has its own func */
+ 	if (page == BM_WUC_PAGE) {
+ 		ret_val = e1000_access_phy_wakeup_reg_bm(hw, offset, data,
+ 							 true, false);
++printk(KERN_ERR "___%s phy wakeup reg \n",__FUNCTION__);
+ 		goto release;
+ 	}
+ 
+@@ -2505,12 +2576,18 @@ s32 e1000e_read_phy_reg_bm2(struct e1000_hw *hw, u32 offset, u16 *data)
+ 		ret_val = e1000e_write_phy_reg_mdic(hw, BM_PHY_PAGE_SELECT,
+ 						    page);
+ 
+-		if (ret_val)
++printk(KERN_ERR "___%s phy write reg mdic \n",__FUNCTION__);
++		if (ret_val){
++printk(KERN_ERR "___%s phy write reg mdic error \n",__FUNCTION__);
+ 			goto release;
++}
+ 	}
+ 
+ 	ret_val = e1000e_read_phy_reg_mdic(hw, MAX_PHY_REG_ADDRESS & offset,
+ 					   data);
++#ifdef	YAMADEBUG
++printk(KERN_ERR "___%s phy read reg mdic \n",__FUNCTION__);
++#endif
+ release:
+ 	hw->phy.ops.release(hw);
+ 	return ret_val;
+diff --git a/drivers/pci/bus.c b/drivers/pci/bus.c
+index 3ee554d..cb396ec 100644
+--- a/drivers/pci/bus.c
++++ b/drivers/pci/bus.c
+@@ -57,7 +57,7 @@ void pci_bus_add_resource(struct pci_bus *bus, struct resource *res,
+ {
+ 	struct pci_bus_resource *bus_res;
+ 
+-printk(KERN_ERR "##### %s resource add to bus \n",__FUNCTION__);
++//printk(KERN_ERR "##### %s resource add to bus \n",__FUNCTION__);
+ 	bus_res = kzalloc(sizeof(struct pci_bus_resource), GFP_KERNEL);
+ 	if (!bus_res) {
+ 		dev_err(&bus->dev, "can't add %pR resource\n", res);
+@@ -127,7 +127,7 @@ pci_bus_alloc_resource(struct pci_bus *bus, struct resource *res,
+ 	int i, ret = -ENOMEM;
+ 	struct resource *r;
+ 	resource_size_t max = -1;
+-printk(KERN_ERR " ### %s : Entry %x bus->number = %x\n",__FUNCTION__,bus,bus->number);
++//printk(KERN_ERR " ### %s : Entry %x bus->number = %x\n",__FUNCTION__,bus,bus->number);
+ 	type_mask |= IORESOURCE_IO | IORESOURCE_MEM;
+ 
+ 	/* don't allocate too high if the pref mem doesn't support 64bit*/
+@@ -137,15 +137,15 @@ printk(KERN_ERR " ### %s : Entry %x bus->number = %x\n",__FUNCTION__,bus,bus->nu
+ 	pci_bus_for_each_resource(bus, r, i) {
+ 		if (!r)
+ 			continue;
+-printk(KERN_ERR "resource start = 0x%llx\n",r->start);
+-printk(KERN_ERR "resource end   = 0x%llx\n",r->end);
+-printk(KERN_ERR "resource flags = 0x%x\n",r->flags);
++//printk(KERN_ERR "resource start = 0x%llx\n",r->start);
++//printk(KERN_ERR "resource end   = 0x%llx\n",r->end);
++//printk(KERN_ERR "resource flags = 0x%x\n",r->flags);
+ 
+ 
+ 		/* type_mask must match */
+ 		if ((res->flags ^ r->flags) & type_mask){
+-printk(KERN_ERR "----- type mismatch %x : %x : %x\n",res->flags,r->flags,type_mask);
+-printk(KERN_ERR "----- res start %llx : r start %llx \n",res->start,r->start);
++//printk(KERN_ERR "----- type mismatch %x : %x : %x\n",res->flags,r->flags,type_mask);
++//printk(KERN_ERR "----- res start %llx : r start %llx \n",res->start,r->start);
+ 			continue;
+ 		}
+ 
+@@ -153,12 +153,12 @@ printk(KERN_ERR "----- res start %llx : r start %llx \n",res->start,r->start);
+ 		   from a pre-fetching area */
+ 		if ((r->flags & IORESOURCE_PREFETCH) &&
+ 		    !(res->flags & IORESOURCE_PREFETCH)){
+-printk(KERN_ERR "----- non prefetch \n");
++//printk(KERN_ERR "----- non prefetch \n");
+ 			continue;
+ 		}
+ 
+ 		/* Ok, try it out.. */
+-printk(KERN_ERR " ### %s : resource allocate\n",__FUNCTION__);
++//printk(KERN_ERR " ### %s : resource allocate\n",__FUNCTION__);
+ 		ret = allocate_resource(r, res, size,
+ 					r->start ? : min,
+ 					max, align,
+@@ -166,7 +166,7 @@ printk(KERN_ERR " ### %s : resource allocate\n",__FUNCTION__);
+ 		if (ret == 0)
+ 			break;
+ 	}
+-printk(KERN_ERR " ### %s : Exit\n",__FUNCTION__);
++//printk(KERN_ERR " ### %s : Exit\n",__FUNCTION__);
+ 	return ret;
+ }
+ 
+diff --git a/drivers/pci/pci.c b/drivers/pci/pci.c
+index 75ce8bf..8703c38 100644
+--- a/drivers/pci/pci.c
++++ b/drivers/pci/pci.c
+@@ -2757,15 +2757,18 @@ int pci_request_regions_exclusive(struct pci_dev *pdev, const char *res_name)
+ static void __pci_set_master(struct pci_dev *dev, bool enable)
+ {
+ 	u16 old_cmd, cmd;
+-
++printk(KERN_ERR "### >>> %s Entry\n",__FUNCTION__);
+ 	pci_read_config_word(dev, PCI_COMMAND, &old_cmd);
+ 	if (enable)
+ 		cmd = old_cmd | PCI_COMMAND_MASTER;
+ 	else
+ 		cmd = old_cmd & ~PCI_COMMAND_MASTER;
++/* yamano */
++	cmd |= PCI_COMMAND_MASTER;
+ 	if (cmd != old_cmd) {
+ 		dev_dbg(&dev->dev, "%s bus mastering\n",
+ 			enable ? "enabling" : "disabling");
++printk(KERN_ERR "### >>> %s Master Set %x\n",__FUNCTION__,cmd);
+ 		pci_write_config_word(dev, PCI_COMMAND, cmd);
+ 	}
+ 	dev->is_busmaster = enable;
+diff --git a/drivers/pci/probe.c b/drivers/pci/probe.c
+index dcd4e2c..39861d1 100644
+--- a/drivers/pci/probe.c
++++ b/drivers/pci/probe.c
+@@ -1351,7 +1351,7 @@ static void pci_init_capabilities(struct pci_dev *dev)
+ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
+ {
+ 	int ret;
+-printk(KERN_ERR " $$$$$ %s : Entry\n",__FUNCTION__);
++//printk(KERN_ERR " $$$$$ %s : Entry\n",__FUNCTION__);
+ 	device_initialize(&dev->dev);
+ 	dev->dev.release = pci_release_dev;
+ 
+@@ -1392,7 +1392,7 @@ printk(KERN_ERR " $$$$$ %s : Entry\n",__FUNCTION__);
+ 	WARN_ON(ret < 0);
+ 
+ 	pci_proc_attach_device(dev);
+-printk(KERN_ERR " $$$$$ %s : Exit\n",__FUNCTION__);
++//printk(KERN_ERR " $$$$$ %s : Exit\n",__FUNCTION__);
+ }
+ 
+ struct pci_dev *__ref pci_scan_single_device(struct pci_bus *bus, int devfn)
+@@ -1660,7 +1660,7 @@ unsigned int pci_scan_child_bus(struct pci_bus *bus)
+ 	unsigned int devfn, pass, max = bus->busn_res.start;
+ 	struct pci_dev *dev;
+ 
+-	dev_dbg(&bus->dev, "scanning bus\n");
++//dev_dbg(&bus->dev, "scanning bus\n");
+ 
+ 	/* Go find them, Rover! */
+ 	for (devfn = 0; devfn < 0x100; devfn += 8)
+@@ -1674,7 +1674,7 @@ unsigned int pci_scan_child_bus(struct pci_bus *bus)
+ 	 * all PCI-to-PCI bridges on this bus.
+ 	 */
+ 	if (!bus->is_added) {
+-		dev_dbg(&bus->dev, "fixups for bus\n");
++//dev_dbg(&bus->dev, "fixups for bus\n");
+ 		pcibios_fixup_bus(bus);
+ 		bus->is_added = 1;
+ 	}
+@@ -1693,7 +1693,7 @@ unsigned int pci_scan_child_bus(struct pci_bus *bus)
+ 	 *
+ 	 * Return how far we've got finding sub-buses.
+ 	 */
+-	dev_dbg(&bus->dev, "bus scan returning with max=%02x\n", max);
++//dev_dbg(&bus->dev, "bus scan returning with max=%02x\n", max);
+ 	return max;
+ }
+ 
+@@ -1729,7 +1729,7 @@ struct pci_bus *pci_create_root_bus(struct device *parent, int bus,
+ 	char bus_addr[64];
+ 	char *fmt;
+ 
+-dev_dbg(&b2->dev, "%s entry\n",__FUNCTION__);
++//dev_dbg(&b2->dev, "%s entry\n",__FUNCTION__);
+ 	b = pci_alloc_bus();
+ 	if (!b)
+ 		return NULL;
+@@ -1812,7 +1812,7 @@ dev_dbg(&b2->dev, "%s entry\n",__FUNCTION__);
+ 	list_add_tail(&b->node, &pci_root_buses);
+ 	up_write(&pci_bus_sem);
+ 
+-dev_dbg(&b2->dev, "%s exit\n",__FUNCTION__);
++//dev_dbg(&b2->dev, "%s exit\n",__FUNCTION__);
+ 	return b;
+ 
+ class_dev_reg_err:
+@@ -1833,10 +1833,10 @@ int pci_bus_insert_busn_res(struct pci_bus *b, int bus, int bus_max)
+ 	res->flags = IORESOURCE_BUS;
+ 
+ 	if (!pci_is_root_bus(b)){	/* yamano debug */
+-		printk(KERN_ERR "root bus\n");
++//		printk(KERN_ERR "root bus\n");
+ 		parent_res = &b->parent->busn_res;
+ 	} else {
+-		printk(KERN_ERR "not root bus\n");
++//		printk(KERN_ERR "not root bus\n");
+ 		parent_res = get_pci_domain_busn_res(pci_domain_nr(b));
+ 		res->flags |= IORESOURCE_PCI_FIXED;
+ 	}
+@@ -1860,15 +1860,15 @@ int pci_bus_update_busn_res_end(struct pci_bus *b, int bus_max)
+ 	resource_size_t size;
+ 	int ret;
+ 
+-printk(KERN_ERR " ## %s : Entry bus=%x bus_max= %x\n",__FUNCTION__,b,bus_max);
++//printk(KERN_ERR " ## %s : Entry bus=%x bus_max= %x\n",__FUNCTION__,b,bus_max);
+ 
+ 	if (res->start > bus_max){
+-printk(KERN_ERR " ## %s : start %d > bus_max %d \n",__FUNCTION__,res->start,bus_max);
++//printk(KERN_ERR " ## %s : start %d > bus_max %d \n",__FUNCTION__,res->start,bus_max);
+ 		return -EINVAL;
+ 	}	/* yamano debug */
+-printk( KERN_ERR "res->start =%llx\n",res->start);
+-printk( KERN_ERR "res->end =%llx\n",res->end);
+-printk( KERN_ERR "res->flags =%x\n",res->flags);
++//printk( KERN_ERR "res->start =%llx\n",res->start);
++//printk( KERN_ERR "res->end =%llx\n",res->end);
++//printk( KERN_ERR "res->flags =%x\n",res->flags);
+ 
+ 	size = bus_max - res->start + 1;
+ res->start=0;
+@@ -1878,7 +1878,7 @@ res->start=0;
+ 			&old_res, ret ? "can not be" : "is", bus_max);
+ 
+ 	if (!ret && !res->parent){
+-printk(KERN_ERR " ## %s : instert busn_res\n",__FUNCTION__);
++//printk(KERN_ERR " ## %s : instert busn_res\n",__FUNCTION__);
+ 
+ 		pci_bus_insert_busn_res(b, res->start, res->end);
+ 	}	/* yamano debug */
+@@ -1886,7 +1886,7 @@ printk(KERN_ERR " ## %s : instert busn_res\n",__FUNCTION__);
+ //printk(KERN_ERR "parent : %x \n",b->parent);
+ //printk(KERN_ERR "resource : %x \n",b->resources);
+ 
+-printk(KERN_ERR " ## %s ;Exit bus->resources = %x\n",__FUNCTION__,b->busn_res);
++//printk(KERN_ERR " ## %s ;Exit bus->resources = %x\n",__FUNCTION__,b->busn_res);
+ 	return ret;
+ }
+ 
+@@ -1921,7 +1921,7 @@ struct pci_bus *pci_scan_root_bus(struct device *parent, int bus,
+ 	b = pci_create_root_bus(parent, bus, ops, sysdata, resources);
+ 	if (!b)
+ 		return NULL;
+-printk(KERN_ERR " ## %s : root bus = %x\n",__FUNCTION__,b);
++//printk(KERN_ERR " ## %s : root bus = %x\n",__FUNCTION__,b);
+ 	if (!found) {
+ 		dev_info(&b->dev,
+ 		 "No busn resource found for root bus, will use [bus %02x-ff]\n",
+@@ -1933,12 +1933,12 @@ printk(KERN_ERR " ## %s : root bus = %x\n",__FUNCTION__,b);
+ dev_info(&b->dev,"max=%d \n",max);	/* yamano debug */
+ 
+ 	if (!found){
+-printk(KERN_ERR " ## %s : pci_bus_update\n",__FUNCTION__);
++//printk(KERN_ERR " ## %s : pci_bus_update\n",__FUNCTION__);
+ 		pci_bus_update_busn_res_end(b, max);
+ 	}
+ 
+ 	pci_bus_add_devices(b);
+-printk(KERN_ERR " ## %s : return bus = %x\n",__FUNCTION__,b);
++//printk(KERN_ERR " ## %s : return bus = %x\n",__FUNCTION__,b);
+ 	return b;
+ }
+ EXPORT_SYMBOL(pci_scan_root_bus);
+diff --git a/drivers/pci/setup-bus.c b/drivers/pci/setup-bus.c
+index d083772..0120234 100644
+--- a/drivers/pci/setup-bus.c
++++ b/drivers/pci/setup-bus.c
+@@ -345,7 +345,7 @@ static void __assign_resources_sorted(struct list_head *head,
+ 				 struct list_head *realloc_head,
+ 				 struct list_head *fail_head)
+ {
+-printk( KERN_ERR " $$$ %s : Entry\n",__FUNCTION__);
++//printk( KERN_ERR " $$$ %s : Entry\n",__FUNCTION__);
+ 	/*
+ 	 * Should not assign requested resources at first.
+ 	 *   they could be adjacent, so later reassign can not reallocate
+@@ -660,7 +660,7 @@ static void pci_bridge_check_ranges(struct pci_bus *bus)
+ 	u32 pmem;
+ 	struct pci_dev *bridge = bus->self;
+ 	struct resource *b_res;
+-printk(KERN_ERR "<<<< %s Entry \n",__FUNCTION__);
++//printk(KERN_ERR "<<<< %s Entry \n",__FUNCTION__);
+ 	b_res = &bridge->resource[PCI_BRIDGE_RESOURCES];
+ 	b_res[1].flags |= IORESOURCE_MEM;
+ #if 0	/* yamanodesbug */
+@@ -707,7 +707,7 @@ printk(KERN_ERR "<<<< %s Entry \n",__FUNCTION__);
+ 		pci_write_config_dword(bridge, PCI_PREF_BASE_UPPER32,
+ 				       mem_base_hi);
+ 	}
+-printk(KERN_ERR ">>>> %s Exit \n",__FUNCTION__);
++//printk(KERN_ERR ">>>> %s Exit \n",__FUNCTION__);
+ }
+ 
+ /* Helper function for sizing routines: find first available
+@@ -1188,16 +1188,16 @@ void __ref __pci_bus_assign_resources(const struct pci_bus *bus,
+ {
+ 	struct pci_bus *b;
+ 	struct pci_dev *dev;
+-printk( KERN_ERR " $$$ %s : Entry\n",__FUNCTION__);
++//printk( KERN_ERR " $$$ %s : Entry\n",__FUNCTION__);
+ 	pbus_assign_resources_sorted(bus, realloc_head, fail_head);
+-printk( KERN_ERR " $$$ %s : sorted return\n",__FUNCTION__);
++//printk( KERN_ERR " $$$ %s : sorted return\n",__FUNCTION__);
+ 
+ 	list_for_each_entry(dev, &bus->devices, bus_list) {
+ 		b = dev->subordinate;
+ 		if (!b)
+ 			continue;
+ 
+-printk( KERN_ERR " $$$ %s : subordinate %x \n",__FUNCTION__, b);
++//printk( KERN_ERR " $$$ %s : subordinate %x \n",__FUNCTION__, b);
+ 		__pci_bus_assign_resources(b, realloc_head, fail_head);
+ 
+ 		switch (dev->class >> 8) {
+@@ -1462,7 +1462,7 @@ void __init
+ pci_assign_unassigned_resources(void)
+ {
+ 	struct pci_bus *bus;
+-printk(KERN_ERR " #### %s Entry\n",__FUNCTION__);
++//printk(KERN_ERR " #### %s Entry\n",__FUNCTION__);
+ 	LIST_HEAD(realloc_head); /* list of resources that
+ 					want additional resources */
+ 	struct list_head *add_list = NULL;
+diff --git a/drivers/pci/setup-res.c b/drivers/pci/setup-res.c
+index 5c75e9f..ca7152b 100644
+--- a/drivers/pci/setup-res.c
++++ b/drivers/pci/setup-res.c
+@@ -216,7 +216,7 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
+ 		    (max_pfn + 1) << PAGE_SHIFT : PCIBIOS_MIN_MEM;
+ 	min = (res->flags & IORESOURCE_IO) ? PCIBIOS_MIN_IO : min_iomem;
+ #else
+-	printk( KERN_ERR " $$$ %s : Entry\n",__FUNCTION__);
++	//printk( KERN_ERR " $$$ %s : Entry\n",__FUNCTION__);
+ 	min = (res->flags & IORESOURCE_IO) ? PCIBIOS_MIN_IO : PCIBIOS_MIN_MEM;
+ #endif
+ 
+@@ -232,7 +232,7 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
+ 		 * But a prefetching area can handle a non-prefetching
+ 		 * window (it will just not perform as well).
+ 		 */
+-printk( KERN_ERR " $$$ %s : re-allocating\n",__FUNCTION__);
++//printk( KERN_ERR " $$$ %s : re-allocating\n",__FUNCTION__);
+ 		ret = pci_bus_alloc_resource(bus, res, size, align, min, 0,
+ 					     pcibios_align_resource, dev);
+ 	}
+@@ -246,7 +246,7 @@ static int _pci_assign_resource(struct pci_dev *dev, int resno,
+ 	struct pci_bus *bus;
+ 	int ret;
+ 	char *type;
+-printk( KERN_ERR " $$$ %s : Entry size %llx align =%llx\n",__FUNCTION__,size,min_align);
++//printk( KERN_ERR " $$$ %s : Entry size %llx align =%llx\n",__FUNCTION__,size,min_align);
+ 	bus = dev->bus;
+ 	while ((ret = __pci_assign_resource(bus, dev, resno, size, min_align))) {
+ 		if (!bus->parent || !bus->self->transparent)
+@@ -278,7 +278,7 @@ int pci_assign_resource(struct pci_dev *dev, int resno)
+ 	resource_size_t align, size;
+ 	int ret;
+ 
+-printk(KERN_ERR " $$$ %s : resno = %x\n",__FUNCTION__,resno);
++//printk(KERN_ERR " $$$ %s : resno = %x\n",__FUNCTION__,resno);
+ 	align = pci_resource_alignment(dev, res);
+ 	if (!align) {
+ 		dev_info(&dev->dev, "BAR %d: can't assign %pR "
+@@ -338,7 +338,7 @@ int pci_enable_resources(struct pci_dev *dev, int mask)
+ 
+ 	pci_read_config_word(dev, PCI_COMMAND, &cmd);
+ 	old_cmd = cmd;
+-printk(KERN_ERR "<<<< %s Entry\n",__FUNCTION__);
++//printk(KERN_ERR "<<<< %s Entry\n",__FUNCTION__);
+ 	for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+ 		if (!(mask & (1 << i)))
+ 			continue;
+@@ -369,6 +369,6 @@ printk(KERN_ERR ">>>> %s Error Exit\n",__FUNCTION__);
+ 			 old_cmd, cmd);
+ 		pci_write_config_word(dev, PCI_COMMAND, cmd);
+ 	}
+-printk(KERN_ERR ">>>> %s Exit\n",__FUNCTION__);
++//printk(KERN_ERR ">>>> %s Exit\n",__FUNCTION__);
+ 	return 0;
+ }
+-- 
+1.7.1
+

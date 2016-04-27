@@ -1,0 +1,301 @@
+From 028f89f73bbe1f728301143b0384dcc3a9feab82 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:24:48 +0900
+Subject: [PATCH 170/170] 0216-Boardname_waikiki_to_honolulu
+
+
+diff --git a/arch/arm/boot/dts/Makefile b/arch/arm/boot/dts/Makefile
+index 6a81e18..8c1a39e 100644
+--- a/arch/arm/boot/dts/Makefile
++++ b/arch/arm/boot/dts/Makefile
+@@ -228,7 +228,7 @@ targets += $(dtb-y)
+ endif
+ targets += $(dtb-y)
+ 
+-dtb-$(CONFIG_ARCH_LM2)   += waikiki-lm2.dtb
++dtb-$(CONFIG_ARCH_LM2)   += honolulu-lm2.dtb
+ 
+ # *.dtb used to be generated in the directory above. Clean out the
+ # old build results so people don't accidentally use them.
+diff --git a/arch/arm/boot/dts/honolulu-lm2.dts b/arch/arm/boot/dts/honolulu-lm2.dts
+new file mode 100644
+index 0000000..078b657
+--- /dev/null
++++ b/arch/arm/boot/dts/honolulu-lm2.dts
+@@ -0,0 +1,273 @@
++/*
++ * FujiXerox
++ *
++ * Waikiki  A15x2 A7x1 M3x2
++ * LM 2 Multi core  (CA15_A7)
++ *
++ *
++ */
++
++/dts-v1/;
++
++/ {
++	model = "WAIKIKI-LM2";
++	compatible = "FujiXerox,waikiki";
++	interrupt-parent = <&gic>;
++	/* This section address is 40bit addressing */
++	#address-cells = <1>;
++	#size-cells = <1>;
++	chosen {
++		bootargs = "root=/dev/mmcblk0p2 rootwait init=/etc/preinit console=ttyS0,38400 quiet";
++	};
++        mac_addr {
++                mac-address = [ 11 22 33 44 55 66 ];
++        };
++/*
++	aliases {
++		serial0 = &lm2_serial0;
++		serial1 = &lm2_serial1;
++		serial2 = &lm2_serial2;
++		serial3 = &lm2_serial3;
++	};
++*/
++/*
++	clusters {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		cluster1: cluster@1 {
++			reg = <1>;
++			cores {
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				core0: core@0 {
++					reg = <0>;
++				};
++
++				core1: core@1 {
++					reg = <1>;
++				};
++
++			};
++		};
++
++	};
++*/
++	cpus {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		cpu0: cpu@0 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a15";
++			reg = <0>;
++//			cluster = <&cluster1>;
++//			core = <&core0>;
++			clock-frequency = <800000000>;
++		};
++
++		cpu1: cpu@1 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a15";
++			reg = <1>;
++//			cluster = <&cluster1>;
++//			core = <&core1>;
++			clock-frequency = <800000000>;
++		};
++	};
++
++	memory@800000000 {
++		device_type = "memory";
++		reg = <0x05000000 0xC0000000>; /* 3GB */
++		contigmem_size = <325058560>; /* 310MB */
++		pagemem_size = <276824064>; /* 1024MB */
++	};
++
++        gic: interrupt-controller@04300000 {
++                compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
++                #interrupt-cells = <3>;
++//		#address-cells = <0>;
++                interrupt-controller;
++                reg = <0x04301000 0x1000>,
++                      <0x04302000 0x2000>,
++                      <0x04304000 0x2000>,
++                      <0x04306000 0x2000>;
++                interrupts = <1 9 0xf04>;
++/*
++                gic-cpuif@0 {
++                        compatible = "arm,gic-cpuif";
++                        cpuif-id = <0>;
++                        cpu = <&cpu0>;
++                };
++                gic-cpuif@1 {
++                        compatible = "arm,gic-cpuif";
++                        cpuif-id = <1>;
++                        cpu = <&cpu1>;
++                };
++*/  
++      };
++
++	soc{
++		compatible = "simple-bus";
++		#address-cells = <1>;
++		#size-cells = <1>;
++		#interrupt-cells= <1>;
++/*
++		rtc@04030000 {
++			compatible = "lm2-rtc";
++			reg = <0x04030000 0x100>;
++			interrupts = <34>;
++		};
++
++		wdt@04040080 {
++			compatible = "arm,sp805", "arm,primecell";
++			reg = <0x04040080 0x20>;
++		};
++
++		cci@04060000 {
++			compatible = "arm,cci";
++			reg = <0x04060000 0x8000>;
++		};
++
++		fcspi@04110000{
++			compatible = "fcspi";
++			linux,mtd-name = "physmap-flash.0";
++			reg = <0x04110000 0x1000>;
++			interrupts = <53>;
++			#address-cells = <1>;
++			#size-cells = <1>;
++ 
++			partition@0 {
++				label = "bootloader";
++				reg = <0x00000000 0x00600000>;
++				read-only;
++	                };
++
++			partition@00600000 {
++				label = "rootfs";
++				reg = <0x00600000 0x01500000>;
++	                };
++		};
++
++		xspi@04130000 {
++			compatible = "xspi";
++			reg = <0x04130000 0x100>;
++			interrupts = <44>;
++		};
++
++		gpdma@04150000 {
++			compatible = "gpdma-lm2";
++			reg = <0x04150000 0x100>;
++			interrupts = <92>;
++		};
++
++		misc@041f0000 {
++			compatible = "lm2-i2c";
++			reg = <0x041f0000 0x500>;
++			interrupts = <64>;
++		};
++
++		gpdma@049400000 {
++			compatible = "gpdma-lm2";
++			reg = <0x04940000 0x100>;
++			interrupts = <92>;
++		};
++
++		timer@04040000 {
++			compatible = "lm2,lm2-timer";
++			reg = <0x04040000 0x200>;
++			interrupts = <36>;
++		};
++
++		lm2_serial0: uart@04160000 {
++			compatible = "serial8250";
++			reg = <0x04160000 0x1000>;
++			interrupts = <50>;
++		};
++
++		lm2_serial1: uart@040b0000 {
++			compatible = "serial8250";
++			reg = <0x040b0000 0x1000>;
++			interrupts = <61>;
++		};
++
++		lm2_serial2: uart@052c0000 {
++			compatible = "serial8250";
++			reg = <0x052c0000 0x1000>;
++			interrupts = <169>;
++		};
++
++		lm2_serial3: uart@52e0000 {
++	   		compatible = "serial8250";
++			reg = <0x052e0000 0x1000>;
++			interrupts = <170>;
++		};
++
++		lm2_serial4: uart@052f0000 {
++			compatible = "serial8250";
++			reg = <0x052f0000 0x1000>;
++			interrupts = <216>;
++		};
++
++
++		usbh@04600000 {
++			compatible = "xhci-hcd:";
++			reg = <0x04600000 0x10000>;
++			interrupts = <97>;
++		};
++
++		usbd@04500000 {
++			compatible = "synopsys,dwc3","dwc3";
++			reg = <0x04500000 0x10000>;
++			interrupts = <61>;
++		};
++
++
++		sata@04a30000 {
++			compatible = "snps,spear-ahci","ahci";
++			reg = <0x04a30000 0x200>;
++			interrupts = <85>;
++		};
++
++		ethernet@04410000 {
++			compatible = "snps,dwmac";
++			reg = <0x04410000 0x10000>;
++			interrupts = <94 93>;
++			phy-mode = "mii";
++			reg-io-width = <4>;
++		};
++
++		sdio@04440000 {
++			compatible = "sdhci";
++			reg = <0x0 0x04440000 0x0 0x500>;
++			interrupts = <131 132>;
++		};
++*/
++		pcie@04a00000 {
++			compatible = "synopsys-pcie", "snps,dw-pcie";
++			reg = < 0x04a00000 0x100
++				0x04a40000 0x1000
++				0x04a70000 0x140 >;
++
++			interrupts = <0 20 0>, <0 21 0>, <0 22 0>;
++/*              clocks = <&clock CLK_PR0_250_O>, <&clock CLK_PB0_250_O>;
++                clock-names = "pcie", "pcie_bus";	*/
++			#address-cells = <3>;
++			#size-cells = <2>;
++                	device_type = "pci";
++			/* outbound pci resource */
++                	ranges = <0x4 0x00000000  0x4 0x00001000 0x0 0x00001000
++                          	  0x4 0x40001000  0x4 0x00010000 0x0 0x00010000
++                          	  0x4 0x40011000  0x4 0x00020000 0x0 0x00010000>;
++			/* inbound pci resource */
++			dma-ranges = < 0x0 0x05000000 0x4 0x80000000 0x0 0x02000000 >;
++                	#interrupt-cells = <1>;
++                	interrupt-map-mask = <0 0 0 0>;
++                	interrupt-map = <0x0 0 &gic 53>;
++/*              num-lanes = <4>;
++                status = "disabled";	*/
++		};
++	};
++
++};
+-- 
+1.7.1
+

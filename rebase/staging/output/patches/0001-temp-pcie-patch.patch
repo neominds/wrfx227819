@@ -1,0 +1,635 @@
+From 75993e98cc40f3b1dcbd1758b225fa61580d46bd Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 23 Apr 2016 18:22:49 +0900
+Subject: [PATCH 078/170] 0001-temp-pcie-patch
+
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index f7bff3b..8a672bf 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -385,6 +385,8 @@ config ARCH_LM2
+         select PLAT_WAIKIKI
+         select ARCH_DMA_ADDR_T_64BIT
+         select HAVE_SMP
++	select PCIEPORTBUS
++	select PCIE_LM2
+         help
+           This enables support for the Fuji Xerox Co., Ltd Waikiki LM2 boards.
+ 
+diff --git a/arch/arm/Kconfig.orig b/arch/arm/Kconfig.orig
+index 31ed81a..97f010a 100644
+--- a/arch/arm/Kconfig.orig
++++ b/arch/arm/Kconfig.orig
+@@ -383,6 +383,7 @@ config ARCH_LM2
+         select NO_IOPORT
+         select PLAT_WAIKIKI
+         select ARCH_DMA_ADDR_T_64BIT
++        select HAVE_SMP
+         help
+           This enables support for the Fuji Xerox Co., Ltd Waikiki LM2 boards.
+ 
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index 7f54c3b..7881ef5 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -82,14 +82,14 @@
+         gic: interrupt-controller@04300000 {
+                 compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
+                 #interrupt-cells = <3>;
+-                #address-cells = <0>;
++//		#address-cells = <0>;
+                 interrupt-controller;
+-                reg = <0x04300000 0x1000>,
+-                      <0x04301000 0x1000>,
++                reg = <0x04301000 0x1000>,
+                       <0x04302000 0x2000>,
+-                      <0x04304000 0x2000>;
++                      <0x04304000 0x2000>,
++                      <0x04306000 0x2000>;
+                 interrupts = <1 9 0xf04>;
+-
++/*
+                 gic-cpuif@0 {
+                         compatible = "arm,gic-cpuif";
+                         cpuif-id = <0>;
+@@ -100,7 +100,8 @@
+                         cpuif-id = <1>;
+                         cpu = <&cpu1>;
+                 };
+-        };
++*/  
++      };
+ 
+ 	soc{
+ 		compatible = "simple-bus";
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index feb8f6b..0267e38 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -14,6 +14,7 @@
+ #include <linux/of_irq.h>
+ #include <linux/of_platform.h>
+ #include <linux/platform_device.h>
++#include <linux/irqchip.h>
+ #include <linux/ata_platform.h>
+ #include <linux/memblock.h>
+ #include <linux/spinlock.h>
+@@ -116,8 +117,8 @@ static void __init lm2_timer_init(void)
+ 	void	__iomem	*clkevt_timer;
+ 
+ /*	clksrc_timer = ioremap(LM2_TIMER_BASE + 0x38, 0x0c);	*/
+-	clksrc_timer = ioremap(LM2_TIMER_BASE+0x10, 0x10);
+-	clkevt_timer = ioremap(LM2_TIMER_BASE+0x5c,0x0c);
++	clksrc_timer = ioremap(LM2_TIMER_BASE + 0x10, 0x10);
++	clkevt_timer = ioremap(LM2_TIMER_BASE + 0x5c, 0x0c);
+ 	lm2_clocksource_init(clksrc_timer);
+ 	lm2_clockevent_init(LM2_IRQ_TIMER_4,clkevt_timer);
+ }
+@@ -429,7 +430,7 @@ void __init lm2_dt_init_early(void)
+  */
+ #if 0
+ static  struct of_device_id lm2_irq_match[] __initdata = {
+-	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init, },
++	{ .compatible = "arm,cortex-a15-gic", .data = gic_of_init, },
+ 	{}
+ };
+ 
+@@ -522,6 +523,7 @@ DT_MACHINE_START(LM2_DT, "FujiXerox Waikiki")
+ 	.map_io		= lm2_dt_map_io,
+ 	.init_early	= lm2_dt_init_early,
+ 	.init_irq	= lm2_init_irq,
++//	.init_irq	= irqchip_init,
+ 	.init_time	= lm2_timer_init,
+ 	.init_machine	= lm2_dt_init,
+ MACHINE_END
+diff --git a/drivers/irqchip/irq-gic.c b/drivers/irqchip/irq-gic.c
+index e1f4004..07ce350 100644
+--- a/drivers/irqchip/irq-gic.c
++++ b/drivers/irqchip/irq-gic.c
+@@ -933,7 +933,7 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
+ 	gic->gic_irqs = gic_irqs;
+ 
+ 	gic_irqs -= hwirq_base; /* calculate # of irqs to allocate */
+-printk("irq_alloc_descs\n");
++printk("irq_alloc_descs\n");	/* debug yamano */
+ 	irq_base = irq_alloc_descs(irq_start, 16, gic_irqs, numa_node_id());
+ 	if (IS_ERR_VALUE(irq_base)) {
+ 		WARN(1, "Cannot allocate irq_descs @ IRQ%d, assuming pre-allocated\n",
+diff --git a/drivers/pci/Kconfig b/drivers/pci/Kconfig
+index 6d51aa6..f0da0a0 100644
+--- a/drivers/pci/Kconfig
++++ b/drivers/pci/Kconfig
+@@ -119,3 +119,8 @@ config PCI_IOAPIC
+ config PCI_LABEL
+ 	def_bool y if (DMI || ACPI)
+ 	select NLS
++
++config PCIEPORTBUS
++	bool
++
++source	"drivers/pci/pcie/Kconfig"
+diff --git a/drivers/pci/pcie/Kconfig b/drivers/pci/pcie/Kconfig
+index dd6d6ef..7b4a337 100644
+--- a/drivers/pci/pcie/Kconfig
++++ b/drivers/pci/pcie/Kconfig
+@@ -31,8 +31,9 @@ source "drivers/pci/pcie/aer/Kconfig"
+ # PCI Express ASPM
+ #
+ config PCIE_LM2
+-	bool "PCI Express host contorl"
+-	depends on ARCH_LM2
++	bool "PCI Express LM2 Waikiki host control"
++	depends on ARCH_LM2 && PCIEPORTBUS
++	default y
+ 	help
+ 
+ config PCIEASPM
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index e4f67bd..a36b5d6 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -35,37 +35,38 @@ struct pcie_port_info {
+ 	u32		io_size;
+ 	u32		mem_size;
+ //	phys_addr_t	mem_bus_addr;
+-	struct resource		cfg;					/* ohkuma */
+-	struct resource		io;						/* ohkuma */
+-	struct resource		mem;					/* ohkuma */
++	struct resource		cfg;			/* ohkuma */
++	struct resource		io;			/* ohkuma */
++	struct resource		mem;			/* ohkuma */
+ };
+ 
+ struct pcie_port {
+ 	struct device		*dev;
+-	u8					controller;
+-	u8					root_bus_nr;
++	u8			controller;
++	u8			root_bus_nr;
+ 	void __iomem		*resetgen_base;
+-	void __iomem		*pciewrap_base;			/* ohkuma */
+-	void __iomem		*pciegen3_base1;		/* ohkuma */
+-	void __iomem		*pciegen3_base2;		/* ohkuma */
+-	void __iomem		*pciegen3_base3;		/* ohkuma */
+-	struct resource		resetgen;				/* ohkuma */
+-	struct resource		pciewrap;				/* ohkuma */
+-	struct resource		pciegen3[3];			/* ohkuma */
+-	spinlock_t			conf_lock;
++	void __iomem		*pciewrap_base;		/* ohkuma */
++	void __iomem		*pciegen3_base1;	/* ohkuma */
++	void __iomem		*pciegen3_base2;	/* ohkuma */
++	void __iomem		*pciegen3_base3;	/* ohkuma */
++	struct resource		resetgen;		/* ohkuma */
++	struct resource		pciewrap;		/* ohkuma */
++	struct resource		pciegen3[3];		/* ohkuma */
++	spinlock_t		conf_lock;
+ 	struct resource		io;
+ 	struct resource		mem;
+ 	struct pcie_port_info	config[2];
+-	struct clk			*clk;
+-	struct clk			*bus_clk;
+-	int					irq;
+-//	int					reset_gpio;
++	struct clk		*clk;
++	struct clk		*bus_clk;
++	int			irq;
++//	int			reset_gpio;
+ };
+ 
+ int	rc_num = 1;
+ int	ep_num = 2;
+ int	nu_num = 3;
+ int	bifur_num = 2;
++
+ #define IRQ_V2M_PCIE            (32 + 17)
+ /*
+  * Exynos PCIe IP consists of Synopsys specific part and Exynos
+@@ -250,8 +251,6 @@ static struct hw_pci synopsys_pci = {
+ };
+ 
+ 
+-
+-
+ static void synopsys_pcie_assert_phy_reset(struct pcie_port *pp)
+ {
+ 	u32 regVal;
+@@ -314,30 +313,31 @@ static void synopsys_pcie_set_bootstrap(struct pcie_port *pp, int which, int ep_
+ 	switch (which)
+ 	{
+ 		case 1 :
+-				if (ep_rc == 1)
+-					regVal |= PCIE_SW_BOOTSTRAP__PCIE1_EP_RC_SEL__MASK;
+-				else
+-					regVal &= PCIE_SW_BOOTSTRAP__PCIE1_EP_RC_SEL__INV_MASK;
+-				break;
++			if (ep_rc == 1)
++				regVal |= PCIE_SW_BOOTSTRAP__PCIE1_EP_RC_SEL__MASK;
++			else
++				regVal &= PCIE_SW_BOOTSTRAP__PCIE1_EP_RC_SEL__INV_MASK;
++			break;
+ 		case 2 :
+-				if (ep_rc == 1)
+-					regVal |= PCIE_SW_BOOTSTRAP__PCIE2_EP_RC_SEL__MASK;
+-				else
+-					regVal &= PCIE_SW_BOOTSTRAP__PCIE2_EP_RC_SEL__INV_MASK;
+-				break;
++			if (ep_rc == 1)
++				regVal |= PCIE_SW_BOOTSTRAP__PCIE2_EP_RC_SEL__MASK;
++			else
++				regVal &= PCIE_SW_BOOTSTRAP__PCIE2_EP_RC_SEL__INV_MASK;
++			break;
+ 		case 3 :
+-				if (ep_rc == 1)
+-					regVal |= PCIE_SW_BOOTSTRAP__PCIE3_EP_RC_SEL__MASK;
+-				else
+-					regVal &= PCIE_SW_BOOTSTRAP__PCIE3_EP_RC_SEL__INV_MASK;
+-				break;
++			if (ep_rc == 1)
++				regVal |= PCIE_SW_BOOTSTRAP__PCIE3_EP_RC_SEL__MASK;
++			else
++				regVal &= PCIE_SW_BOOTSTRAP__PCIE3_EP_RC_SEL__INV_MASK;
++			break;
+ 		default :
+-				dev_err(pp->dev, "synopsys_pcie_set_bootstrap: which is %d Error\n", which);
++			dev_err(pp->dev, "synopsys_pcie_set_bootstrap: which is %d Error\n", which);
+ 				break;
+ 	}
+ 	synopsys_writel(pciewrap_base + PCIE_SW_BOOTSTRAP, regVal);
+ 	
+ }
++
+ static void synopsys_pcie_pcie_bifur(struct pcie_port *pp, int port_sel)
+ {
+ 	u32 regVal;
+@@ -370,26 +370,26 @@ static void synopsys_pcie_deassert_pipe_reset(struct pcie_port *pp, int which, i
+ 	regVal  = synopsys_readl(pciewrap_base + PCIE_PHY_RST_CTRL);
+ 	switch(which) {
+ 		case 1: 
+-				if (assert == 0)
+-					regVal |= PCIE_PHY_RST_CTRL__PIPE0_RESET_N__MASK;
+-				else
+-					regVal &= PCIE_PHY_RST_CTRL__PIPE0_RESET_N__INV_MASK;
+-				break;
++			if (assert == 0)
++				regVal |= PCIE_PHY_RST_CTRL__PIPE0_RESET_N__MASK;
++			else
++				regVal &= PCIE_PHY_RST_CTRL__PIPE0_RESET_N__INV_MASK;
++			break;
+ 		case 2: 
+-				if (assert == 0)
+-					regVal |= PCIE_PHY_RST_CTRL__PIPE1_RESET_N__MASK;
+-				else
+-					regVal &= PCIE_PHY_RST_CTRL__PIPE1_RESET_N__INV_MASK;
++			if (assert == 0)
++				regVal |= PCIE_PHY_RST_CTRL__PIPE1_RESET_N__MASK;
++			else
++				regVal &= PCIE_PHY_RST_CTRL__PIPE1_RESET_N__INV_MASK;
+ 				break;
+ 		case 3: 
+-				if (assert == 0)
+-					regVal |= PCIE_PHY_RST_CTRL__PIPE2_RESET_N__MASK;
+-				else
+-					regVal &= PCIE_PHY_RST_CTRL__PIPE2_RESET_N__INV_MASK;
+-				break;
++			if (assert == 0)
++				regVal |= PCIE_PHY_RST_CTRL__PIPE2_RESET_N__MASK;
++			else
++				regVal &= PCIE_PHY_RST_CTRL__PIPE2_RESET_N__INV_MASK;
++			break;
+ 		default:
+-				dev_err(pp->dev, "synopsys_pcie_deassert_pipe_reset: which is %d Error\n",which);
+-				break;
++			dev_err(pp->dev, "synopsys_pcie_deassert_pipe_reset: which is %d Error\n",which);
++			break;
+ 	}
+ 	synopsys_writel(pciewrap_base + PCIE_PHY_RST_CTRL, regVal);
+ }
+@@ -403,21 +403,21 @@ static void synopsys_pcie_pipe_ok(struct pcie_port *pp, int which)
+ 	switch(which) {
+ 		case 1: while ((regVal &= PCIE_PHY_PIPE_STAT__PIPE0_PHYSTATUS__MASK) != 0)
+ 		        {
+-					regVal = synopsys_readl(pciewrap_base + PCIE_PHY_PIPE_STAT);
++				regVal = synopsys_readl(pciewrap_base + PCIE_PHY_PIPE_STAT);
+ 		        }
+ 		        break;
+ 		case 2: while ((regVal &= PCIE_PHY_PIPE_STAT__PIPE1_PHYSTATUS__MASK) != 0)
+ 		        {
+-					regVal = synopsys_readl(pciewrap_base + PCIE_PHY_PIPE_STAT);
++				regVal = synopsys_readl(pciewrap_base + PCIE_PHY_PIPE_STAT);
+ 		        }
+ 		        break;
+ 		case 3: while ((regVal &= PCIE_PHY_PIPE_STAT__PIPE2_PHYSTATUS__MASK) != 0)
+ 		        {
+-					regVal = synopsys_readl(pciewrap_base + PCIE_PHY_PIPE_STAT);
++				regVal = synopsys_readl(pciewrap_base + PCIE_PHY_PIPE_STAT);
+ 		        }
+ 		default:
+-				dev_err(pp->dev, "synopsys_pcie_pipe_ok: which is %d Error\n",which);
+-				break;
++			dev_err(pp->dev, "synopsys_pcie_pipe_ok: which is %d Error\n",which);
++			break;
+ 	}
+ }
+ 
+@@ -427,51 +427,54 @@ static void synopsys_pcie_deassert_gpex_reset(struct pcie_port *pp, int which, i
+ 	void __iomem *pciewrap_base = pp->pciewrap_base;
+ 	
+ 	switch(which) {
+-		case 1: regVal  = synopsys_readl(pciewrap_base + PCIE1_SW_RST);
+-				if (assert == 0) {
+-					regVal |=(PCIE1_SW_RST__PAB_N__MASK  |
+-						      PCIE1_SW_RST__AMBA_N__MASK |
+-							  PCIE1_SW_RST__PBUS_N__MASK |
++		case 1:
++			regVal  = synopsys_readl(pciewrap_base + PCIE1_SW_RST);
++			if (assert == 0) {
++				regVal |=(PCIE1_SW_RST__PAB_N__MASK  |
++					      PCIE1_SW_RST__AMBA_N__MASK |
++						  PCIE1_SW_RST__PBUS_N__MASK |
+ 						      PCIE1_SW_RST__LINK_N__MASK);
+-				} else {
+-					regVal &=(PCIE1_SW_RST__PAB_N__MASK  &
++			} else {
++				regVal &=(PCIE1_SW_RST__PAB_N__MASK  &
+ 						      PCIE1_SW_RST__AMBA_N__MASK &
+ 							  PCIE1_SW_RST__PBUS_N__MASK &
+ 						      PCIE1_SW_RST__LINK_N__MASK);
+-				}
+-				synopsys_writel(pciewrap_base + PCIE1_SW_RST, regVal);
++			}
++			synopsys_writel(pciewrap_base + PCIE1_SW_RST, regVal);
+ 		        break;
+-		case 2: regVal  = synopsys_readl(pciewrap_base + PCIE2_SW_RST);
+-				if (assert == 0) {
+-					regVal |=(PCIE2_SW_RST__PAB_N__MASK  |
+-						      PCIE2_SW_RST__AMBA_N__MASK |
+-							  PCIE2_SW_RST__PBUS_N__MASK |
+-						      PCIE2_SW_RST__LINK_N__MASK);
+-				} else {
+-					regVal &=(PCIE2_SW_RST__PAB_N__MASK  &
+-						      PCIE2_SW_RST__AMBA_N__MASK &
+-							  PCIE2_SW_RST__PBUS_N__MASK &
+-						      PCIE2_SW_RST__LINK_N__MASK);
+-				}
+-				synopsys_writel(pciewrap_base + PCIE2_SW_RST, regVal);
++		case 2:
++			regVal  = synopsys_readl(pciewrap_base + PCIE2_SW_RST);
++			if (assert == 0) {
++				regVal |=(PCIE2_SW_RST__PAB_N__MASK  |
++					      PCIE2_SW_RST__AMBA_N__MASK |
++						  PCIE2_SW_RST__PBUS_N__MASK |
++					      PCIE2_SW_RST__LINK_N__MASK);
++			} else {
++				regVal &=(PCIE2_SW_RST__PAB_N__MASK  &
++					      PCIE2_SW_RST__AMBA_N__MASK &
++						  PCIE2_SW_RST__PBUS_N__MASK &
++					      PCIE2_SW_RST__LINK_N__MASK);
++			}
++			synopsys_writel(pciewrap_base + PCIE2_SW_RST, regVal);
+ 		        break;
+-		case 3: regVal  = synopsys_readl(pciewrap_base + PCIE3_SW_RST);
+-				if (assert == 0) {
+-					regVal |=(PCIE3_SW_RST__PAB_N__MASK  |
+-						      PCIE3_SW_RST__AMBA_N__MASK |
+-							  PCIE3_SW_RST__PBUS_N__MASK |
+-						      PCIE3_SW_RST__LINK_N__MASK);
+-				} else {
+-					regVal &=(PCIE3_SW_RST__PAB_N__MASK  &
+-						      PCIE3_SW_RST__AMBA_N__MASK &
+-							  PCIE3_SW_RST__PBUS_N__MASK &
++		case 3: 
++			regVal  = synopsys_readl(pciewrap_base + PCIE3_SW_RST);
++			if (assert == 0) {
++				regVal |=(PCIE3_SW_RST__PAB_N__MASK  |
++					      PCIE3_SW_RST__AMBA_N__MASK |
++						  PCIE3_SW_RST__PBUS_N__MASK |
+ 						      PCIE3_SW_RST__LINK_N__MASK);
+-				}
+-				synopsys_writel(pciewrap_base + PCIE3_SW_RST, regVal);
++			} else {
++				regVal &=(PCIE3_SW_RST__PAB_N__MASK  &
++					      PCIE3_SW_RST__AMBA_N__MASK &
++						  PCIE3_SW_RST__PBUS_N__MASK &
++					      PCIE3_SW_RST__LINK_N__MASK);
++			}
++			synopsys_writel(pciewrap_base + PCIE3_SW_RST, regVal);
+ 		        break;
+ 		default:
+-				dev_err(pp->dev, "synopsys_pcie_deassert_gpex_reset: which is %d Error\n",which);
+-				break;
++			dev_err(pp->dev, "synopsys_pcie_deassert_gpex_reset: which is %d Error\n",which);
++			break;
+ 	}
+ }
+ 
+@@ -522,82 +525,82 @@ static void synopsys_pcie_AxiToPexInit(struct pcie_port *pp, int which, int wher
+ 	
+ 	switch (which)	{
+ 		case 1:
+-				// PCIE1 has 512 MB AXI target space
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_PIO_CTRL0, ENABLE_ALL_ACCESS_TYPE|ENABLE_PORT);
++			// PCIE1 has 512 MB AXI target space
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_PIO_CTRL0, ENABLE_ALL_ACCESS_TYPE|ENABLE_PORT);
+ 				
+-				// - window 0
+-				//   - CFG access
+-				//   - 256 MB
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL0,      PAB_AXI_AMAP_CTRL_256_CFG);
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE0,  AXI_ADDR_PCIE1_TO_PCIE23_CFG);		// AXI_ADDR_PCIE1_TO_PCIE23_CFG=0x40000000
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL0, 0x00000000);  // should be 0 for cfg
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH0, 0x00000000);  // should be 0 for cfg
+-
+-				// - window 1
+-				//   - MEM access
+-				//   - 128 MB
+-				//   - axi side is not where dependent
+-				//   - pex side is where dependent
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL1,      PAB_AXI_AMAP_CTRL_128_MEM);
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE1,  AXI_ADDR_PCIE1_TO_PCIE23_DDR);		// AXI_ADDR_PCIE1_TO_PCIE23_DDR=0x50000000
+-
+-				if (where == 2) {
+-					if (who_is_rc == 2) {
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE2_DDR_RC);
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE2_DDR_RC);
+-					} else {
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE2_DDR);
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE2_DDR);
+-					}
+-				} else if (where == 3){	
+-					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE3_DDR);
+-					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE3_DDR);
++			// - window 0
++			//   - CFG access
++			//   - 256 MB
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL0,      PAB_AXI_AMAP_CTRL_256_CFG);
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE0,  AXI_ADDR_PCIE1_TO_PCIE23_CFG);		// AXI_ADDR_PCIE1_TO_PCIE23_CFG=0x40000000
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL0, 0x00000000);  // should be 0 for cfg
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH0, 0x00000000);  // should be 0 for cfg
++
++			// - window 1
++			//   - MEM access
++			//   - 128 MB
++			//   - axi side is not where dependent
++			//   - pex side is where dependent
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL1,      PAB_AXI_AMAP_CTRL_128_MEM);
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE1,  AXI_ADDR_PCIE1_TO_PCIE23_DDR);		// AXI_ADDR_PCIE1_TO_PCIE23_DDR=0x50000000
++
++			if (where == 2) {
++				if (who_is_rc == 2) {
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE2_DDR_RC);
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE2_DDR_RC);
+ 				} else {
+-//					qlLogStrOut("Error! qlAxiToPexInit called with illegal where and which combination");
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE2_DDR);
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE2_DDR);
+ 				}
+-				// - window2
+-				//   - MEM access
+-				//   - 64 MB
+-				//   - axi side is not where dependent
+-				//   - pex side is where dependent
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL2,      PAB_AXI_AMAP_CTRL_64_MEM);
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE2,  AXI_ADDR_PCIE1_TO_PCIE23_SP);		// AXI_ADDR_PCIE1_TO_PCIE23_SP=0x58000000 
+-				if (where == 2) {
+-					if (who_is_rc == 2) {
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL2, PEX_ADDR_L_PCIE2_SP_RC);
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH2, PEX_ADDR_H_PCIE2_SP_RC);
+-					} else {
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL2, PEX_ADDR_L_PCIE2_SP);
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH2, PEX_ADDR_H_PCIE2_SP);
+-					}
+-				} else if (where == 3){	
+-					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL2, PEX_ADDR_L_PCIE3_SP);
+-					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH2, PEX_ADDR_H_PCIE3_SP);
++			} else if (where == 3){	
++				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE3_DDR);
++				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE3_DDR);
++			} else {
++//				qlLogStrOut("Error! qlAxiToPexInit called with illegal where and which combination");
++			}
++			// - window2
++			//   - MEM access
++			//   - 64 MB
++			//   - axi side is not where dependent
++			//   - pex side is where dependent
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL2,      PAB_AXI_AMAP_CTRL_64_MEM);
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE2,  AXI_ADDR_PCIE1_TO_PCIE23_SP);		// AXI_ADDR_PCIE1_TO_PCIE23_SP=0x58000000 
++			if (where == 2) {
++				if (who_is_rc == 2) {
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL2, PEX_ADDR_L_PCIE2_SP_RC);
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH2, PEX_ADDR_H_PCIE2_SP_RC);
+ 				} else {
+-//					qlLogStrOut("Error! qlAxiToPexInit called with illegal where and which combination");
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL2, PEX_ADDR_L_PCIE2_SP);
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH2, PEX_ADDR_H_PCIE2_SP);
+ 				}
+-				// - window 3
+-				//   - axi side is not where dependent
+-				//   - pex side is where dependent
+-				//   - MEM access
+-				//   - 64 MB
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL3,      PAB_AXI_AMAP_CTRL_64_MEM);
+-				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE3,  AXI_ADDR_PCIE1_TO_PCIE23_XYZ);		// AXI_ADDR_PCIE1_TO_PCIE23_XYZ=0x5C000000
+-				if (where == 2) {
+-					if (who_is_rc == 2) {
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL3, PEX_ADDR_PCIE2_XYZ_RC);
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH3, 0x00000000); 
+-					} else {
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL3, PEX_ADDR_PCIE2_XYZ);
+-						synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH3, 0x00000000); 
+-					}
+-				} else if (where == 3){	
+-					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL3, PEX_ADDR_PCIE3_XYZ);
+-					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH3, 0x00000000);
++			} else if (where == 3){	
++				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL2, PEX_ADDR_L_PCIE3_SP);
++				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH2, PEX_ADDR_H_PCIE3_SP);
++			} else {
++//				qlLogStrOut("Error! qlAxiToPexInit called with illegal where and which combination");
++			}
++			// - window 3
++			//   - axi side is not where dependent
++			//   - pex side is where dependent
++			//   - MEM access
++			//   - 64 MB
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL3,      PAB_AXI_AMAP_CTRL_64_MEM);
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE3,  AXI_ADDR_PCIE1_TO_PCIE23_XYZ);		// AXI_ADDR_PCIE1_TO_PCIE23_XYZ=0x5C000000
++			if (where == 2) {
++				if (who_is_rc == 2) {
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL3, PEX_ADDR_PCIE2_XYZ_RC);
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH3, 0x00000000); 
+ 				} else {
+-//					qlLogStrOut("Error! qlAxiToPexInit called with illegal where and which combination");
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL3, PEX_ADDR_PCIE2_XYZ);
++					synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH3, 0x00000000); 
+ 				}
+-				break;
++			} else if (where == 3){	
++				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL3, PEX_ADDR_PCIE3_XYZ);
++				synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH3, 0x00000000);
++			} else {
++//				qlLogStrOut("Error! qlAxiToPexInit called with illegal where and which combination");
++			}
++			break;
+ 		case 2:
+ 				// PCIE2 has 256 MB AXI target space
+ 				synopsys_writel(pciegen3_base2 + PCIE_PAB_AXI_PIO_CTRL0, ENABLE_ALL_ACCESS_TYPE|ENABLE_PORT);
+@@ -1173,7 +1176,7 @@ static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+ 	if (IS_ERR(pp->pciegen3_base3))
+ 		return PTR_ERR(pp->pciegen3_base3);
+ 	
+-	pp->irq = IRQ_V2M_PCIE
++	pp->irq = IRQ_V2M_PCIE;
+ //	pp->irq = platform_get_irq(pdev, 1);
+ 	if (!pp->irq) {
+ 		dev_err(pp->dev, "add_pcie_port: failed to get irq\n");
+@@ -1200,7 +1203,7 @@ static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ {
+ 	struct pcie_port *pp;
+-#if 0
++#if 1
+ #else
+ 	struct device_node *np = pdev->dev.of_node;
+ 	struct of_pci_range range;
+@@ -1218,7 +1221,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 
+ 	pp->dev = &pdev->dev;
+ 
+-#if 0
++#if 1
+ 	pp->resetgen.name       = "resetgen";
+ 	pp->resetgen.start      = max_t(resource_size_t, PCIBIOS_MIN_IO, RSTGEN_BASE);
+ 	pp->resetgen.end        = min_t(resource_size_t, IO_SPACE_LIMIT, RSTGEN_BASE + 0x10000);
+@@ -1252,7 +1255,9 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	pp->config[1].cfg.name  = "Config";
+ 	pp->config[1].cfg.start = max_t(resource_size_t, PCIBIOS_MIN_IO, AXI_ADDR_PCIE2_TO_PCIE13_XYZ);
+ 	pp->config[1].cfg.end   = min_t(resource_size_t, IO_SPACE_LIMIT, AXI_ADDR_PCIE2_TO_PCIE13_XYZ + 0x04000000);	//  64M
++
+ #else
++
+ 	if (of_pci_range_parser_init(&parser, np)) {
+ 		dev_err(pp->dev, "synopsys_pcie_probe: missing ranges property\n");
+ 		return -EINVAL;
+@@ -1287,7 +1292,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 		}
+ 	}
+ #endif
+-
++/*
+ 	pp->clk = devm_clk_get(&pdev->dev, "pcie");
+ 	if (IS_ERR(pp->clk)) {
+ 		dev_err(pp->dev, "synopsys_pcie_probe: Failed to get pcie rc clock\n");
+@@ -1306,7 +1311,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	ret = clk_prepare_enable(pp->bus_clk);
+ 	if (ret)
+ 		goto fail_clk;
+-
++*/
+ 	ret = add_pcie_port(pp, pdev);
+ 	if (ret < 0)
+ 		goto fail_bus_clk;
+-- 
+1.7.1
+

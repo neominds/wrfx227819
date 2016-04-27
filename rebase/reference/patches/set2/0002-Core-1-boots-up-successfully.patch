@@ -1,0 +1,69 @@
+From be71ca5df774afe3e2dc9cf437c839e77c329d37 Mon Sep 17 00:00:00 2001
+From: Tomohiro Masubuchi <Tomohiro.Masubuchi@fujixerox.co.jp>
+Date: Fri, 23 Jan 2015 14:34:21 +0900
+Subject: [PATCH 2/2] * Core 1 boots up successfully
+
+Note: HIGHMEM doesn't work
+---
+ arch/arm/kernel/head.S          |   10 ++++++++++
+ arch/arm/mach-lm2/Makefile.boot |    2 +-
+ arch/arm/mm/proc-v7-3level.S    |    2 +-
+ 3 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/kernel/head.S b/arch/arm/kernel/head.S
+index 413ee1a..af5a1a6 100644
+--- a/arch/arm/kernel/head.S
++++ b/arch/arm/kernel/head.S
+@@ -424,7 +424,11 @@ ENTRY(secondary_startup)
+ 	ldr	r4, [r7, lr]			@ get secondary_data.pgdir
+ 	add	r7, r7, #4
+ 	ldr	r8, [r7, lr]			@ get secondary_data.swapper_pg_dir
++#if 0
+ 	adr	lr, BSYM(__enable_mmu)		@ return address
++#else
++	adr	lr, BSYM(__fixup_tlb)		@ return address
++#endif
+ 	mov	r13, r12			@ __secondary_switched address
+  ARM(	add	pc, r10, #PROCINFO_INITFUNC	) @ initialise processor
+ 						  @ (return control reg)
+@@ -432,6 +436,12 @@ ENTRY(secondary_startup)
+  THUMB(	mov	pc, r12				)
+ ENDPROC(secondary_startup)
+ 
++ENTRY(__fixup_tlb)
++	mov	r10, #0
++	mcr	p15, 0, r10, c8, c7, 0	@ Invalidate TLB
++	adr	pc, BSYM(__enable_mmu)
++ENDPROC(__fixup_tlb)
++
+ 	/*
+ 	 * r6  = &secondary_data
+ 	 */
+diff --git a/arch/arm/mach-lm2/Makefile.boot b/arch/arm/mach-lm2/Makefile.boot
+index abeff2c..2735832 100644
+--- a/arch/arm/mach-lm2/Makefile.boot
++++ b/arch/arm/mach-lm2/Makefile.boot
+@@ -3,6 +3,6 @@
+ #   zreladdr-y	+= 0x05008000
+ #params_phys-y	:= 0x05000100
+ #initrd_phys-y	:= 0x05000000
+-   zreladdr-y	+= 0x00008000
++   zreladdr-y	+= 0x05008000
+ params_phys-y	:= 0x00000100
+ initrd_phys-y	:= 0x00000000
+diff --git a/arch/arm/mm/proc-v7-3level.S b/arch/arm/mm/proc-v7-3level.S
+index 25ab716..ac5f230 100644
+--- a/arch/arm/mm/proc-v7-3level.S
++++ b/arch/arm/mm/proc-v7-3level.S
+@@ -47,7 +47,7 @@
+ #  define rpgdh	r0
+ #endif
+ 
+-/* #define	TTBL0_OFF */ /* Supported SMP */
++#define	TTBL0_OFF /* Supported SMP */
+ /*
+  * cpu_v7_switch_mm(pgd_phys, tsk)
+  *
+-- 
+1.7.9.5
+

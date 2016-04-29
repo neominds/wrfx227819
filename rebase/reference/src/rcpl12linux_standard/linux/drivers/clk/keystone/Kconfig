@@ -1,0 +1,6 @@
+config  CLK_KEYSTONE_PLL
+	bool "Keystone Main PLL clock"
+	---help---
+	  Selects the clock driver for Keystone Main PLL. This clock
+	  hardware is found on TI c6x based SoCs
+

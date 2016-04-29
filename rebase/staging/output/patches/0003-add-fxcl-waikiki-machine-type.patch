@@ -1,6 +1,6 @@
-From ed0af734ecac3b06e42184dc08b70af61f238beb Mon Sep 17 00:00:00 2001
+From a2bb4ecefdfbecf397a9b482dc1b6151ff1488f7 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:21:12 +0900
+Date: Thu, 28 Apr 2016 23:35:00 +0900
 Subject: [PATCH 004/170] 0003-add-fxcl-waikiki-machine-type
 
 

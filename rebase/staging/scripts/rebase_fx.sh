@@ -32,13 +32,13 @@ patch_12base()
  count=$2
 
  quiet_git checkout br12
- patch -p1 --dry-run --silent < ../../../reference/patches/set3/$patchname.patch
+ patch -p1 --dry-run --silent < $patches_dir_curr_base/$patchname.patch
  if [ $? -ne 0 ];
  then
 	echo Patch failed on br12. Aborting..
  	exit 1
  else
-	patch -p1 < ../../../reference/patches/set3/$patchname.patch >/dev/null
+	patch -p1 < $patches_dir_curr_base/$patchname.patch >/dev/null
  fi
  quiet_git add -A
  echo -ne "                                                                                                \r"
@@ -46,105 +46,132 @@ patch_12base()
  quiet_git commit -m "$patchname"
 }
 
-echo Removing current repo..
-rm -rf staging_git
-mkdir staging_git
-cd staging_git
+rebase_patches()
+{
+ echo Removing current repo..
+ rm -rf staging_git_$kernel_type
+ mkdir staging_git_$kernel_type
+ cd staging_git_$kernel_type
 
-echo Creating 12_base..
-cp -R ../../../reference/src/rcpl12linux/linux/* .
-cp -R ../../../reference/src/rcpl12linux/delta/* .
-git init
-git config --global merge.tool meld
-quiet_git add -A
-quiet_git commit -m "rcpl12 base"
-quiet_git branch br12
-quiet_git branch br27
+ echo Creating 12_base..
+ cp -R "$reference_dir_curr_base"_$kernel_type/linux/* .
+ cp -R "$reference_dir_curr_base"_$kernel_type/delta/* .
+ git init
+ git config --global merge.tool meld
+ quiet_git add -A
+ quiet_git commit -m "rcpl12 base"
+ quiet_git branch br12
+ quiet_git branch br27
 
-quiet_git checkout br27
-cp -R ../../../reference/src/rcpl27linux/linux/* .
-cp -R ../../../reference/src/rcpl27linux/delta/* .
-quiet_git add -A
-quiet_git commit -m "rcpl27 base"
-quiet_git branch br27_1
-echo RCPL0027 branch set up. 
+ quiet_git checkout br27
+ cp -R "$reference_dir_new_base"_$kernel_type/linux/* .
+ cp -R "$reference_dir_new_base"_$kernel_type/delta/* .
+ quiet_git add -A
+ quiet_git commit -m "rcpl27 base"
+ quiet_git branch br27_1
+ echo RCPL0027 branch set up. 
 
-# for all patches in list
-# apply to br12 branch one by one.
-count=0
-while IFS='' read -r line || [[ -n "$line" ]]; do
+ # for all patches in list
+ # apply to br12 branch one by one.
+ count=0
+ while IFS='' read -r line || [[ -n "$line" ]]; do
 	patch_12base $line $count
 	count=$((count+1))
-done < "./../patchnames_to_rebase.txt"
-echo 
+ done < "./../"$patchlist_filename"_$kernel_type.txt" 
 
-# rebase algo
-# do
-#{
-#    	status = try rebase
-#	if status = error
-#		try resolve conflict
-#		status = git rebase continue
-#	fi
-#}while (status != 0 )	
+ echo 
 
-# rebase br12 to br27_1
-echo Rebasing..
-quiet_git checkout br12
-quiet_git rebase br27_1
-rebase_status=$?
-while
+ # rebase algo
+ # do
+ #{
+ #    	status = try rebase
+ #	if status = error
+ #		try resolve conflict
+ #		status = git rebase continue
+ #	fi
+ #}while (status != 0 )	
+
+ # rebase br12 to br27_1
+ echo Rebasing..
+ quiet_git checkout br12
+ quiet_git rebase br27_1
+ rebase_status=$?
+ while
 	if [ $rebase_status -ne 0 ]; then
 		#there is a conflict - try resolving
 		lastone=`cat .git/rebase-apply/final-commit`
 		echo Rebase failed at $lastone 
 		echo Attempting to resolve..
 
-		if [ -d "../../resolved/$lastone" ]; then 
-			if [ ! -f ../../resolved/$lastone/resolve.txt ]; then
+		if [ -d "$resolve_dir/$lastone" ]; then 
+			if [ ! -f $resolve_dir/$lastone/resolve.txt ]; then
 				echo You must create a resolve.txt for merge resolutions.
 				echo Will not proceed without resolve.txt
 				exit 1
 			fi
-			cp -R ../../resolved/$lastone/* .
+			cp -R $resolve_dir/$lastone/* .
 			rm ./resolve.txt
 			quiet_git add -A
         		quiet_git rebase --continue
 			rebase_status=$?
 		else
 			rebase_status=0
-			echo Could not find resolve directory "../../resolved/$lastone"
+			echo Could not find resolve directory "$resolve_dir/$lastone"
 			next=`cat .git/rebase-apply/next`
 			echo Rebased $((next-1)) of `cat .git/rebase-apply/last`.
 			echo Starting mergetool.
 			git mergetool
 			echo Cannot commit resolutions from merge tool.
-			echo Add resolved files to resolved directory and re-run rebase_am.
+			echo Add resolved files to resolve directory and re-run rebase_fx.
 			exit 1
 		fi
 	fi
 	[ "$rebase_status" -ne 0 ]
-do :; done
+ do :; done
 
-#generate rebase patches
-echo
-echo All resolved, generating rebased-patches...
-quiet_git format-patch -p -$count 
-rm -f ./../../output/patches/*.patch
-mv *.patch ./../../output/patches/
-cd ../../output/patches
-for f in *.patch; do 
+ #generate rebase patches
+ echo
+ echo All resolved, generating rebased-patches...
+ quiet_git format-patch -p -$count 
+ rm -f ./../$output_dir/patches/*.patch
+ mv *.patch ./../$output_dir/patches/
+ cd ./../$output_dir/patches
+ for f in *.patch; do 
 	mv $f `echo $f|cut -c 6-`; 
-done
-cd - >/dev/null 
-#ls -l ./../../output/patches/*.patch
-echo
-echo Completed `ls -l ./../../output/patches/*.patch|wc -l` rebased patches.
+ done
+ cd - >/dev/null 
+ #ls -l ./../$output_dir/patches/*.patch
+ echo
+ echo Completed `ls -l ./../$output_dir/patches/*.patch|wc -l` rebased patches.
 
-#create new layer fxcl-honolulu-lm2 
-rm -f ./../../output/layers/3/fxcl-honolulu-lm2/recipes-kernel/linux/files/*.patch
-cp ./../../output/patches/*.patch ./../../output/layers/3/fxcl-honolulu-lm2/recipes-kernel/linux/files/
-ldir=../../output/layers/3/fxcl-honolulu-lm2/
+ #create new layer fxcl-honolulu-lm2 
+ rm -f ./../$output_dir/layers/3/fxcl-honolulu-lm2/recipes-kernel/linux/files/*.patch
+ cp ./../$output_dir/patches/*.patch ./../$output_dir/layers/3/fxcl-honolulu-lm2/recipes-kernel/linux/files/
+ cd ..
+}
+
+# start point of script
+# If you would need to change any input/output
+# directories to the script, do it below
+output_dir=./../output
+resolve_dir=../../resolved
+patches_dir_curr_base=../../../reference/patches/set3
+reference_dir_curr_base=./../../../reference/src/rcpl12linux
+reference_dir_new_base=./../../../reference/src/rcpl27linux
+patchlist_filename=patchnames_to_rebase
+
+kernel_type=standard
+echo "[-----Rebasing standard kernel-------]"
+current=`pwd`
+rebase_patches
+cd $current
+
+kernel_type=preempt
+echo "[-----Rebasing preempt kernel-------]"
+rebase_patches
+cd $current
+
+ldir=$output_dir/layers/3/fxcl-honolulu-lm2/
 ldirabs="$(dirname $(readlink -e $ldir))/$(basename $ldir)"
 echo New layer created at $ldirabs
 

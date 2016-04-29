@@ -1,6 +1,6 @@
-From a5222e4e223cacf6ce5cd63ada26e96bc7e48d07 Mon Sep 17 00:00:00 2001
+From 77a79d2136c863723f6065d28033dffa017972d6 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:21:44 +0900
+Date: Thu, 28 Apr 2016 23:35:34 +0900
 Subject: [PATCH 027/170] 0026-isolate-gpio-driver
 
 

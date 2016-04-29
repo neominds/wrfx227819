@@ -1,0 +1,42 @@
+menu "TI DaVinci Clock Drivers"
+	depends on COMMON_CLK
+
+config  CLK_DAVINCI_PSC
+	bool "TI DaVici PSC Clock driver"
+	default n
+	---help---
+	  Selects clock driver for DaVinci PSC clocks. This clock
+	  hardware is found on TI DaVinci SoCs and other SoCs that
+	  uses this hardware IP. This hardware has a local power
+	  sleep control module that gate the clock to the IP.
+
+config  CLK_DAVINCI_PLL
+	bool "DaVici Main PLL clock"
+	---help---
+	  Selects clock driver for DaVinci Main PLL. This clock
+	  hardware is found on TI DaVinci SoCs. This typically has
+	  a multiplier, a pre divider and post driver. Some of the
+	  SoCs has the the dividers fixed, and others have it
+	  programmable
+
+config DAVINCI_CLKS
+	bool "TI DaVinci common clocks"
+	default n
+	select CLK_DAVINCI_PSC
+	select DAVINCI_CLKINIT
+	---help---
+	  Selects common clock drivers for DaVinci. These clocks
+	  are re-used across many TI SoCs that are based on DaVinci and
+	  Keystone (c6x) families. This config option is used to select
+	  the common clock driver for DaVinci based SoCs. SoCs specific
+	  Kconfig option needs to select the driver for clocks specific
+	  to the SoC.
+
+config	DAVINCI_CLKINIT
+	bool "TI DaVici Clock initialization"
+	default n
+	---help---
+	  Selects clock driver initialization for DaVinci and Keystone
+	  architectures.
+endmenu
+

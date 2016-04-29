@@ -1,6 +1,6 @@
-From fbf6983051835516f29391d364f92afdda4e5f73 Mon Sep 17 00:00:00 2001
+From 19b6853ff16062db61f11f78aeac1efd47e5ee60 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:21:08 +0900
+Date: Thu, 28 Apr 2016 23:34:56 +0900
 Subject: [PATCH 001/170] 0000-set-preempt-kernel-type
 
 

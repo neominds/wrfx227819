@@ -1,6 +1,6 @@
-From 4094f24a36824f4ffdd8c174a4faa5ef0aff35a2 Mon Sep 17 00:00:00 2001
+From 8811f66e0c98a56f98f927379584b0097e4ceaf4 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:22:51 +0900
+Date: Thu, 28 Apr 2016 23:36:41 +0900
 Subject: [PATCH 079/170] 0001-SATA-clock-and-phys-adjustment
 
 

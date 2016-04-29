@@ -1,1 +1,2 @@
-./rebase/staging/scripts/staging_git/
+./rebase/staging/scripts/staging_git_preempt/
+./rebase/staging/scripts/staging_git_standard/

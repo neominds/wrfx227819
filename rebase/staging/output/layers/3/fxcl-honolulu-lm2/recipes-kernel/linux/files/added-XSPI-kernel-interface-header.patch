@@ -1,6 +1,6 @@
-From f4295c3a5df5870e8bef4a1d4b9ea4bac85e9840 Mon Sep 17 00:00:00 2001
+From 83dd84244737a519743f0e22f9f3c08193ed5484 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:22:25 +0900
+Date: Thu, 28 Apr 2016 23:36:16 +0900
 Subject: [PATCH 059/170] added-XSPI-kernel-interface-header
 
 

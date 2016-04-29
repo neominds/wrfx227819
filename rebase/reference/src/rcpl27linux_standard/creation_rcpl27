@@ -1,0 +1,109 @@
+Configure command:
+/home/fx227819/WindRiver/wrlinux-6/wrlinux/configure --enable-board=bcm-563xx --enable-build=production --enable-jobs=4 --enable-kernel=preempt-rt --enable-parallel-pkgbuilds=4 --enable-rootfs=glibc_small+debug --with-rcpl-version=0027
+
+Configure output:
+make: write error
+WARNING: Following packages need to be installed: screen file diffutils make xz patch tar wget bzip2 pygtk2 git chrpath help2man gcc-c++ gcc gawk texinfo SDL-devel mesa-libGLU mesa-libGL subversion diffstat texi2html 
+rsyncing /home/fx227819/WindRiver/wrlinux-6/layers/binary-toolchain-4.8-47/stuff to /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/binary-toolchain-4.8-47.
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/bitbake from /home/fx227819/WindRiver/wrlinux-6/git/bitbake (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/bitbake'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/oe-core from /home/fx227819/WindRiver/wrlinux-6/git/oe-core (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/oe-core'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/meta-networking from /home/fx227819/WindRiver/wrlinux-6/git/meta-networking (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/meta-networking'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/meta-webserver from /home/fx227819/WindRiver/wrlinux-6/git/meta-webserver (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/meta-webserver'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wrlinux from /home/fx227819/WindRiver/wrlinux-6/layers/wrlinux (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wrlinux'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wrlcompat from /home/fx227819/WindRiver/wrlinux-6/layers/wrlcompat (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wrlcompat'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-toolchain-shim from /home/fx227819/WindRiver/wrlinux-6/layers/wr-toolchain-shim (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-toolchain-shim'...
+done.
+
+Already on 'LB28_6.0_RCPL0027'
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-tcwrappers from /home/fx227819/WindRiver/wrlinux-6/layers/wr-tcwrappers (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-tcwrappers'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-kernel from /home/fx227819/WindRiver/wrlinux-6/layers/wr-kernel (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-kernel'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-bsps/bcm-563xx from /home/fx227819/WindRiver/wrlinux-6/layers/wr-bsps/bcm-563xx (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-bsps/bcm-563xx'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-base from /home/fx227819/WindRiver/wrlinux-6/layers/wr-base (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-base'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-fixes from /home/fx227819/WindRiver/wrlinux-6/layers/wr-fixes (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-fixes'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-tools-profile from /home/fx227819/WindRiver/wrlinux-6/layers/wr-tools-profile (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-tools-profile'...
+done.
+
+Cloning /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-tools-debug from /home/fx227819/WindRiver/wrlinux-6/layers/wr-tools-debug (LB28_6.0_RCPL0027)
+Cloning into '/home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/layers/wr-tools-debug'...
+done.
+
+Generating bitbake config
+Substituting scripts and Makefiles
+config.status.in is NEWER, copy and re-exec
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/Makefile
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/scripts/fakestart.sh
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/scripts/user-nfs.sh
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/scripts/wrl-env-internal
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/scripts/wrl-env-setup.mk
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/scripts/autoconf.mk
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/scripts/quiltPatterns.txt
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/scripts/export-layer.sh
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/build/Makefile
+Updating: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/build-tools/Makefile
+Generating wrlinux compatibility config
+Setting up host-cross and links
+Setting up packages link
+Creating export directory
+Creating project properties
+NOTE: Sanity check: Compiler args OK for armv7at-vfpv3.
+NOTE: Started PRServer with DBfile: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/bitbake_build/cache/prserv.sqlite3, IP: 127.0.0.1, PORT: 55899, PID: 17059
+Parsing recipes...done.
+Parsing of 1122 .bb files complete (0 cached, 1122 parsed). 1483 targets, 106 skipped, 11 masked, 0 errors.
+Generating package and dependency lists
+Setting up host-cross and links
+Setting up packages link
+Creating export directory
+Creating project properties
+NOTE: Sanity check: Compiler args OK for armv7at-vfpv3.
+NOTE: Started PRServer with DBfile: /home/fx227819/WindRiver/workspace/bcm56RCPL27_prj/bitbake_build/cache/prserv.sqlite3, IP: 127.0.0.1, PORT: 43164, PID: 17359
+Loading cache...done.
+Loaded 1482 entries from dependency cache.
+Parsing recipes...done.
+Parsing of 1122 .bb files complete (1120 cached, 2 parsed). 1483 targets, 106 skipped, 11 masked, 0 errors.
+NOTE: Resolving any missing task queue dependencies
+NOTE: Preparing runqueue
+NOTE: PN build list saved to 'pn-buildlist'
+NOTE: PN dependencies saved to 'pn-depends.dot'
+NOTE: Package dependencies saved to 'package-depends.dot'
+NOTE: Task dependencies saved to 'task-depends.dot'
+
+Build configuration summary
+  Board         :  bcm-563xx
+  Filesystem    :  glibc-small (wrlinux-image-glibc-small)
+  Kernel Config :  preempt-rt
+

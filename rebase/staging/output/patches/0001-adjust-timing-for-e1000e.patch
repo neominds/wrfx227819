@@ -1,6 +1,6 @@
-From 29e3bd89e9e23d5bdbcc55adb624de1381dc19d6 Mon Sep 17 00:00:00 2001
+From 28ee6bb6bfa58b358e79c115bee97f4afac522d3 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:23:28 +0900
+Date: Thu, 28 Apr 2016 23:37:19 +0900
 Subject: [PATCH 108/170] 0001-adjust-timing-for-e1000e
 
 

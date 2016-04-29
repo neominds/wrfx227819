@@ -1,6 +1,6 @@
-From 34da537263ecbca2c45c748c05a28ff4fde093df Mon Sep 17 00:00:00 2001
+From 4d1eba199a62a326e9d31b407503b0ccff1a30f5 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:23:33 +0900
+Date: Thu, 28 Apr 2016 23:37:24 +0900
 Subject: [PATCH 112/170] 0001-fixed-usb-gadget-isuue
 
 

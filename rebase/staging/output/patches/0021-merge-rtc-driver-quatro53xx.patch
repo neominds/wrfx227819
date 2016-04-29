@@ -1,6 +1,6 @@
-From 8c17d593f4ba912c96cf9f0b0df3476edcf7faad Mon Sep 17 00:00:00 2001
+From c0c02fa5f82336879b3a5cfd9f8177b60d1c3ba2 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:21:37 +0900
+Date: Thu, 28 Apr 2016 23:35:28 +0900
 Subject: [PATCH 022/170] 0021-merge-rtc-driver-quatro53xx
 
 

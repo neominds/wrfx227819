@@ -1,6 +1,6 @@
-From c190709bd9e8f255a0e0c08e4de438ff73dcd769 Mon Sep 17 00:00:00 2001
+From 2a7696a43e7b57590026ed8030c2cdb90b8199da Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:22:10 +0900
+Date: Thu, 28 Apr 2016 23:36:00 +0900
 Subject: [PATCH 047/170] i2c-bigfix
 
 

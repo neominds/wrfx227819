@@ -1,6 +1,6 @@
-From 7ffe4cf4f612e879185257776c903b0388555060 Mon Sep 17 00:00:00 2001
+From f1c16b7b91876b5e08071962fb5bdb6b901fcb44 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:22:23 +0900
+Date: Thu, 28 Apr 2016 23:36:13 +0900
 Subject: [PATCH 057/170] PCIE-adjust-configuration
 
 

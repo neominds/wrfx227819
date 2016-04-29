@@ -1,6 +1,6 @@
-From 49c9d9a6c0cb199cae90be98aff0072fb834803b Mon Sep 17 00:00:00 2001
+From f081865326fef3b6054b719faac4b39fa800d524 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:24:26 +0900
+Date: Thu, 28 Apr 2016 23:38:17 +0900
 Subject: [PATCH 153/170] 0001-PCIe_e1000e_workaround_fix
 
 

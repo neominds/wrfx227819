@@ -1,6 +1,6 @@
-From 6caff76065cb3c668905930501784ab7983d6f2d Mon Sep 17 00:00:00 2001
+From fc28d9ae9134ff6f9c126dfdfe84af4a2867be7a Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:22:32 +0900
+Date: Thu, 28 Apr 2016 23:36:22 +0900
 Subject: [PATCH 064/170] 0001-remove-litaral-mode
 
 

@@ -1,0 +1,8 @@
+config IPROC_MDIO
+	tristate "MDIO support"
+	depends on ARCH_IPROC
+	default n
+	help
+	  MDIO support 
+	
+	  If unsure, say N.

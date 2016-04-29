@@ -1,6 +1,6 @@
-From a41eb6ef0091526cc7d6f348962118aeefe82a3e Mon Sep 17 00:00:00 2001
+From 3f5e19ad608d711f883bcb97b909571154fe5f53 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:21:14 +0900
+Date: Thu, 28 Apr 2016 23:35:04 +0900
 Subject: [PATCH 006/170] 0005-add-fxcl-usb-phy-base
 
 

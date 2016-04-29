@@ -1,6 +1,6 @@
-From 744d35b5aedd1ba4cee48c55bfa914de2469ee64 Mon Sep 17 00:00:00 2001
+From afba2d5b5657b06fb4101bff68418251581c7948 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:24:23 +0900
+Date: Thu, 28 Apr 2016 23:38:14 +0900
 Subject: [PATCH 151/170] 0001-e1000e_driver_workaround
 
 

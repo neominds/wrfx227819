@@ -1,6 +1,6 @@
-From 684cee4aaa31c2d2313564a9668cfa558055ccfd Mon Sep 17 00:00:00 2001
+From 1f3bba22027b4ae93add2bb76c5281f357ecf708 Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:24:07 +0900
+Date: Thu, 28 Apr 2016 23:37:57 +0900
 Subject: [PATCH 138/170] 0001-remove-unused-warning-for-kernel
 
 

@@ -1,6 +1,6 @@
-From d525620b60061df561b027a630f722ef3b95a033 Mon Sep 17 00:00:00 2001
+From 8cd03a60c9f2c0b89b2ba7124a0a40eba068d23f Mon Sep 17 00:00:00 2001
 From: Jayesh <jayesh.babu@windriver.com>
-Date: Sat, 23 Apr 2016 18:23:49 +0900
+Date: Thu, 28 Apr 2016 23:37:39 +0900
 Subject: [PATCH 124/170] 0001-support-standard-spi-interface
 
 

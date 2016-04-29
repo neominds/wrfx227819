@@ -133,20 +133,11 @@ rebase_patches()
  echo
  echo All resolved, generating rebased-patches...
  quiet_git format-patch -p -$count 
- rm -f ./../$output_dir/patches/*.patch
  mv *.patch ./../$output_dir/patches/
- cd ./../$output_dir/patches
- for f in *.patch; do 
-	mv $f `echo $f|cut -c 6-`; 
- done
- cd - >/dev/null 
  #ls -l ./../$output_dir/patches/*.patch
  echo
  echo Completed `ls -l ./../$output_dir/patches/*.patch|wc -l` rebased patches.
 
- #create new layer fxcl-honolulu-lm2 
- rm -f ./../$output_dir/layers/3/fxcl-honolulu-lm2/recipes-kernel/linux/files/*.patch
- cp ./../$output_dir/patches/*.patch ./../$output_dir/layers/3/fxcl-honolulu-lm2/recipes-kernel/linux/files/
  cd ..
 }
 
@@ -154,15 +145,20 @@ rebase_patches()
 # If you would need to change any input/output
 # directories to the script, do it below
 output_dir=./../output
+output_layer=$output_dir/layers/3
 resolve_dir=../../resolved
 patches_dir_curr_base=../../../reference/patches/set3
 reference_dir_curr_base=./../../../reference/src/rcpl12linux
 reference_dir_new_base=./../../../reference/src/rcpl27linux
 patchlist_filename=patchnames_to_rebase
 
+current=`pwd`
+#cleanup
+rm -f $output_dir/patches/*.patch
+rm -f $output_layer/fxcl-honolulu-lm2/recipes-kernel/linux/files/*.patch
+
 kernel_type=standard
 echo "[-----Rebasing standard kernel-------]"
-current=`pwd`
 rebase_patches
 cd $current
 
@@ -171,7 +167,16 @@ echo "[-----Rebasing preempt kernel-------]"
 rebase_patches
 cd $current
 
-ldir=$output_dir/layers/3/fxcl-honolulu-lm2/
+cd $output_dir/patches
+for f in *.patch; do 
+	mv $f `echo $f|cut -c 6-`; 
+done
+cd - >/dev/null 
+
+#create new layer fxcl-honolulu-lm2 
+cp $output_dir/patches/*.patch $output_layer/fxcl-honolulu-lm2/recipes-kernel/linux/files/
+
+ldir=$output_layer/fxcl-honolulu-lm2/
 ldirabs="$(dirname $(readlink -e $ldir))/$(basename $ldir)"
 echo New layer created at $ldirabs
 

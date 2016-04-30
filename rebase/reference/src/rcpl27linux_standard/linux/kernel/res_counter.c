@@ -16,7 +16,7 @@
 
 void res_counter_init(struct res_counter *counter, struct res_counter *parent)
 {
-	raw_spin_lock_init(&counter->lock);
+	spin_lock_init(&counter->lock);
 	counter->limit = RESOURCE_MAX;
 	counter->soft_limit = RESOURCE_MAX;
 	counter->parent = parent;
@@ -49,11 +49,11 @@ static int __res_counter_charge(struct res_counter *counter, unsigned long val,
 
 	r = ret = 0;
 	*limit_fail_at = NULL;
-	local_irq_save_nort(flags);
+	local_irq_save(flags);
 	for (c = counter; c != NULL; c = c->parent) {
-		raw_spin_lock(&c->lock);
+		spin_lock(&c->lock);
 		r = res_counter_charge_locked(c, val, force);
-		raw_spin_unlock(&c->lock);
+		spin_unlock(&c->lock);
 		if (r < 0 && !ret) {
 			ret = r;
 			*limit_fail_at = c;
@@ -64,12 +64,12 @@ static int __res_counter_charge(struct res_counter *counter, unsigned long val,
 
 	if (ret < 0 && !force) {
 		for (u = counter; u != c; u = u->parent) {
-			raw_spin_lock(&u->lock);
+			spin_lock(&u->lock);
 			res_counter_uncharge_locked(u, val);
-			raw_spin_unlock(&u->lock);
+			spin_unlock(&u->lock);
 		}
 	}
-	local_irq_restore_nort(flags);
+	local_irq_restore(flags);
 
 	return ret;
 }
@@ -103,16 +103,16 @@ u64 res_counter_uncharge_until(struct res_counter *counter,
 	struct res_counter *c;
 	u64 ret = 0;
 
-	local_irq_save_nort(flags);
+	local_irq_save(flags);
 	for (c = counter; c != top; c = c->parent) {
 		u64 r;
-		raw_spin_lock(&c->lock);
+		spin_lock(&c->lock);
 		r = res_counter_uncharge_locked(c, val);
 		if (c == counter)
 			ret = r;
-		raw_spin_unlock(&c->lock);
+		spin_unlock(&c->lock);
 	}
-	local_irq_restore_nort(flags);
+	local_irq_restore(flags);
 	return ret;
 }
 
@@ -164,9 +164,9 @@ u64 res_counter_read_u64(struct res_counter *counter, int member)
 	unsigned long flags;
 	u64 ret;
 
-	raw_spin_lock_irqsave(&counter->lock, flags);
+	spin_lock_irqsave(&counter->lock, flags);
 	ret = *res_counter_member(counter, member);
-	raw_spin_unlock_irqrestore(&counter->lock, flags);
+	spin_unlock_irqrestore(&counter->lock, flags);
 
 	return ret;
 }

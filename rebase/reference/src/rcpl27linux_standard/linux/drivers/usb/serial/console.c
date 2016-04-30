@@ -212,11 +212,9 @@ try_again:
 		/* poll the hcd device because the queue is full */
 		count -= retval;
 		buf += retval;
-#ifndef CONFIG_PREEMPT_RT_FULL
 		udelay(1);
 		usb_poll_irq(serial->dev);
 		usb_poll_irq_schedule_flush();
-#endif
 		goto try_again;
 	}
 	pr_debug("%s - return value : %d\n", __func__, retval);

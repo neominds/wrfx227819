@@ -554,16 +554,19 @@ int vkdb_printf(const char *fmt, va_list ap)
 	int linecount;
 	int colcount;
 	int logging, saved_loglevel = 0;
+	int saved_trap_printk;
 	int got_printf_lock = 0;
 	int retlen = 0;
 	int fnd, len;
 	char *cp, *cp2, *cphold = NULL, replaced_byte = ' ';
 	char *moreprompt = "more> ";
 	struct console *c = console_drivers;
-	static DEFINE_RAW_SPINLOCK(kdb_printf_lock);
+	static DEFINE_SPINLOCK(kdb_printf_lock);
 	unsigned long uninitialized_var(flags);
 
 	preempt_disable();
+	saved_trap_printk = kdb_trap_printk;
+	kdb_trap_printk = 0;
 
 	/* Serialize kdb_printf if multiple cpus try to write at once.
 	 * But if any cpu goes recursive in kdb, just print the output,
@@ -571,7 +574,7 @@ int vkdb_printf(const char *fmt, va_list ap)
 	 */
 	if (!KDB_STATE(PRINTF_LOCK)) {
 		KDB_STATE_SET(PRINTF_LOCK);
-		raw_spin_lock_irqsave(&kdb_printf_lock, flags);
+		spin_lock_irqsave(&kdb_printf_lock, flags);
 		got_printf_lock = 1;
 		atomic_inc(&kdb_event);
 	} else {
@@ -824,12 +827,13 @@ kdb_print_out:
 		console_loglevel = saved_loglevel;
 	if (KDB_STATE(PRINTF_LOCK) && got_printf_lock) {
 		got_printf_lock = 0;
-		raw_spin_unlock_irqrestore(&kdb_printf_lock, flags);
+		spin_unlock_irqrestore(&kdb_printf_lock, flags);
 		KDB_STATE_CLEAR(PRINTF_LOCK);
 		atomic_dec(&kdb_event);
 	} else {
 		__release(kdb_printf_lock);
 	}
+	kdb_trap_printk = saved_trap_printk;
 	preempt_enable();
 	return retlen;
 }
@@ -839,11 +843,9 @@ int kdb_printf(const char *fmt, ...)
 	va_list ap;
 	int r;
 
-	kdb_trap_printk++;
 	va_start(ap, fmt);
 	r = vkdb_printf(fmt, ap);
 	va_end(ap);
-	kdb_trap_printk--;
 
 	return r;
 }

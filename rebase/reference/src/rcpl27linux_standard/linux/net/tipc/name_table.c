@@ -686,27 +686,25 @@ struct publication *tipc_nametbl_publish(u32 type, u32 lower, u32 upper,
 /**
  * tipc_nametbl_withdraw - withdraw name publication from network name tables
  */
-struct sk_buff *tipc_nametbl_withdraw(u32 type, u32 lower, u32 ref, u32 key)
+int tipc_nametbl_withdraw(u32 type, u32 lower, u32 ref, u32 key)
 {
 	struct publication *publ;
-	struct sk_buff *buf;
 
 	write_lock_bh(&tipc_nametbl_lock);
 	publ = tipc_nametbl_remove_publ(type, lower, tipc_own_addr, ref, key);
 	if (likely(publ)) {
 		table.local_publ_count--;
 		tipc_named_withdraw(publ);
-		buf = publ->buf;
 		write_unlock_bh(&tipc_nametbl_lock);
 		list_del_init(&publ->pport_list);
 		kfree(publ);
-		return buf;
+		return 1;
 	}
 	write_unlock_bh(&tipc_nametbl_lock);
 	pr_err("Unable to remove local publication\n"
 	       "(type=%u, lower=%u, ref=%u, key=%u)\n",
 	       type, lower, ref, key);
-	return NULL;
+	return 0;
 }
 
 /**

@@ -353,6 +353,7 @@ struct rt_rq {
 	unsigned long rt_nr_boosted;
 
 	struct rq *rq;
+	struct list_head leaf_rt_rq_list;
 	struct task_group *tg;
 #endif
 };
@@ -881,8 +882,7 @@ static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
  */
 #define WF_SYNC		0x01		/* waker goes to sleep after wakeup */
 #define WF_FORK		0x02		/* child wakeup after fork */
-#define WF_MIGRATED	0x04		/* internal use, task got migrated */
-#define WF_LOCK_SLEEPER	0x08		/* wakeup spinlock "sleeper" */
+#define WF_MIGRATED	0x4		/* internal use, task got migrated */
 
 static inline void update_load_add(struct load_weight *lw, unsigned long inc)
 {
@@ -1057,15 +1057,6 @@ extern void init_sched_fair_class(void);
 
 extern void resched_task(struct task_struct *p);
 extern void resched_cpu(int cpu);
-
-#ifdef CONFIG_PREEMPT_LAZY
-extern void resched_task_lazy(struct task_struct *tsk);
-#else
-static inline void resched_task_lazy(struct task_struct *tsk)
-{
-	resched_task(tsk);
-}
-#endif
 
 extern struct rt_bandwidth def_rt_bandwidth;
 extern void init_rt_bandwidth(struct rt_bandwidth *rt_b, u64 period, u64 runtime);

@@ -1,6 +1,6 @@
-From 5bc784cf95e9d6dce3105f61a537f581d5a8773d Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:33 +0900
+From 676793d5c6268a578640a056fb8e34d4baed52c5 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:48:47 +0900
 Subject: [PATCH 026/170] 0025-add-driver-resource
 
 

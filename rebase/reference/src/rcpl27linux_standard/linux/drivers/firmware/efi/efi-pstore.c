@@ -234,7 +234,7 @@ static __init int efivars_pstore_init(void)
 		return -ENOMEM;
 
 	efi_pstore_info.bufsize = 1024;
-	raw_spin_lock_init(&efi_pstore_info.buf_lock);
+	spin_lock_init(&efi_pstore_info.buf_lock);
 
 	pstore_register(&efi_pstore_info);
 

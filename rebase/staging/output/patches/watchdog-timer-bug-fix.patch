@@ -1,6 +1,6 @@
-From 24911bf09bdd86e95d3b142dcbd9136eb64bd2a0 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:05 +0900
+From 027b204c38175f13c377810b7e61c21e2de45d74 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:20 +0900
 Subject: [PATCH 051/170] watchdog-timer-bug-fix
 
 

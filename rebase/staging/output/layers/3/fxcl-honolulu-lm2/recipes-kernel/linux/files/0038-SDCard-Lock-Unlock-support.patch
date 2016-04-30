@@ -1,6 +1,6 @@
-From 5c4121fa56a9354ff1401ebc8755acf308f40018 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:53 +0900
+From 9ed5bf97f60cadae4e486bcfd22005a9e8730ab1 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:07 +0900
 Subject: [PATCH 041/170] 0038-SDCard-Lock-Unlock-support
 
 

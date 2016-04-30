@@ -1,6 +1,6 @@
-From d55ce3d0345cf3d3bc00ae648d3b075d0b4a351b Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:14 +0900
+From 94ecedeab16d00dd1667bd4d18cbdf0b808842d4 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:30 +0900
 Subject: [PATCH 104/170] 0001-pcie-and-uart-0-delete
 
 

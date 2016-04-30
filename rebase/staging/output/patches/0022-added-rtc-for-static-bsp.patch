@@ -1,6 +1,6 @@
-From 8ca0b5a99b8b24c87057efce1afb6af9bf656b0f Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:29 +0900
+From 9c152848eb5576500d173550743205e4f542f8b8 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:48:43 +0900
 Subject: [PATCH 023/170] 0022-added-rtc-for-static-bsp
 
 

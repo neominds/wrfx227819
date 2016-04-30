@@ -1,6 +1,6 @@
-From 14a54e2d7f168ab0e691bbf73bfbd2555058f19b Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:33 +0900
+From c72435549aefe58e4a36913cb09413de0dedbca4 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:50 +0900
 Subject: [PATCH 119/170] 0001-fixed-MTDBLOCK-issue
 
 

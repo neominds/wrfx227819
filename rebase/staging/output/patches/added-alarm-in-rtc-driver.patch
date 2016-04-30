@@ -1,6 +1,6 @@
-From a0d58aaffb6b7589e0aa27e53d749dac3bd04c88 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:08 +0900
+From 6298e7cbe244043fbb6a6827940f3323969ccdcf Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:23 +0900
 Subject: [PATCH 053/170] added-alarm-in-rtc-driver
 
 

@@ -1,6 +1,6 @@
-From d9d7fa98fb58cdde11f56d6fc9e98be6655438c2 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:12 +0900
+From 14c0a0b906fc56d294f987ef4364c5ac67c5207f Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:27 +0900
 Subject: [PATCH 056/170] GPDMA-UIO-Driver-fix
 
 

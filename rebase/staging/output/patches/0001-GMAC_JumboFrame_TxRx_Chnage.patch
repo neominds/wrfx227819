@@ -1,6 +1,6 @@
-From d15dc10c68afc7871ead48af4c6efac6200698dc Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:38:05 +0900
+From 1fc7d3a95d715dddf9c7812b52f926a1136723de Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:51:23 +0900
 Subject: [PATCH 144/170] 0001-GMAC_JumboFrame_TxRx_Chnage
 
 

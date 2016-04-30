@@ -1,6 +1,6 @@
-From 32b2e1c5fa6006a76520d241b348739cebace953 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:31 +0900
+From 74a338fd3ae3f410822a00c1c44f50299392705f Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:47 +0900
 Subject: [PATCH 117/170] 0001-rtc-added-interface
 
 

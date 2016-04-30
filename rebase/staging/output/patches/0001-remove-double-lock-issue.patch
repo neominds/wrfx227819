@@ -1,6 +1,6 @@
-From 59ca4a47104488aad85a38ca1267aeee39f0b85c Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:51 +0900
+From fc0a281e6e31d83b20571343e38de0aba9063968 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:51:09 +0900
 Subject: [PATCH 133/170] 0001-remove-double-lock-issue
 
 

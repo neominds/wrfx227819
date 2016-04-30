@@ -1,6 +1,6 @@
-From 083bc5c7e474d3701625b8fdf00240e2bad4cb06 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:15 +0900
+From ba7ec11885e3c0be4d41d0c1fe0de8c6bc31b66d Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:48:30 +0900
 Subject: [PATCH 013/170] 0012-debug-setup-kernel
 
 

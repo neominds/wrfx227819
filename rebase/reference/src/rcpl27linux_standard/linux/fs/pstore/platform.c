@@ -136,13 +136,13 @@ static void pstore_dump(struct kmsg_dumper *dumper,
 	why = get_reason_str(reason);
 
 	if (pstore_cannot_block_path(reason)) {
-		is_locked = raw_spin_trylock_irqsave(&psinfo->buf_lock, flags);
+		is_locked = spin_trylock_irqsave(&psinfo->buf_lock, flags);
 		if (!is_locked) {
 			pr_err("pstore dump routine blocked in %s path, may corrupt error record\n"
 				       , in_nmi() ? "NMI" : why);
 		}
 	} else
-		raw_spin_lock_irqsave(&psinfo->buf_lock, flags);
+		spin_lock_irqsave(&psinfo->buf_lock, flags);
 	oopscount++;
 	while (total < kmsg_bytes) {
 		char *dst;
@@ -168,9 +168,9 @@ static void pstore_dump(struct kmsg_dumper *dumper,
 	}
 	if (pstore_cannot_block_path(reason)) {
 		if (is_locked)
-			raw_spin_unlock_irqrestore(&psinfo->buf_lock, flags);
+			spin_unlock_irqrestore(&psinfo->buf_lock, flags);
 	} else
-		raw_spin_unlock_irqrestore(&psinfo->buf_lock, flags);
+		spin_unlock_irqrestore(&psinfo->buf_lock, flags);
 }
 
 static struct kmsg_dumper pstore_dumper = {
@@ -190,14 +190,14 @@ static void pstore_console_write(struct console *con, const char *s, unsigned c)
 			c = psinfo->bufsize;
 
 		if (oops_in_progress) {
-			if (!raw_spin_trylock_irqsave(&psinfo->buf_lock, flags))
+			if (!spin_trylock_irqsave(&psinfo->buf_lock, flags))
 				break;
 		} else {
-			raw_spin_lock_irqsave(&psinfo->buf_lock, flags);
+			spin_lock_irqsave(&psinfo->buf_lock, flags);
 		}
 		memcpy(psinfo->buf, s, c);
 		psinfo->write(PSTORE_TYPE_CONSOLE, 0, &id, 0, 0, c, psinfo);
-		raw_spin_unlock_irqrestore(&psinfo->buf_lock, flags);
+		spin_unlock_irqrestore(&psinfo->buf_lock, flags);
 		s += c;
 		c = e - s;
 	}

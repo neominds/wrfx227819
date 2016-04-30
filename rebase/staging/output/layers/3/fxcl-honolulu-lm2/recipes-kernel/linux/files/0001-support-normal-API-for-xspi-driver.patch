@@ -1,6 +1,6 @@
-From ed1cdbc4390bf46b0b84a029d7319357ce16b281 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:52 +0900
+From 15e169ae4775249c1a57e1a731cd5ac682595d7f Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:51:10 +0900
 Subject: [PATCH 134/170] 0001-support-normal-API-for-xspi-driver
 
 

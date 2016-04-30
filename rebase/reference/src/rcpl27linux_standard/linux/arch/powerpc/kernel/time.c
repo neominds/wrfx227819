@@ -423,7 +423,7 @@ unsigned long profile_pc(struct pt_regs *regs)
 EXPORT_SYMBOL(profile_pc);
 #endif
 
-#if defined(CONFIG_IRQ_WORK) && !defined(CONFIG_PREEMPT_RT_FULL)
+#ifdef CONFIG_IRQ_WORK
 
 /*
  * 64-bit uses a byte in the PACA, 32-bit uses a per-cpu variable...
@@ -522,12 +522,10 @@ void timer_interrupt(struct pt_regs * regs)
 
 	trace_timer_interrupt_entry(regs);
 
-#ifndef CONFIG_PREEMPT_RT_FULL
 	if (test_irq_work_pending()) {
 		clear_irq_work_pending();
 		irq_work_run();
 	}
-#endif
 
 	now = get_tb_or_rtc();
 	if (now >= *next_tb) {

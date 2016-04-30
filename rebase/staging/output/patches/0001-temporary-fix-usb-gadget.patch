@@ -1,6 +1,6 @@
-From 5da12d2607a13b7de842042f65db2ac717df8a74 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:53 +0900
+From e9ce11e70b18429fef835e51e4aff8c327309234 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:09 +0900
 Subject: [PATCH 088/170] 0001-temporary-fix-usb-gadget
 
 

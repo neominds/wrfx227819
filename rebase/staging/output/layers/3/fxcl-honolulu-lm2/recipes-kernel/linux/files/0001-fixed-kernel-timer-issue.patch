@@ -1,6 +1,6 @@
-From 482bce34236c04cad7e035e6f86bafee57c1b34f Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:39 +0900
+From edb3d135d6644129888adb6c01c6123829aa5c6b Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:55 +0900
 Subject: [PATCH 077/170] 0001-fixed-kernel-timer-issue
 
 

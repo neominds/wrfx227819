@@ -1,6 +1,6 @@
-From 20bc2a88931e6850a15507e180a1f2459381c6e5 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:38:08 +0900
+From 684273f447c9e894d62f892bb7ad21261734336f Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:51:25 +0900
 Subject: [PATCH 146/170] 0001-support-MAC-address-from-DTB
 
 

@@ -740,12 +740,9 @@ static void add_timer_randomness(struct timer_rand_state *state, unsigned num)
 	preempt_disable();
 	/* if over the trickle threshold, use only 1 in 4096 samples */
 	if (ENTROPY_BITS(&input_pool) > trickle_thresh &&
-	    ((__this_cpu_inc_return(trickle_count) - 1) & 0xfff)) {
-		preempt_enable();
-		return;
-	}
+	    ((__this_cpu_inc_return(trickle_count) - 1) & 0xfff))
+		goto out;
 
-	preempt_enable();
 	sample.jiffies = jiffies;
 	sample.cycles = get_cycles();
 	sample.num = num;
@@ -786,6 +783,8 @@ static void add_timer_randomness(struct timer_rand_state *state, unsigned num)
 		credit_entropy_bits(&input_pool,
 				    min_t(int, fls(delta>>1), 11));
 	}
+out:
+	preempt_enable();
 }
 
 void add_input_randomness(unsigned int type, unsigned int code,
@@ -806,10 +805,11 @@ EXPORT_SYMBOL_GPL(add_input_randomness);
 
 static DEFINE_PER_CPU(struct fast_pool, irq_randomness);
 
-void add_interrupt_randomness(int irq, int irq_flags, __u64 ip)
+void add_interrupt_randomness(int irq, int irq_flags)
 {
 	struct entropy_store	*r;
 	struct fast_pool	*fast_pool = &__get_cpu_var(irq_randomness);
+	struct pt_regs		*regs = get_irq_regs();
 	unsigned long		now = jiffies;
 	__u32			input[4], cycles = get_cycles();
 	unsigned long		seed;
@@ -817,7 +817,8 @@ void add_interrupt_randomness(int irq, int irq_flags, __u64 ip)
 
 	input[0] = cycles ^ jiffies;
 	input[1] = irq;
-	if (ip) {
+	if (regs) {
+		__u64 ip = instruction_pointer(regs);
 		input[2] = ip;
 		input[3] = ip >> 32;
 	}

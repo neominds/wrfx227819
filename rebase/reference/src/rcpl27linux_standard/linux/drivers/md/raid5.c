@@ -1434,9 +1434,8 @@ static void raid_run_ops(struct stripe_head *sh, unsigned long ops_request)
 	struct raid5_percpu *percpu;
 	unsigned long cpu;
 
-	cpu = get_cpu_light();
+	cpu = get_cpu();
 	percpu = per_cpu_ptr(conf->percpu, cpu);
-	spin_lock(&percpu->lock);
 	if (test_bit(STRIPE_OP_BIOFILL, &ops_request)) {
 		ops_run_biofill(sh);
 		overlap_clear++;
@@ -1488,8 +1487,7 @@ static void raid_run_ops(struct stripe_head *sh, unsigned long ops_request)
 			if (test_and_clear_bit(R5_Overlap, &dev->flags))
 				wake_up(&sh->raid_conf->wait_for_overlap);
 		}
-	spin_unlock(&percpu->lock);
-	put_cpu_light();
+	put_cpu();
 }
 
 static int grow_one_stripe(struct r5conf *conf)
@@ -1926,7 +1924,7 @@ static void raid5_end_write_request(struct bio *bi, int error)
 }
 
 static sector_t compute_blocknr(struct stripe_head *sh, int i, int previous);
-
+	
 static void raid5_build_block(struct stripe_head *sh, int i, int previous)
 {
 	struct r5dev *dev = &sh->dev[i];
@@ -4350,7 +4348,7 @@ static void make_request(struct mddev *mddev, struct bio * bi)
 						  previous,
 						  &dd_idx, NULL);
 		pr_debug("raid456: make_request, sector %llu logical %llu\n",
-			(unsigned long long)new_sector,
+			(unsigned long long)new_sector, 
 			(unsigned long long)logical_sector);
 
 		sh = get_active_stripe(conf, new_sector, previous,
@@ -5151,7 +5149,6 @@ static int raid5_alloc_percpu(struct r5conf *conf)
 			       __func__, cpu);
 			break;
 		}
-		spin_lock_init(&per_cpu_ptr(conf->percpu, cpu)->lock);
 	}
 	put_online_cpus();
 
@@ -5320,7 +5317,7 @@ static int only_parity(int raid_disk, int algo, int raid_disks, int max_degraded
 			return 1;
 		break;
 	case ALGORITHM_PARITY_0_6:
-		if (raid_disk == 0 ||
+		if (raid_disk == 0 || 
 		    raid_disk == raid_disks - 1)
 			return 1;
 		break;

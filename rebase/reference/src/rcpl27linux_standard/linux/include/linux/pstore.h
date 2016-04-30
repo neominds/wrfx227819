@@ -43,7 +43,7 @@ struct module;
 struct pstore_info {
 	struct module	*owner;
 	char		*name;
-	raw_spinlock_t	buf_lock;	/* serialize access to 'buf' */
+	spinlock_t	buf_lock;	/* serialize access to 'buf' */
 	char		*buf;
 	size_t		bufsize;
 	struct mutex	read_mutex;	/* serialize open/read/close */

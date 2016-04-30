@@ -1,6 +1,6 @@
-From 66c25d6da0c17fbf068dc9eacdc5ebc71a347192 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:49 +0900
+From 54fa88863495cd1ede85e1db3c891cae4fcd527d Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:05 +0900
 Subject: [PATCH 085/170] 0001-adjustment-config-resoure
 
 

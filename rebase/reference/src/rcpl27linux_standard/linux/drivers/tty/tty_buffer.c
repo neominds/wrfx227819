@@ -268,10 +268,6 @@ int tty_insert_flip_string_fixed_flag(struct tty_port *port,
 		int goal = min_t(size_t, size - copied, TTY_BUFFER_PAGE);
 		int space = tty_buffer_request_room(port, goal);
 		struct tty_buffer *tb = port->buf.tail;
-		unsigned long flags;
-		struct tty_bufhead *bufhead = &port->buf;
-        	spin_lock_irqsave(&bufhead->lock, flags);
-
 		/* If there is no space then tb may be NULL */
 		if (unlikely(space == 0)) {
 			break;
@@ -281,7 +277,6 @@ int tty_insert_flip_string_fixed_flag(struct tty_port *port,
 		tb->used += space;
 		copied += space;
 		chars += space;
-		spin_unlock_irqrestore(&bufhead->lock, flags);
 		/* There is a small chance that we need to split the data over
 		   several buffers. If this is the case we must loop */
 	} while (unlikely(size > copied));
@@ -533,15 +528,10 @@ void tty_flip_buffer_push(struct tty_port *port)
 		buf->tail->commit = buf->tail->used;
 	spin_unlock_irqrestore(&buf->lock, flags);
 
-#ifndef CONFIG_PREEMPT_RT_FULL
 	if (port->low_latency)
 		flush_to_ldisc(&buf->work);
 	else
 		schedule_work(&buf->work);
-#else
-	flush_to_ldisc(&buf->work);
-#endif
-
 }
 EXPORT_SYMBOL(tty_flip_buffer_push);
 
@@ -566,3 +556,4 @@ void tty_buffer_init(struct tty_port *port)
 	buf->memory_used = 0;
 	INIT_WORK(&buf->work, flush_to_ldisc);
 }
+

@@ -1,6 +1,6 @@
-From abf5fa9c72655e235d3ad2cc87c33da89df14ec3 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:43 +0900
+From 0acfba9424642fb48b957ea6c95e9bb26b2af82e Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:59 +0900
 Subject: [PATCH 080/170] 0001-temp-usbhost
 
 

@@ -1,6 +1,6 @@
-From 81d2832c14d9f619211d6b8605542bd1e91354a3 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:36 +0900
+From 71a2b2d3609b0cdfde9bbac33996e22a8dd7f7e9 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:48:49 +0900
 Subject: [PATCH 028/170] 0027-fixed-timer-resource-bug
 
 

@@ -1,6 +1,6 @@
-From 727d23e599e08b1637190a1c3804c65b7927ebd2 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:47 +0900
+From 3daa3c3d72394c99d1457c781ef38bdf0aec400f Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:03 +0900
 Subject: [PATCH 083/170] 0001-fix-dma-and-pcie
 
 

@@ -1,6 +1,6 @@
-From 2083cd9a412b5426cabe983a01bba82318d1d60b Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:30 +0900
+From 34f450e5ff4b8118b32279371719f8c5e9e3754a Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:48:44 +0900
 Subject: [PATCH 024/170] 0023-merge-watchdog-timer
 
 

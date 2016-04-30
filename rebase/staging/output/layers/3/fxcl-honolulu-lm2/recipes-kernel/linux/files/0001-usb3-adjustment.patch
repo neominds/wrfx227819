@@ -1,6 +1,6 @@
-From baecfc8aebbab6c779133b1d22a463429d7bba72 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:05 +0900
+From 1113dcb8a3a8d3735f2372493cc7334ec8fad5fd Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:21 +0900
 Subject: [PATCH 097/170] 0001-usb3-adjustment
 
 

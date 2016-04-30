@@ -1,6 +1,6 @@
-From f46405c233dd15539d9dab3fccee4db76c0374b5 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:38:07 +0900
+From e1e5124a056f4eee79b46fe6c4235ae43e126ce6 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:51:24 +0900
 Subject: [PATCH 145/170] 0001-MAC-address-issue
 
 

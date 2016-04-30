@@ -1,6 +1,6 @@
-From 26e383ddea9171b780a407ee03de8b963eedfec6 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:20 +0900
+From 27671eb64cab01c2f253351852c54827eea9eb64 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:37 +0900
 Subject: [PATCH 109/170] 0001-support-pcie-and-e1000e
 
 

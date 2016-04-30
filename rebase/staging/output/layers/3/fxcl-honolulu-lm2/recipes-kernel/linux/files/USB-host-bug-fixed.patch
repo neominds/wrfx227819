@@ -1,6 +1,6 @@
-From 9c06eb88fcf1580c0447cbc8d78fc7a2cf5b1ec3 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:10 +0900
+From 18e6d9070223d8e564bfcd796c9d4525dca61d07 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:25 +0900
 Subject: [PATCH 055/170] USB-host-bug-fixed
 
 

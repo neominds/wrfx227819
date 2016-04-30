@@ -939,12 +939,6 @@ static void dotest(void (*testcase_fn)(void), int expected, int lockclass_mask)
 {
 	unsigned long saved_preempt_count = preempt_count();
 	int expected_failure = 0;
-#ifdef CONFIG_PREEMPT_RT_FULL
-	int saved_migrate_disable = current->migrate_disable;
-# ifdef CONFIG_SCHED_DEBUG
-	int saved_migrate_disable_atomic = current->migrate_disable_atomic;
-# endif
-#endif
 
 	WARN_ON(irqs_disabled());
 
@@ -986,13 +980,6 @@ static void dotest(void (*testcase_fn)(void), int expected, int lockclass_mask)
 	 * count, so restore it:
 	 */
 	preempt_count() = saved_preempt_count;
-#ifdef CONFIG_PREEMPT_RT_FULL
-	current->migrate_disable = saved_migrate_disable;
-# ifdef CONFIG_SCHED_DEBUG
-	current->migrate_disable_atomic = saved_migrate_disable_atomic;
-# endif
-#endif
-
 #ifdef CONFIG_TRACE_IRQFLAGS
 	if (softirq_count())
 		current->softirqs_enabled = 0;
@@ -1188,7 +1175,6 @@ void locking_selftest(void)
 
 	printk("  --------------------------------------------------------------------------\n");
 
-#ifndef CONFIG_PREEMPT_RT_FULL
 	/*
 	 * irq-context testcases:
 	 */
@@ -1201,28 +1187,6 @@ void locking_selftest(void)
 
 	DO_TESTCASE_6x2("irq read-recursion", irq_read_recursion);
 //	DO_TESTCASE_6x2B("irq read-recursion #2", irq_read_recursion2);
-#else
-	/* On -rt, we only do hardirq context test for raw spinlock */
-	DO_TESTCASE_1B("hard-irqs-on + irq-safe-A", irqsafe1_hard_spin, 12);
-	DO_TESTCASE_1B("hard-irqs-on + irq-safe-A", irqsafe1_hard_spin, 21);
-
-	DO_TESTCASE_1B("hard-safe-A + irqs-on", irqsafe2B_hard_spin, 12);
-	DO_TESTCASE_1B("hard-safe-A + irqs-on", irqsafe2B_hard_spin, 21);
-
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #1", irqsafe3_hard_spin, 123);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #1", irqsafe3_hard_spin, 132);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #1", irqsafe3_hard_spin, 213);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #1", irqsafe3_hard_spin, 231);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #1", irqsafe3_hard_spin, 312);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #1", irqsafe3_hard_spin, 321);
-
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #2", irqsafe4_hard_spin, 123);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #2", irqsafe4_hard_spin, 132);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #2", irqsafe4_hard_spin, 213);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #2", irqsafe4_hard_spin, 231);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #2", irqsafe4_hard_spin, 312);
-	DO_TESTCASE_1B("hard-safe-A + unsafe-B #2", irqsafe4_hard_spin, 321);
-#endif
 
 	if (unexpected_testcase_failures) {
 		printk("-----------------------------------------------------------------\n");

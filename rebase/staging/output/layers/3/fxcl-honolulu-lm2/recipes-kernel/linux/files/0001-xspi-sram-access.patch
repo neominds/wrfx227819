@@ -1,6 +1,6 @@
-From 7a7bd13c00203ba36bb4d0870f665bdd5ae9d0c5 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:34 +0900
+From 120c31e7689ed5c8b04ba11ab833b214c07d246d Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:50 +0900
 Subject: [PATCH 073/170] 0001-xspi-sram-access
 
 

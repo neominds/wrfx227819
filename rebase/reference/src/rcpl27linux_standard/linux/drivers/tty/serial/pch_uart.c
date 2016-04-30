@@ -1666,7 +1666,7 @@ pch_console_write(struct console *co, const char *s, unsigned int count)
 
 	touch_nmi_watchdog();
 
-	local_irq_save_nort(flags);
+	local_irq_save(flags);
 	if (priv->port.sysrq) {
 		/* call to uart_handle_sysrq_char already took the priv lock */
 		priv_locked = 0;
@@ -1700,7 +1700,7 @@ pch_console_write(struct console *co, const char *s, unsigned int count)
 		spin_unlock(&priv->port.lock);
 	if (priv_locked)
 		spin_unlock(&priv->lock);
-	local_irq_restore_nort(flags);
+	local_irq_restore(flags);
 }
 
 static int __init pch_console_setup(struct console *co, char *options)

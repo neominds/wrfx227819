@@ -1,6 +1,6 @@
-From 0d60229239be98a8de706bfafca99f52921f1b71 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:37 +0900
+From 973ef477ec3c50c5952f5cc21444172e7897cbb0 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:48:51 +0900
 Subject: [PATCH 029/170] 0028-usbd-dwc3-driver-update
 
 

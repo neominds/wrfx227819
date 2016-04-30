@@ -1,6 +1,6 @@
-From f2cf263930099a087235fd03c82fc9096ea92c3b Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:32 +0900
+From 353a90cfdeff3a718c65df1b19de94e85f9f4dcc Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:48:46 +0900
 Subject: [PATCH 025/170] 0024-merge-bus-driver
 
 

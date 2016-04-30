@@ -127,7 +127,7 @@ static struct sk_buff *named_prepare_buf(u32 type, u32 size, u32 dest)
 	return buf;
 }
 
-void named_cluster_distribute(struct sk_buff *buf)
+static void named_cluster_distribute(struct sk_buff *buf)
 {
 	struct sk_buff *buf_copy;
 	struct tipc_node *n_ptr;
@@ -167,7 +167,7 @@ void tipc_named_publish(struct publication *publ)
 
 	item = (struct distr_item *)msg_data(buf_msg(buf));
 	publ_to_item(item, publ);
-	publ->buf = buf;
+	named_cluster_distribute(buf);
 }
 
 /**
@@ -192,7 +192,7 @@ void tipc_named_withdraw(struct publication *publ)
 
 	item = (struct distr_item *)msg_data(buf_msg(buf));
 	publ_to_item(item, publ);
-	publ->buf = buf;
+	named_cluster_distribute(buf);
 }
 
 /*

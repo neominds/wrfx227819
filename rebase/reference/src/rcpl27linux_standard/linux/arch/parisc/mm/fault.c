@@ -177,7 +177,7 @@ void do_page_fault(struct pt_regs *regs, unsigned long code,
 	int fault;
 	unsigned int flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
-	if (!mm || pagefault_disabled())
+	if (in_atomic() || !mm)
 		goto no_context;
 
 	if (user_mode(regs))

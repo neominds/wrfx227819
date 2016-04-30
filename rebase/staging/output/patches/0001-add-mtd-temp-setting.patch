@@ -1,6 +1,6 @@
-From 1cfb3f04146ad7a6c057c216a11575682f2444ac Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:32 +0900
+From f27cdba92ba9e0a87ac24854600cf83a3c31a2e6 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:49 +0900
 Subject: [PATCH 072/170] 0001-add-mtd-temp-setting
 
 

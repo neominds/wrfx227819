@@ -1,6 +1,6 @@
-From 679716b003e078453b535a41d972a5c0188082ab Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:40 +0900
+From d05ae427315fc61a7c31e57707d57afed4bbf55d Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:56 +0900
 Subject: [PATCH 078/170] 0001-temp-pcie-patch
 
 

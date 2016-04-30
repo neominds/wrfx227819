@@ -1,6 +1,6 @@
-From 00ed264989d0fcd0c5b802496325b354ee0198cd Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:55 +0900
+From abe187d7ab10274e143e271dceb2af3eac1641bb Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:10 +0900
 Subject: [PATCH 043/170] temporary-usb-host-debug-support
 
 

@@ -1,6 +1,6 @@
-From 39d3a71cde3dcf7e5e359c0a00dea520f2171c4c Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:47 +0900
+From 74429b6479d060b4a03754d01842255cf2844efa Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:51:05 +0900
 Subject: [PATCH 130/170] 0001-mtd-block-issue
 
 

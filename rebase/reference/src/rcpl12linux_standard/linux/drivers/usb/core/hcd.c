@@ -2238,7 +2238,7 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 	 * when the first handler doesn't use it.  So let's just
 	 * assume it's never used.
 	 */
-	local_irq_save_nort(flags);
+	local_irq_save(flags);
 
 	if (unlikely(HCD_DEAD(hcd) || !HCD_HW_ACCESSIBLE(hcd)))
 		rc = IRQ_NONE;
@@ -2247,7 +2247,7 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 	else
 		rc = IRQ_HANDLED;
 
-	local_irq_restore_nort(flags);
+	local_irq_restore(flags);
 	return rc;
 }
 EXPORT_SYMBOL_GPL(usb_hcd_irq);
@@ -2707,8 +2707,6 @@ usb_hcd_platform_shutdown(struct platform_device* dev)
 }
 EXPORT_SYMBOL_GPL(usb_hcd_platform_shutdown);
 
-#ifndef CONFIG_PREEMPT_RT_FULL
-
 /**
  * usb_poll_irq - run HCD to call all urb->complete's for a usb device
  * @udev: The usb device to poll
@@ -2768,8 +2766,6 @@ void usb_poll_irq_schedule_flush(void)
 	schedule_work(&usb_poll_irq_flush_work);
 }
 EXPORT_SYMBOL_GPL(usb_poll_irq_schedule_flush);
-
-#endif
 
 /*-------------------------------------------------------------------------*/
 

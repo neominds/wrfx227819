@@ -37,7 +37,6 @@
 #include <linux/rculist_bl.h>
 #include <linux/prefetch.h>
 #include <linux/ratelimit.h>
-#include <linux/delay.h>
 #include "internal.h"
 #include "mount.h"
 
@@ -454,7 +453,7 @@ static inline struct dentry *dentry_kill(struct dentry *dentry, int ref)
 	if (inode && !spin_trylock(&inode->i_lock)) {
 relock:
 		spin_unlock(&dentry->d_lock);
-		cpu_chill();
+		cpu_relax();
 		return dentry; /* try again with same dentry */
 	}
 	if (IS_ROOT(dentry))
@@ -836,7 +835,7 @@ relock:
 
 		if (!spin_trylock(&dentry->d_lock)) {
 			spin_unlock(&dcache_lru_lock);
-			cpu_chill();
+			cpu_relax();
 			goto relock;
 		}
 
@@ -2073,7 +2072,7 @@ again:
 	if (dentry->d_count == 1) {
 		if (!spin_trylock(&inode->i_lock)) {
 			spin_unlock(&dentry->d_lock);
-			cpu_chill();
+			cpu_relax();
 			goto again;
 		}
 		dentry->d_flags &= ~DCACHE_CANT_MOUNT;

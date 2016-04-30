@@ -1,6 +1,6 @@
-From 6ddb952966f57086985d3c1c0f81900afec20b3b Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:07 +0900
+From 70d63c362c378459be606d4da54712e2d535d2c4 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:21 +0900
 Subject: [PATCH 052/170] SDHCI1-Driver-support
 
 

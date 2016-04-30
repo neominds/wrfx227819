@@ -1,6 +1,6 @@
-From 6e9a88ff5229c12dc9c729bad025a1b81f23201c Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:21 +0900
+From 1543d9453336907ea3151ca7a62d141a2c3d5b73 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:38 +0900
 Subject: [PATCH 110/170] 0001-gmac-work-around-fixed
 
 

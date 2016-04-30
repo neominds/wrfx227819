@@ -976,14 +976,12 @@ int tipc_publish(u32 ref, unsigned int scope, struct tipc_name_seq const *seq)
 	if (!p_ptr)
 		return -EINVAL;
 
-	if (p_ptr->connected) {
-		tipc_port_unlock(p_ptr);
-		return res;
-	}
+	if (p_ptr->connected)
+		goto exit;
 	key = ref + p_ptr->pub_count + 1;
 	if (key == ref) {
-		tipc_port_unlock(p_ptr);
-		return -EADDRINUSE;
+		res = -EADDRINUSE;
+		goto exit;
 	}
 	publ = tipc_nametbl_publish(seq->type, seq->lower, seq->upper,
 				    scope, p_ptr->ref, key);
@@ -993,11 +991,8 @@ int tipc_publish(u32 ref, unsigned int scope, struct tipc_name_seq const *seq)
 		p_ptr->published = 1;
 		res = 0;
 	}
+exit:
 	tipc_port_unlock(p_ptr);
-
-	if (publ && publ->buf)
-		named_cluster_distribute(publ->buf);
-
 	return res;
 }
 
@@ -1006,24 +1001,16 @@ int tipc_withdraw(u32 ref, unsigned int scope, struct tipc_name_seq const *seq)
 	struct tipc_port *p_ptr;
 	struct publication *publ;
 	struct publication *tpubl;
-	struct sk_buff *buf;
-	struct sk_buff *tbuf;
-	struct sk_buff_head nametbl_queue;
 	int res = -EINVAL;
 
 	p_ptr = tipc_port_lock(ref);
 	if (!p_ptr)
 		return -EINVAL;
-
-	skb_queue_head_init(&nametbl_queue);
-
 	if (!seq) {
 		list_for_each_entry_safe(publ, tpubl,
 					 &p_ptr->publications, pport_list) {
-			buf = tipc_nametbl_withdraw(publ->type, publ->lower,
+			tipc_nametbl_withdraw(publ->type, publ->lower,
 					      publ->ref, publ->key);
-			if (buf)
-				skb_queue_tail(&nametbl_queue, buf);
 		}
 		res = 0;
 	} else {
@@ -1037,11 +1024,8 @@ int tipc_withdraw(u32 ref, unsigned int scope, struct tipc_name_seq const *seq)
 				continue;
 			if (publ->upper != seq->upper)
 				break;
-			buf = tipc_nametbl_withdraw(publ->type, publ->lower,
+			tipc_nametbl_withdraw(publ->type, publ->lower,
 					      publ->ref, publ->key);
-			if (buf)
-				skb_queue_tail(&nametbl_queue, buf);
-
 			res = 0;
 			break;
 		}
@@ -1049,11 +1033,6 @@ int tipc_withdraw(u32 ref, unsigned int scope, struct tipc_name_seq const *seq)
 	if (list_empty(&p_ptr->publications))
 		p_ptr->published = 0;
 	tipc_port_unlock(p_ptr);
-
-	if (!skb_queue_empty(&nametbl_queue)) {
-		while ((tbuf = skb_dequeue(&nametbl_queue)))
-			named_cluster_distribute(tbuf);
-	}
 	return res;
 }
 

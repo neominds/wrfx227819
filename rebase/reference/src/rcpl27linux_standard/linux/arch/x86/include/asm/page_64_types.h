@@ -14,19 +14,11 @@
 #define IRQ_STACK_ORDER 2
 #define IRQ_STACK_SIZE (PAGE_SIZE << IRQ_STACK_ORDER)
 
-#ifdef CONFIG_PREEMPT_RT_FULL
-# define DOUBLEFAULT_STACK 1
-# define NMI_STACK 2
-# define DEBUG_STACK 0
-# define MCE_STACK 3
-# define N_EXCEPTION_STACKS 3  /* hw limit: 7 */
-#else
-# define DOUBLEFAULT_STACK 1
-# define NMI_STACK 2
-# define DEBUG_STACK 3
-# define MCE_STACK 4
-# define N_EXCEPTION_STACKS 4  /* hw limit: 7 */
-#endif
+#define DOUBLEFAULT_STACK 1
+#define NMI_STACK 2
+#define DEBUG_STACK 3
+#define MCE_STACK 4
+#define N_EXCEPTION_STACKS 4  /* hw limit: 7 */
 
 #define PUD_PAGE_SIZE		(_AC(1, UL) << PUD_SHIFT)
 #define PUD_PAGE_MASK		(~(PUD_PAGE_SIZE-1))

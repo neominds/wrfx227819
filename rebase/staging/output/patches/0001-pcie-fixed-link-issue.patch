@@ -1,6 +1,6 @@
-From f398dc9029a9e06162cadb7cc1534e4206c1f34d Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:37 +0900
+From f5e27181c0440f24cb84eadd154b026783f14e28 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:55 +0900
 Subject: [PATCH 122/170] 0001-pcie-fixed-link-issue
 
 

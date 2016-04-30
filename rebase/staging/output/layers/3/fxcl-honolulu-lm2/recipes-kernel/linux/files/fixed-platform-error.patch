@@ -1,6 +1,6 @@
-From 077e0676a451bbf9f723b4cacfa1f443cba11e37 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:35:59 +0900
+From b14668eaeaba2ddb60be5f50c1faae8f2833896c Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:14 +0900
 Subject: [PATCH 046/170] fixed-platform-error
 
 

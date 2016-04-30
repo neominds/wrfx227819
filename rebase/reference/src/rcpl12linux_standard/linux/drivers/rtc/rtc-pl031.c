@@ -384,9 +384,6 @@ static int pl031_probe(struct amba_device *adev, const struct amba_id *id)
 		goto out_no_irq;
 	}
 
-	/*Set bit "RTC start" in register RTCCR to enable RTC */
-	writel(0x1, ldata->base + RTC_CR);
-
 	device_init_wakeup(&adev->dev, 1);
 
 	return 0;

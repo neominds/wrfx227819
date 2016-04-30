@@ -1,6 +1,6 @@
-From 2b0267953fa268fb9eada4217db77357f18b9c04 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:46 +0900
+From b41e7fdc4e6dfd45776e0e5aed2a2556aa9e98db Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:51:04 +0900
 Subject: [PATCH 129/170] 0001-modify-eeprom-driver
 
 

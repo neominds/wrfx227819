@@ -1,6 +1,6 @@
-From 4133887665193708dfd9233b3f970b46f343a1c2 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:34:59 +0900
+From 01893885f6d6fb2f5db2a8303b4c5aaf0831cfd1 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:47:57 +0900
 Subject: [PATCH 003/170] 0002-fxcl-waikiki-platform-base
 
 

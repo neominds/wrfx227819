@@ -1,6 +1,6 @@
-From 2c4b848a484751c2998c9e6ed5ae8476e1fd61f9 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:38:12 +0900
+From 36993e5ae8d0a55f9a7f17d6b0ffd30aece4990e Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:51:31 +0900
 Subject: [PATCH 149/170] 0001-e1000e_TCP_WorkAround
 
 

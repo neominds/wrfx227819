@@ -1,6 +1,6 @@
-From 14fa45dd4a9d37a8f5b8e933f4f6143840396330 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:10 +0900
+From b143422438c4ab6c3a4c5baba53e769bbc07f8dc Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:26 +0900
 Subject: [PATCH 101/170] 0001-temporary-correct-resources-for-pcie
 
 

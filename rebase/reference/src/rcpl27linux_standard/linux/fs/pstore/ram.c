@@ -453,7 +453,7 @@ static int ramoops_probe(struct platform_device *pdev)
 		cxt->pstore.bufsize = 1024; /* LOG_LINE_MAX */
 	cxt->pstore.bufsize = max(cxt->record_size, cxt->pstore.bufsize);
 	cxt->pstore.buf = kmalloc(cxt->pstore.bufsize, GFP_KERNEL);
-	raw_spin_lock_init(&cxt->pstore.buf_lock);
+	spin_lock_init(&cxt->pstore.buf_lock);
 	if (!cxt->pstore.buf) {
 		pr_err("cannot allocate pstore buffer\n");
 		err = -ENOMEM;

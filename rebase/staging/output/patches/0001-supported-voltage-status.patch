@@ -1,6 +1,6 @@
-From 90dfeed10846f191a4355185fa18ebd89f8082d8 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:37:28 +0900
+From dce7bac386b9df73c976723c3ddefb55e015b954 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:50:44 +0900
 Subject: [PATCH 115/170] 0001-supported-voltage-status
 
 

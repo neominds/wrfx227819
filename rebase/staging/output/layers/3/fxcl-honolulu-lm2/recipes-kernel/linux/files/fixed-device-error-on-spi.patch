@@ -1,6 +1,6 @@
-From c7595b49233dcc79dd99ab87dae23642ce29ec21 Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:36:09 +0900
+From 62e5cf4ff041c2f860ee5eb28e8a124ab315a793 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:49:24 +0900
 Subject: [PATCH 054/170] fixed-device-error-on-spi
 
 

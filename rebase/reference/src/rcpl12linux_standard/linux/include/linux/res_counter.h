@@ -47,7 +47,7 @@ struct res_counter {
 	 * the lock to protect all of the above.
 	 * the routines below consider this to be IRQ-safe
 	 */
-	raw_spinlock_t lock;
+	spinlock_t lock;
 	/*
 	 * Parent counter, used for hierarchial resource accounting
 	 */
@@ -148,12 +148,12 @@ static inline unsigned long long res_counter_margin(struct res_counter *cnt)
 	unsigned long long margin;
 	unsigned long flags;
 
-	raw_spin_lock_irqsave(&cnt->lock, flags);
+	spin_lock_irqsave(&cnt->lock, flags);
 	if (cnt->limit > cnt->usage)
 		margin = cnt->limit - cnt->usage;
 	else
 		margin = 0;
-	raw_spin_unlock_irqrestore(&cnt->lock, flags);
+	spin_unlock_irqrestore(&cnt->lock, flags);
 	return margin;
 }
 
@@ -170,12 +170,12 @@ res_counter_soft_limit_excess(struct res_counter *cnt)
 	unsigned long long excess;
 	unsigned long flags;
 
-	raw_spin_lock_irqsave(&cnt->lock, flags);
+	spin_lock_irqsave(&cnt->lock, flags);
 	if (cnt->usage <= cnt->soft_limit)
 		excess = 0;
 	else
 		excess = cnt->usage - cnt->soft_limit;
-	raw_spin_unlock_irqrestore(&cnt->lock, flags);
+	spin_unlock_irqrestore(&cnt->lock, flags);
 	return excess;
 }
 
@@ -183,18 +183,18 @@ static inline void res_counter_reset_max(struct res_counter *cnt)
 {
 	unsigned long flags;
 
-	raw_spin_lock_irqsave(&cnt->lock, flags);
+	spin_lock_irqsave(&cnt->lock, flags);
 	cnt->max_usage = cnt->usage;
-	raw_spin_unlock_irqrestore(&cnt->lock, flags);
+	spin_unlock_irqrestore(&cnt->lock, flags);
 }
 
 static inline void res_counter_reset_failcnt(struct res_counter *cnt)
 {
 	unsigned long flags;
 
-	raw_spin_lock_irqsave(&cnt->lock, flags);
+	spin_lock_irqsave(&cnt->lock, flags);
 	cnt->failcnt = 0;
-	raw_spin_unlock_irqrestore(&cnt->lock, flags);
+	spin_unlock_irqrestore(&cnt->lock, flags);
 }
 
 static inline int res_counter_set_limit(struct res_counter *cnt,
@@ -203,12 +203,12 @@ static inline int res_counter_set_limit(struct res_counter *cnt,
 	unsigned long flags;
 	int ret = -EBUSY;
 
-	raw_spin_lock_irqsave(&cnt->lock, flags);
+	spin_lock_irqsave(&cnt->lock, flags);
 	if (cnt->usage <= limit) {
 		cnt->limit = limit;
 		ret = 0;
 	}
-	raw_spin_unlock_irqrestore(&cnt->lock, flags);
+	spin_unlock_irqrestore(&cnt->lock, flags);
 	return ret;
 }
 
@@ -218,9 +218,9 @@ res_counter_set_soft_limit(struct res_counter *cnt,
 {
 	unsigned long flags;
 
-	raw_spin_lock_irqsave(&cnt->lock, flags);
+	spin_lock_irqsave(&cnt->lock, flags);
 	cnt->soft_limit = soft_limit;
-	raw_spin_unlock_irqrestore(&cnt->lock, flags);
+	spin_unlock_irqrestore(&cnt->lock, flags);
 	return 0;
 }
 

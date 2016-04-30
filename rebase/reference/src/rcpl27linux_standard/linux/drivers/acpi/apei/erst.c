@@ -1181,7 +1181,7 @@ static int __init erst_init(void)
 		goto err_release_erange;
 
 	buf = kmalloc(erst_erange.size, GFP_KERNEL);
-	raw_spin_lock_init(&erst_info.buf_lock);
+	spin_lock_init(&erst_info.buf_lock);
 	if (buf) {
 		erst_info.buf = buf + sizeof(struct cper_pstore_record);
 		erst_info.bufsize = erst_erange.size -

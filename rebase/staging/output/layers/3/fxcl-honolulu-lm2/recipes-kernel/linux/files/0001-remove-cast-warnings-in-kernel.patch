@@ -1,6 +1,6 @@
-From 21c37f9e0534c0d0b77c13cc0639109dddb1f69e Mon Sep 17 00:00:00 2001
-From: Jayesh <jayesh.babu@windriver.com>
-Date: Thu, 28 Apr 2016 23:38:01 +0900
+From b16f8d2e242bac27a2daf9bcd7b216af94c9d070 Mon Sep 17 00:00:00 2001
+From: jthomas <jacob.thomas@windriver.com>
+Date: Fri, 29 Apr 2016 13:51:19 +0900
 Subject: [PATCH 141/170] 0001-remove-cast-warnings-in-kernel
 
 

@@ -1,6 +1,6 @@
-From 267389a1c27eabc51dcdc0c47fd322312369eded Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:48:37 +0900
+From 40b2de4f04bd431b01a55a271319bd7b4b32d38a Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:44:40 +0900
 Subject: [PATCH 018/170] 0017-add-drivers-configuration
 
 

@@ -1,6 +1,6 @@
-From 9a79c89a755ddbbf2ae15e659c7363ef0c3dc8ba Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:51:00 +0900
+From 00ba894a49f9d87ba668c012c6a6ec3920f7aac6 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:47:01 +0900
 Subject: [PATCH 126/170] 0001-rtc-voltage-check-issue
 
 

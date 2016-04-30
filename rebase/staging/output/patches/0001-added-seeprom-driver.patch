@@ -1,6 +1,6 @@
-From 7221ea10bbfae4c188f534b9054203993c5a4b12 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:59 +0900
+From 39515f331cd152e59bb645552264f398ca4fc720 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:47:00 +0900
 Subject: [PATCH 125/170] 0001-added-seeprom-driver
 
 

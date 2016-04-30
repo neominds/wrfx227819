@@ -1,6 +1,6 @@
-From 707c198214582f4ec69aa34bb9aad5dca11c9c67 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:51:07 +0900
+From 3db65e37d9b9a87ed03c73b8dabb3533a77dc212 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:47:08 +0900
 Subject: [PATCH 132/170] 0001-printer-gadget-issue
 
 

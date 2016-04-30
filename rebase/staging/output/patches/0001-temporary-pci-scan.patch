@@ -1,6 +1,6 @@
-From 502e7fa4683840f7f530d800fbf55a692e8e1112 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:10 +0900
+From d0f23ffbf9f774501e7d4b3648f5ff51e40dae6a Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:46:13 +0900
 Subject: [PATCH 089/170] 0001-temporary-pci-scan
 
 

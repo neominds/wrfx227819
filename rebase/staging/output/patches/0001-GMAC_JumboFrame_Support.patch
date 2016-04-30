@@ -1,6 +1,6 @@
-From 98e1f3d9fba78f34b0616a85867aff5fc3a814d5 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:52 +0900
+From 120aead6ad3a64d1240f90550d256ed1c12365c2 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:46:53 +0900
 Subject: [PATCH 120/170] 0001-GMAC_JumboFrame_Support
 
 

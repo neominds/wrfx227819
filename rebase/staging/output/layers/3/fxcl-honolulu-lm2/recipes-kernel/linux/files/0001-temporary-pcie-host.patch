@@ -1,6 +1,6 @@
-From 67c51324a54446b0a101d7ea44ea6890490d137c Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:07 +0900
+From c6278d77f3d4ca666545c3b458971b2fde5437de Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:46:09 +0900
 Subject: [PATCH 086/170] 0001-temporary-pcie-host
 
 

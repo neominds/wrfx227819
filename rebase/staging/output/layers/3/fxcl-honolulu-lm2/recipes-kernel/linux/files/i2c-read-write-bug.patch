@@ -1,6 +1,6 @@
-From f93adf084e9fd04b0fa3893579ffc8e5143e3ac3 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:49:19 +0900
+From 934ff7c8592fa4c0b13c689aba229ecc71be40b4 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:45:22 +0900
 Subject: [PATCH 050/170] i2c-read-write-bug
 
 

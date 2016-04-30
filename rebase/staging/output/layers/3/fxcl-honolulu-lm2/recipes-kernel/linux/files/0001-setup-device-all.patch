@@ -1,6 +1,6 @@
-From 2d3ced74960dc4f26bb34b0dd3f2aba8388fc504 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:49:45 +0900
+From 8f47fd7e1a23602d1757ed1875dce35e56012c49 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:45:47 +0900
 Subject: [PATCH 069/170] 0001-setup-device-all
 
 

@@ -1,6 +1,6 @@
-From 7c77a89de81744c3915fc0be29673b232e02ecb2 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:04 +0900
+From c9adf2d62a49a95859c95096d1c105fb1d5d0c85 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:46:07 +0900
 Subject: [PATCH 084/170] 0001-all-port-root-complex
 
 

@@ -1,6 +1,6 @@
-From f3313e1b8151b65a22fbc71d70a2d451b5ec3d32 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:49:09 +0900
+From 11d4aa902ab5eb2fac1243b9088f7adf0ec9d63b Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:45:12 +0900
 Subject: [PATCH 042/170] 0039-fixed-usb-device-driver
 
 

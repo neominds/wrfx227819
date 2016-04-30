@@ -1,6 +1,6 @@
-From a4cca3b169ac656730ecab474870266ac22084c4 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:48:18 +0900
+From 3a505d89df89e5d4d6b9ea875a126a6561a152ab Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:44:29 +0900
 Subject: [PATCH 009/170] 0008-fixed-kernel-header-lpae-support
 
 

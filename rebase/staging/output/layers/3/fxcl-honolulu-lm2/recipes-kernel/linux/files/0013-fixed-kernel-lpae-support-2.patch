@@ -1,6 +1,6 @@
-From d6356c4188ad81c38873c9d2f1b9b81c9a9c2090 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:48:32 +0900
+From 860c3fd97d2bd6c99a406b9d0745c08fa722b01c Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:44:35 +0900
 Subject: [PATCH 014/170] 0013-fixed-kernel-lpae-support-2
 
 

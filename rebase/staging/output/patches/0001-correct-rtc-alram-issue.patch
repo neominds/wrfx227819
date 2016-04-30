@@ -1,6 +1,6 @@
-From e97976fbecccfaff76366b04e73e92ebcfb066e7 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:49:53 +0900
+From 5b735f645f94b33c335c583a5ceb9064306dd5ad Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:45:55 +0900
 Subject: [PATCH 075/170] 0001-correct-rtc-alram-issue
 
 

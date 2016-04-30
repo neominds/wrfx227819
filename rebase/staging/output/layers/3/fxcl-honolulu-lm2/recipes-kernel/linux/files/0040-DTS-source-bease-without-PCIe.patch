@@ -1,6 +1,6 @@
-From e9c440f77e28e64a5d09adfd2548b071e8b6ee28 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:49:12 +0900
+From 733cc786f92dfcf11a96c546ee2c4c1d2efa524d Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:45:16 +0900
 Subject: [PATCH 045/170] 0040-DTS-source-bease-without-PCIe
 
 

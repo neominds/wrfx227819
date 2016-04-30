@@ -1,6 +1,6 @@
-From f906ed6c2a66c0e2b3c65abf87261e11b2c1ef23 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:49:48 +0900
+From 4e5776263a9053d1c33bb7acebd687164f16717c Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:45:50 +0900
 Subject: [PATCH 071/170] 0001-mtd-raw-level-driver
 
 

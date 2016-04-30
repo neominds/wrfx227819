@@ -1,6 +1,6 @@
-From cd6b1056f3c5e8fdac510b3e62ecd90ba0fdb629 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:51:51 +0900
+From 36d6c40b05f1f08eb244a24decf9bc82c30bc7f6 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:47:51 +0900
 Subject: [PATCH 165/170] 0211-E1000E_mtu9000_support
 
 

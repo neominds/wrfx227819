@@ -1,6 +1,6 @@
-From 75e10ccb7fd38a3999932ec973daf424fbbae07a Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:51:13 +0900
+From 3c504dd55f3cbca164b83ba52b308c822bbb1c54 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:47:14 +0900
 Subject: [PATCH 136/170] 0001-PCIe-Enable-suport-dtb
 
 

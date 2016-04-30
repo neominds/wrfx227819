@@ -146,11 +146,12 @@ rebase_patches()
 # directories to the script, do it below
 output_dir=./../output
 output_layer=$output_dir/layers/3
-resolve_dir=../../resolved
-patches_dir_curr_base=../../../reference/patches/set3
+resolve_dir=./../../resolved
+patches_dir_curr_base=./../../../reference/patches/set3
 reference_dir_curr_base=./../../../reference/src/rcpl12linux
 reference_dir_new_base=./../../../reference/src/rcpl27linux
 patchlist_filename=patchnames_to_rebase
+release_dir=./../../releases
 
 current=`pwd`
 #cleanup
@@ -179,6 +180,24 @@ cp $output_dir/patches/*.patch $output_layer/fxcl-honolulu-lm2/recipes-kernel/li
 ldir=$output_layer/fxcl-honolulu-lm2/
 ldirabs="$(dirname $(readlink -e $ldir))/$(basename $ldir)"
 echo New layer created at $ldirabs
+
+if [ "$1" == "release" ]; then
+	if [ "$2" == "" ]; then
+		echo Usage: $0 release \<release-string\> 
+		echo e.g. $0 release R01 
+		echo Error: release string not specified. Cannot create release.
+		exit 1
+	fi
+	if [ ! -f "$release_dir/fxcl-honolulu-lm2_rcpl27_$2.tar.gz" ]; then
+		reldirabs="$(dirname $(readlink -e $release_dir))/$(basename $release_dir)"
+		echo Release mode: creating $reldirabs/fxcl-honolulu-lm2_rcpl27_$2.tar.gz
+		tar zcf $release_dir/fxcl-honolulu-lm2_rcpl27_$2.tar.gz -C $output_layer .
+		ls -l $reldirabs/fxcl-honolulu-lm2_rcpl27_$2.tar.gz
+	else
+		echo Specified release already exist. Cannot create release
+		exit 1
+	fi
+fi
 
 echo
 echo Done.

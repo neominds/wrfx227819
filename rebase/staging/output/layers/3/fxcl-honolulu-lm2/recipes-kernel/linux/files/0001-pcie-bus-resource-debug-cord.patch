@@ -1,6 +1,6 @@
-From f86a213a888d0c4eb4e7d5810d665681943b1081 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:29 +0900
+From 24aa1367feb6ce87a14a2cccc00ee46d652eab59 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:46:31 +0900
 Subject: [PATCH 103/170] 0001-pcie-bus-resource-debug-cord
 
 

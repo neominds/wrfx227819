@@ -1,6 +1,6 @@
-From b95eac7a3248f121b3f56cf5362cc1763f5ede3b Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:49:44 +0900
+From 972cbdcc45be18ecb0224787983b64927eca855e Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:45:46 +0900
 Subject: [PATCH 068/170] 0001-0x805000000_KernelStart
 
 

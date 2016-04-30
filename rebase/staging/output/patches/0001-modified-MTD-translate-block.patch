@@ -1,6 +1,6 @@
-From 905d28cbb80fab78fbd91b0bd3dfbd71826199c1 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:51:18 +0900
+From 18da1db309c3124d23b83e964e2d98b8b061bc3b Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:47:19 +0900
 Subject: [PATCH 140/170] 0001-modified-MTD-translate-block
 
 

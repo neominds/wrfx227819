@@ -1,6 +1,6 @@
-From 736dd84d4f8228f93c8f57c16e6bddae6b4c6797 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:49:06 +0900
+From 5b9d2c88dfa0e3d464d4307f45f030043fa3a793 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:45:10 +0900
 Subject: [PATCH 040/170] 0037-SDHCI-Driver-support-fix
 
 

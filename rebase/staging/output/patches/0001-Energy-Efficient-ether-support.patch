@@ -1,6 +1,6 @@
-From 744461babcd3e3860bf76b15b3417e291710e562 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:51:26 +0900
+From c49e65b8f8b18cf7c79166c0dfc68c3573f4a8f8 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:47:28 +0900
 Subject: [PATCH 147/170] 0001-Energy-Efficient-ether-support
 
 

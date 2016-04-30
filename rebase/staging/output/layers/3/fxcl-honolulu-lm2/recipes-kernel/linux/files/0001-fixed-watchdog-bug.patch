@@ -1,6 +1,6 @@
-From fa40209379c7e022aab7430421152979a9822b9e Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:15 +0900
+From ae653e688aafe2e6fb24c8b17133b326768b68ae Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:46:18 +0900
 Subject: [PATCH 093/170] 0001-fixed-watchdog-bug
 
 

@@ -1,6 +1,6 @@
-From bfb4f3de74bc134a2ee38045bee593e4f5493452 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:51:43 +0900
+From 7123faaf96a834718df5b1716eca849106390e24 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:47:44 +0900
 Subject: [PATCH 159/170] 0204-XSPI_patch
 
 

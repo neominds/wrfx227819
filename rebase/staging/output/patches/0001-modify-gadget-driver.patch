@@ -1,6 +1,6 @@
-From db5552ad8c12ca88db5487985baa6c18534f4b69 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:39 +0900
+From 681f4170ff0f1bdee263f24541471259c80a9dae Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:46:41 +0900
 Subject: [PATCH 111/170] 0001-modify-gadget-driver
 
 

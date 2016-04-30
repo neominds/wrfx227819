@@ -1,6 +1,6 @@
-From e65809da0802ad3f5f1d859fba3cfd4f9039695e Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:13 +0900
+From aafdebe3cec27432d7f95491144d738e5251b2ba Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:46:16 +0900
 Subject: [PATCH 091/170] 0001-added-pcie-card-check
 
 

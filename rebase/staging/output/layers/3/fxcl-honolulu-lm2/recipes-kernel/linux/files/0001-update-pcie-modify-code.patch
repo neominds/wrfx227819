@@ -1,6 +1,6 @@
-From 64e3eececfdf7e4bc4255b78f2bf5cf8b3e2e7ce Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:50:25 +0900
+From 2c6aad2ae7ee5eede1fb6eb89864a745c0218b2f Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:46:27 +0900
 Subject: [PATCH 100/170] 0001-update-pcie-modify-code
 
 

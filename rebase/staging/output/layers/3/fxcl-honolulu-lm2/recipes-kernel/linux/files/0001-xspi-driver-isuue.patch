@@ -1,6 +1,6 @@
-From a74709058cec6ffd870a03af2562bc68a9ebb983 Mon Sep 17 00:00:00 2001
-From: jthomas <jacob.thomas@windriver.com>
-Date: Fri, 29 Apr 2016 13:51:06 +0900
+From 538f9316a191f7060035d93a09233afdcb7f74d7 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Sat, 30 Apr 2016 11:47:07 +0900
 Subject: [PATCH 131/170] 0001-xspi-driver-isuue
 
 

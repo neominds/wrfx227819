@@ -1,465 +1,0 @@
-[-----Rebasing standard kernel-------]
-Removing current repo..
-Creating 12_base..
-Initialized empty Git repository in /home/jacobt/jthomas/wrfx227819/rebase/staging/scripts/staging_git_standard/.git/
-RCPL0027 branch set up.
-                                                                                                [0] Patching 0000-set-standard-kernel-type...                                                                                                [1] Patching 0001-fxcl-waikiki-base...                                                                                                [2] Patching 0002-fxcl-waikiki-platform-base...                                                                                                [3] Patching 0003-add-fxcl-waikiki-machine-type...                                                                                                [4] Patching 0004-fxcl-waikiki-device-tree-base...                                                                                                [5] Patching 0005-add-fxcl-usb-phy-base...                                                                                                [6] Patching 0006-adjust-ethernet-driver...                                                                                                [7] Patching 0007-fixed-kernel-lpae-support...                                                                                                [8] Patching 0008-fixed-kernel-header-lpae-support...                                                                                                [9] Patching 0009-fixed-kernel-arch-header-lpae-support...                                                                                                [10] Patching 0010-register-bsp-makefile...                                                                                                [11] Patching 0011-debug-prepare-kernel...                                                                                                [12] Patching 0012-debug-setup-kernel...                                                                                                [13] Patching 0013-fixed-kernel-lpae-support-2...                                                                                                [14] Patching 0014-debug-bsp-support-code...                                                                                                [15] Patching 0015-debug-driver-support-code-1...                                                                                                [16] Patching 0016-bus-driver-added-base...                                                                                                [17] Patching 0017-add-drivers-configuration...                                                                                                [18] Patching 0018-merge-fix-base-bsp...                                                                                                [19] Patching 0019-merge-sdhc-driver...                                                                                                [20] Patching 0020-debug-physical-memory-address...                                                                                                [21] Patching 0021-merge-rtc-driver-quatro53xx...                                                                                                [22] Patching 0022-added-rtc-for-static-bsp...                                                                                                [23] Patching 0023-merge-watchdog-timer...                                                                                                [24] Patching 0024-merge-bus-driver...                                                                                                [25] Patching 0025-add-driver-resource...                                                                                                [26] Patching 0026-isolate-gpio-driver...                                                                                                [27] Patching 0027-fixed-timer-resource-bug...                                                                                                [28] Patching 0028-usbd-dwc3-driver-update...                                                                                                [29] Patching 0029-modify-usb-register...                                                                                                [30] Patching 0030-fixed-header-error...                                                                                                [31] Patching 0031-fixed-timer-bugs...                                                                                                [32] Patching 0032-isolate-debug-code...                                                                                                [33] Patching fixed-configuration-error...                                                                                                [34] Patching correct-gmac-base-address...                                                                                                [35] Patching 0033-prepare-DTB-support...                                                                                                [36] Patching 0034-MTD-driver-support-with-DTB...                                                                                                [37] Patching 0035-XSPI-Driver-for-Waikiki-2nd...                                                                                                [38] Patching 0036-modify-uio-base-driver...                                                                                                [39] Patching 0037-SDHCI-Driver-support-fix...                                                                                                [40] Patching 0038-SDCard-Lock-Unlock-support...                                                                                                [41] Patching 0039-fixed-usb-device-driver...                                                                                                [42] Patching temporary-usb-host-debug-support...                                                                                                [43] Patching added-driver-fix-and-support...                                                                                                [44] Patching 0040-DTS-source-bease-without-PCIe...                                                                                                [45] Patching fixed-platform-error...                                                                                                [46] Patching i2c-bigfix...                                                                                                [47] Patching fixed-gpio-bug...                                                                                                [48] Patching remove-debug-code...                                                                                                [49] Patching i2c-read-write-bug...                                                                                                [50] Patching watchdog-timer-bug-fix...                                                                                                [51] Patching SDHCI1-Driver-support...                                                                                                [52] Patching added-alarm-in-rtc-driver...                                                                                                [53] Patching fixed-device-error-on-spi...                                                                                                [54] Patching USB-host-bug-fixed...                                                                                                [55] Patching GPDMA-UIO-Driver-fix...                                                                                                [56] Patching PCIE-adjust-configuration...                                                                                                [57] Patching fixed-kernel-config...                                                                                                [58] Patching added-XSPI-kernel-interface-header...                                                                                                [59] Patching memory-and-tlb-bug...                                                                                                [60] Patching 0001-SMP_Debug...                                                                                                [61] Patching 0001-SMP_fixed...                                                                                                [62] Patching 0001-remove-debug-code...                                                                                                [63] Patching 0001-remove-litaral-mode...                                                                                                [64] Patching 0001-SMP-HigtMem...                                                                                                [65] Patching 0001-DTB__ReadOK...                                                                                                [66] Patching 0001-dtb-and-ether-change...                                                                                                [67] Patching 0001-0x805000000_KernelStart...                                                                                                [68] Patching 0001-setup-device-all...                                                                                                [69] Patching 0001-remove-atag-debug...                                                                                                [70] Patching 0001-mtd-raw-level-driver...                                                                                                [71] Patching 0001-add-mtd-temp-setting...                                                                                                [72] Patching 0001-xspi-sram-access...                                                                                                [73] Patching 0001-correct-spi-driver-and-moved-timer-channel...                                                                                                [74] Patching 0001-correct-rtc-alram-issue...                                                                                                [75] Patching 0001-change-IRQ-shared-for-i2c...                                                                                                [76] Patching 0001-fixed-kernel-timer-issue...                                                                                                [77] Patching 0001-temp-pcie-patch...                                                                                                [78] Patching 0001-SATA-clock-and-phys-adjustment...                                                                                                [79] Patching 0001-temp-usbhost...                                                                                                [80] Patching 0001-adjust-usb-host-device-scan...                                                                                                [81] Patching 0001-adjust-3gbp-for-sata...                                                                                                [82] Patching 0001-fix-dma-and-pcie...                                                                                                [83] Patching 0001-all-port-root-complex...                                                                                                [84] Patching 0001-adjustment-config-resoure...                                                                                                [85] Patching 0001-temporary-pcie-host...                                                                                                [86] Patching 0001-temporary-LPAE-bug-fix...                                                                                                [87] Patching 0001-temporary-fix-usb-gadget...                                                                                                [88] Patching 0001-temporary-pci-scan...                                                                                                [89] Patching 0001-remove-debug-trace...                                                                                                [90] Patching 0001-added-pcie-card-check...                                                                                                [91] Patching 0001-remove-debug-infomations...                                                                                                [92] Patching 0001-fixed-watchdog-bug...                                                                                                [93] Patching 0001-supported-pcie-interrupt...                                                                                                [94] Patching 0001-correct-timer-resolution...                                                                                                [95] Patching 0001-fixed-protocol-error...                                                                                                [96] Patching 0001-usb3-adjustment...                                                                                                [97] Patching 0001-correct-assign-address...                                                                                                [98] Patching 0001-pcie-correct-bus-scan...                                                                                                [99] Patching 0001-update-pcie-modify-code...                                                                                                [100] Patching 0001-temporary-correct-resources-for-pcie...                                                                                                [101] Patching 0001-GIC_Init_Delete...                                                                                                [102] Patching 0001-pcie-bus-resource-debug-cord...                                                                                                [103] Patching 0001-pcie-and-uart-0-delete...                                                                                                [104] Patching 0001-usb3-gadget-temporary-update...                                                                                                [105] Patching 0001-saving-vartual-address-space-and-DEBUG-KERNEL...                                                                                                [106] Patching 0001-delete-pcie-port-2-and-3-resource...                                                                                                [107] Patching 0001-adjust-timing-for-e1000e...                                                                                                [108] Patching 0001-support-pcie-and-e1000e...                                                                                                [109] Patching 0001-gmac-work-around-fixed...                                                                                                [110] Patching 0001-modify-gadget-driver...                                                                                                [111] Patching 0001-fixed-usb-gadget-isuue...                                                                                                [112] Patching 0001-correct-prototype-parameter-for-MTD...                                                                                                [113] Patching 0001-PCR2_Semifinal2...                                                                                                [114] Patching 0001-supported-voltage-status...                                                                                                [115] Patching 0001-GMAC_Change...                                                                                                [116] Patching 0001-rtc-added-interface...                                                                                                [117] Patching 0001-removed-set-IN-bit...                                                                                                [118] Patching 0001-fixed-MTDBLOCK-issue...                                                                                                [119] Patching 0001-GMAC_JumboFrame_Support...                                                                                                [120] Patching 0001-fixed-clear-issue...                                                                                                [121] Patching 0001-pcie-fixed-link-issue...                                                                                                [122] Patching 0001-corrected-multi-access-issue...                                                                                                [123] Patching 0001-support-standard-spi-interface...                                                                                                [124] Patching 0001-added-seeprom-driver...                                                                                                [125] Patching 0001-rtc-voltage-check-issue...                                                                                                [126] Patching 0001-gadget-driver-prove-remove-issue...                                                                                                [127] Patching 0001-GMAC_update0424...                                                                                                [128] Patching 0001-modify-eeprom-driver...                                                                                                [129] Patching 0001-mtd-block-issue...                                                                                                [130] Patching 0001-xspi-driver-isuue...                                                                                                [131] Patching 0001-printer-gadget-issue...                                                                                                [132] Patching 0001-remove-double-lock-issue...                                                                                                [133] Patching 0001-support-normal-API-for-xspi-driver...                                                                                                [134] Patching 0001-delete-debug-comment...                                                                                                [135] Patching 0001-PCIe-Enable-suport-dtb...                                                                                                [136] Patching 0001-support-timer-handling-routine...                                                                                                [137] Patching 0001-remove-unused-warning-for-kernel...                                                                                                [138] Patching 0001-support-SATA-compliance-test...                                                                                                [139] Patching 0001-modified-MTD-translate-block...                                                                                                [140] Patching 0001-remove-cast-warnings-in-kernel...                                                                                                [141] Patching linux_150825PM011759...                                                                                                [142] Patching linux_150831PM032505...                                                                                                [143] Patching 0001-GMAC_JumboFrame_TxRx_Chnage...                                                                                                [144] Patching 0001-MAC-address-issue...                                                                                                [145] Patching 0001-support-MAC-address-from-DTB...                                                                                                [146] Patching 0001-Energy-Efficient-ether-support...                                                                                                [147] Patching 0001-e1000e_DMA_WorkAround...                                                                                                [148] Patching 0001-e1000e_TCP_WorkAround...                                                                                                [149] Patching 0001-stmac_eee_off_add...                                                                                                [150] Patching 0001-e1000e_driver_workaround...                                                                                                [151] Patching 0001-pci_e1000e_debug...                                                                                                [152] Patching 0001-PCIe_e1000e_workaround_fix...                                                                                                [153] Patching 0001-e1000e_TxQue_calc_change...                                                                                                [154] Patching 0200-fx_wrl6.0_Common...                                                                                                [155] Patching 0201-fx_wrl6.0_standard...                                                                                                [156] Patching 0202-fx_wrl6.0_WrChange...                                                                                                [157] Patching 0203-correct-2038-RTC-issue...                                                                                                [158] Patching 0204-XSPI_patch...                                                                                                [159] Patching 0205-PCIe_Update...                                                                                                [160] Patching 0206-SuspendResumae_IRQ...                                                                                                [161] Patching 0207-PCIe_B0_Board_Ready...                                                                                                [162] Patching 0209-PCIe_ConfigChange...                                                                                                [163] Patching 0210-I2C_Build_Error...                                                                                                [164] Patching 0211-E1000E_mtu9000_support...                                                                                                [165] Patching 0212-XSPI_USER_APP_OK...                                                                                                [166] Patching 0214-GPIO_96Panic...                                                                                                [167] Patching 0215-Panbug_0_0_148_change...                                                                                                [168] Patching 0216-Boardname_waikiki_to_honolulu...
-Rebasing..
-Applying: 0000-set-standard-kernel-type
-Applying: 0001-fxcl-waikiki-base
-Applying: 0002-fxcl-waikiki-platform-base
-Applying: 0003-add-fxcl-waikiki-machine-type
-Applying: 0004-fxcl-waikiki-device-tree-base
-Applying: 0005-add-fxcl-usb-phy-base
-Applying: 0006-adjust-ethernet-driver
-Applying: 0007-fixed-kernel-lpae-support
-CONFLICT (content): Merge conflict in arch/arm/mm/ioremap.c
-CONFLICT (content): Merge conflict in arch/arm/mm/proc-v7-3level.S
-Rebase failed at 0007-fixed-kernel-lpae-support
-Attempting to resolve..
-Applying: 0007-fixed-kernel-lpae-support
-Applying: 0008-fixed-kernel-header-lpae-support
-Applying: 0009-fixed-kernel-arch-header-lpae-support
-CONFLICT (content): Merge conflict in arch/arm/include/asm/io.h
-Rebase failed at 0009-fixed-kernel-arch-header-lpae-support
-Attempting to resolve..
-Applying: 0009-fixed-kernel-arch-header-lpae-support
-Applying: 0010-register-bsp-makefile
-Applying: 0011-debug-prepare-kernel
-Applying: 0012-debug-setup-kernel
-Applying: 0013-fixed-kernel-lpae-support-2
-Applying: 0014-debug-bsp-support-code
-Applying: 0015-debug-driver-support-code-1
-Applying: 0016-bus-driver-added-base
-Applying: 0017-add-drivers-configuration
-Applying: 0018-merge-fix-base-bsp
-Applying: 0019-merge-sdhc-driver
-Applying: 0020-debug-physical-memory-address
-Applying: 0021-merge-rtc-driver-quatro53xx
-Applying: 0022-added-rtc-for-static-bsp
-Applying: 0023-merge-watchdog-timer
-Applying: 0024-merge-bus-driver
-Applying: 0025-add-driver-resource
-Applying: 0026-isolate-gpio-driver
-Applying: 0027-fixed-timer-resource-bug
-Applying: 0028-usbd-dwc3-driver-update
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/core.c
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
-Rebase failed at 0028-usbd-dwc3-driver-update
-Attempting to resolve..
-Applying: 0028-usbd-dwc3-driver-update
-Applying: 0029-modify-usb-register
-Applying: 0030-fixed-header-error
-Applying: 0031-fixed-timer-bugs
-Applying: 0032-isolate-debug-code
-Applying: fixed-configuration-error
-Applying: correct-gmac-base-address
-Applying: 0033-prepare-DTB-support
-Applying: 0034-MTD-driver-support-with-DTB
-Applying: 0035-XSPI-Driver-for-Waikiki-2nd
-Applying: 0036-modify-uio-base-driver
-Applying: 0037-SDHCI-Driver-support-fix
-Applying: 0038-SDCard-Lock-Unlock-support
-Applying: 0039-fixed-usb-device-driver
-CONFLICT (content): Merge conflict in drivers/Kconfig
-Rebase failed at 0039-fixed-usb-device-driver
-Attempting to resolve..
-Applying: 0039-fixed-usb-device-driver
-Applying: temporary-usb-host-debug-support
-Applying: added-driver-fix-and-support
-Applying: 0040-DTS-source-bease-without-PCIe
-Applying: fixed-platform-error
-Applying: i2c-bigfix
-Applying: fixed-gpio-bug
-Applying: remove-debug-code
-Applying: i2c-read-write-bug
-Applying: watchdog-timer-bug-fix
-Applying: SDHCI1-Driver-support
-Applying: added-alarm-in-rtc-driver
-Applying: fixed-device-error-on-spi
-Applying: USB-host-bug-fixed
-Applying: GPDMA-UIO-Driver-fix
-Applying: PCIE-adjust-configuration
-Applying: fixed-kernel-config
-Applying: added-XSPI-kernel-interface-header
-Applying: memory-and-tlb-bug
-Applying: 0001-SMP_Debug
-Applying: 0001-SMP_fixed
-Applying: 0001-remove-debug-code
-Applying: 0001-remove-litaral-mode
-Applying: 0001-SMP-HigtMem
-Applying: 0001-DTB__ReadOK
-Applying: 0001-dtb-and-ether-change
-Applying: 0001-0x805000000_KernelStart
-Applying: 0001-setup-device-all
-Applying: 0001-remove-atag-debug
-Applying: 0001-mtd-raw-level-driver
-Applying: 0001-add-mtd-temp-setting
-Applying: 0001-xspi-sram-access
-Applying: 0001-correct-spi-driver-and-moved-timer-channel
-Applying: 0001-correct-rtc-alram-issue
-Applying: 0001-change-IRQ-shared-for-i2c
-Applying: 0001-fixed-kernel-timer-issue
-Applying: 0001-temp-pcie-patch
-Applying: 0001-SATA-clock-and-phys-adjustment
-Applying: 0001-temp-usbhost
-Applying: 0001-adjust-usb-host-device-scan
-Applying: 0001-adjust-3gbp-for-sata
-Applying: 0001-fix-dma-and-pcie
-Applying: 0001-all-port-root-complex
-Applying: 0001-adjustment-config-resoure
-Applying: 0001-temporary-pcie-host
-Applying: 0001-temporary-LPAE-bug-fix
-CONFLICT (content): Merge conflict in arch/arm/mm/ioremap.c
-Rebase failed at 0001-temporary-LPAE-bug-fix
-Attempting to resolve..
-Applying: 0001-temporary-LPAE-bug-fix
-Applying: 0001-temporary-fix-usb-gadget
-Applying: 0001-temporary-pci-scan
-Applying: 0001-remove-debug-trace
-Applying: 0001-added-pcie-card-check
-Applying: 0001-remove-debug-infomations
-Applying: 0001-fixed-watchdog-bug
-Applying: 0001-supported-pcie-interrupt
-Applying: 0001-correct-timer-resolution
-Applying: 0001-fixed-protocol-error
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/core.c
-Rebase failed at 0001-fixed-protocol-error
-Attempting to resolve..
-Applying: 0001-fixed-protocol-error
-Applying: 0001-usb3-adjustment
-Applying: 0001-correct-assign-address
-CONFLICT (content): Merge conflict in drivers/pci/setup-res.c
-Rebase failed at 0001-correct-assign-address
-Attempting to resolve..
-Applying: 0001-correct-assign-address
-Applying: 0001-pcie-correct-bus-scan
-Applying: 0001-update-pcie-modify-code
-Applying: 0001-temporary-correct-resources-for-pcie
-Applying: 0001-GIC_Init_Delete
-Applying: 0001-pcie-bus-resource-debug-cord
-Applying: 0001-pcie-and-uart-0-delete
-Applying: 0001-usb3-gadget-temporary-update
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
-Rebase failed at 0001-usb3-gadget-temporary-update
-Attempting to resolve..
-Applying: 0001-usb3-gadget-temporary-update
-Applying: 0001-saving-vartual-address-space-and-DEBUG-KERNEL
-Applying: 0001-delete-pcie-port-2-and-3-resource
-Applying: 0001-adjust-timing-for-e1000e
-CONFLICT (content): Merge conflict in drivers/pci/setup-res.c
-Rebase failed at 0001-adjust-timing-for-e1000e
-Attempting to resolve..
-Applying: 0001-adjust-timing-for-e1000e
-Applying: 0001-support-pcie-and-e1000e
-Applying: 0001-gmac-work-around-fixed
-Applying: 0001-modify-gadget-driver
-Applying: 0001-fixed-usb-gadget-isuue
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/core.c
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
-Rebase failed at 0001-fixed-usb-gadget-isuue
-Attempting to resolve..
-Applying: 0001-fixed-usb-gadget-isuue
-Applying: 0001-correct-prototype-parameter-for-MTD
-Applying: 0001-PCR2_Semifinal2
-Applying: 0001-supported-voltage-status
-Applying: 0001-GMAC_Change
-Applying: 0001-rtc-added-interface
-Applying: 0001-removed-set-IN-bit
-Applying: 0001-fixed-MTDBLOCK-issue
-Applying: 0001-GMAC_JumboFrame_Support
-Applying: 0001-fixed-clear-issue
-Applying: 0001-pcie-fixed-link-issue
-Applying: 0001-corrected-multi-access-issue
-Applying: 0001-support-standard-spi-interface
-Applying: 0001-added-seeprom-driver
-Applying: 0001-rtc-voltage-check-issue
-Applying: 0001-gadget-driver-prove-remove-issue
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
-Rebase failed at 0001-gadget-driver-prove-remove-issue
-Attempting to resolve..
-Applying: 0001-gadget-driver-prove-remove-issue
-Applying: 0001-GMAC_update0424
-Applying: 0001-modify-eeprom-driver
-Applying: 0001-mtd-block-issue
-Applying: 0001-xspi-driver-isuue
-Applying: 0001-printer-gadget-issue
-Applying: 0001-remove-double-lock-issue
-CONFLICT (content): Merge conflict in drivers/usb/gadget/printer.c
-Rebase failed at 0001-remove-double-lock-issue
-Attempting to resolve..
-Applying: 0001-remove-double-lock-issue
-Applying: 0001-support-normal-API-for-xspi-driver
-Applying: 0001-delete-debug-comment
-Applying: 0001-PCIe-Enable-suport-dtb
-Applying: 0001-support-timer-handling-routine
-Applying: 0001-remove-unused-warning-for-kernel
-CONFLICT (content): Merge conflict in drivers/irqchip/irq-gic.c
-Rebase failed at 0001-remove-unused-warning-for-kernel
-Attempting to resolve..
-Applying: 0001-remove-unused-warning-for-kernel
-Applying: 0001-support-SATA-compliance-test
-Applying: 0001-modified-MTD-translate-block
-Applying: 0001-remove-cast-warnings-in-kernel
-Applying: linux_150825PM011759
-Applying: linux_150831PM032505
-Applying: 0001-GMAC_JumboFrame_TxRx_Chnage
-Applying: 0001-MAC-address-issue
-Applying: 0001-support-MAC-address-from-DTB
-Applying: 0001-Energy-Efficient-ether-support
-Applying: 0001-e1000e_DMA_WorkAround
-Applying: 0001-e1000e_TCP_WorkAround
-Applying: 0001-stmac_eee_off_add
-Applying: 0001-e1000e_driver_workaround
-Applying: 0001-pci_e1000e_debug
-Applying: 0001-PCIe_e1000e_workaround_fix
-Applying: 0001-e1000e_TxQue_calc_change
-Applying: 0200-fx_wrl6.0_Common
-CONFLICT (content): Merge conflict in drivers/Kconfig
-CONFLICT (content): Merge conflict in drivers/Makefile
-Rebase failed at 0200-fx_wrl6.0_Common
-Attempting to resolve..
-Applying: 0200-fx_wrl6.0_Common
-Applying: 0201-fx_wrl6.0_standard
-Applying: 0202-fx_wrl6.0_WrChange
-CONFLICT (content): Merge conflict in drivers/Makefile
-Rebase failed at 0202-fx_wrl6.0_WrChange
-Attempting to resolve..
-
-All resolved, generating rebased-patches...
-
-Completed 169 rebased patches.
-[-----Rebasing preempt kernel-------]
-Removing current repo..
-Creating 12_base..
-Initialized empty Git repository in /home/jacobt/jthomas/wrfx227819/rebase/staging/scripts/staging_git_preempt/.git/
-RCPL0027 branch set up.
-                                                                                                [0] Patching 0000-set-preempt-kernel-type...                                                                                                [1] Patching 0001-fxcl-waikiki-base...                                                                                                [2] Patching 0002-fxcl-waikiki-platform-base...                                                                                                [3] Patching 0003-add-fxcl-waikiki-machine-type...                                                                                                [4] Patching 0004-fxcl-waikiki-device-tree-base...                                                                                                [5] Patching 0005-add-fxcl-usb-phy-base...                                                                                                [6] Patching 0006-adjust-ethernet-driver...                                                                                                [7] Patching 0007-fixed-kernel-lpae-support...                                                                                                [8] Patching 0008-fixed-kernel-header-lpae-support...                                                                                                [9] Patching 0009-fixed-kernel-arch-header-lpae-support...                                                                                                [10] Patching 0010-register-bsp-makefile...                                                                                                [11] Patching 0011-debug-prepare-kernel...                                                                                                [12] Patching 0012-debug-setup-kernel...                                                                                                [13] Patching 0013-fixed-kernel-lpae-support-2...                                                                                                [14] Patching 0014-debug-bsp-support-code...                                                                                                [15] Patching 0015-debug-driver-support-code-1...                                                                                                [16] Patching 0016-bus-driver-added-base...                                                                                                [17] Patching 0017-add-drivers-configuration...                                                                                                [18] Patching 0018-merge-fix-base-bsp...                                                                                                [19] Patching 0019-merge-sdhc-driver...                                                                                                [20] Patching 0020-debug-physical-memory-address...                                                                                                [21] Patching 0021-merge-rtc-driver-quatro53xx...                                                                                                [22] Patching 0022-added-rtc-for-static-bsp...                                                                                                [23] Patching 0023-merge-watchdog-timer...                                                                                                [24] Patching 0024-merge-bus-driver...                                                                                                [25] Patching 0025-add-driver-resource...                                                                                                [26] Patching 0026-isolate-gpio-driver...                                                                                                [27] Patching 0027-fixed-timer-resource-bug...                                                                                                [28] Patching 0028-usbd-dwc3-driver-update...                                                                                                [29] Patching 0029-modify-usb-register...                                                                                                [30] Patching 0030-fixed-header-error...                                                                                                [31] Patching 0031-fixed-timer-bugs...                                                                                                [32] Patching 0032-isolate-debug-code...                                                                                                [33] Patching fixed-configuration-error...                                                                                                [34] Patching correct-gmac-base-address...                                                                                                [35] Patching 0033-prepare-DTB-support...                                                                                                [36] Patching 0034-MTD-driver-support-with-DTB...                                                                                                [37] Patching 0035-XSPI-Driver-for-Waikiki-2nd...                                                                                                [38] Patching 0036-modify-uio-base-driver...                                                                                                [39] Patching 0037-SDHCI-Driver-support-fix...                                                                                                [40] Patching 0038-SDCard-Lock-Unlock-support...                                                                                                [41] Patching 0039-fixed-usb-device-driver...                                                                                                [42] Patching temporary-usb-host-debug-support...                                                                                                [43] Patching added-driver-fix-and-support...                                                                                                [44] Patching 0040-DTS-source-bease-without-PCIe...                                                                                                [45] Patching fixed-platform-error...                                                                                                [46] Patching i2c-bigfix...                                                                                                [47] Patching fixed-gpio-bug...                                                                                                [48] Patching remove-debug-code...                                                                                                [49] Patching i2c-read-write-bug...                                                                                                [50] Patching watchdog-timer-bug-fix...                                                                                                [51] Patching SDHCI1-Driver-support...                                                                                                [52] Patching added-alarm-in-rtc-driver...                                                                                                [53] Patching fixed-device-error-on-spi...                                                                                                [54] Patching USB-host-bug-fixed...                                                                                                [55] Patching GPDMA-UIO-Driver-fix...                                                                                                [56] Patching PCIE-adjust-configuration...                                                                                                [57] Patching fixed-kernel-config...                                                                                                [58] Patching added-XSPI-kernel-interface-header...                                                                                                [59] Patching memory-and-tlb-bug...                                                                                                [60] Patching 0001-SMP_Debug...                                                                                                [61] Patching 0001-SMP_fixed...                                                                                                [62] Patching 0001-remove-debug-code...                                                                                                [63] Patching 0001-remove-litaral-mode...                                                                                                [64] Patching 0001-SMP-HigtMem...                                                                                                [65] Patching 0001-DTB__ReadOK...                                                                                                [66] Patching 0001-dtb-and-ether-change...                                                                                                [67] Patching 0001-0x805000000_KernelStart...                                                                                                [68] Patching 0001-setup-device-all...                                                                                                [69] Patching 0001-remove-atag-debug...                                                                                                [70] Patching 0001-mtd-raw-level-driver...                                                                                                [71] Patching 0001-add-mtd-temp-setting...                                                                                                [72] Patching 0001-xspi-sram-access...                                                                                                [73] Patching 0001-correct-spi-driver-and-moved-timer-channel...                                                                                                [74] Patching 0001-correct-rtc-alram-issue...                                                                                                [75] Patching 0001-change-IRQ-shared-for-i2c...                                                                                                [76] Patching 0001-fixed-kernel-timer-issue...                                                                                                [77] Patching 0001-temp-pcie-patch...                                                                                                [78] Patching 0001-SATA-clock-and-phys-adjustment...                                                                                                [79] Patching 0001-temp-usbhost...                                                                                                [80] Patching 0001-adjust-usb-host-device-scan...                                                                                                [81] Patching 0001-adjust-3gbp-for-sata...                                                                                                [82] Patching 0001-fix-dma-and-pcie...                                                                                                [83] Patching 0001-all-port-root-complex...                                                                                                [84] Patching 0001-adjustment-config-resoure...                                                                                                [85] Patching 0001-temporary-pcie-host...                                                                                                [86] Patching 0001-temporary-LPAE-bug-fix...                                                                                                [87] Patching 0001-temporary-fix-usb-gadget...                                                                                                [88] Patching 0001-temporary-pci-scan...                                                                                                [89] Patching 0001-remove-debug-trace...                                                                                                [90] Patching 0001-added-pcie-card-check...                                                                                                [91] Patching 0001-remove-debug-infomations...                                                                                                [92] Patching 0001-fixed-watchdog-bug...                                                                                                [93] Patching 0001-supported-pcie-interrupt...                                                                                                [94] Patching 0001-correct-timer-resolution...                                                                                                [95] Patching 0001-fixed-protocol-error...                                                                                                [96] Patching 0001-usb3-adjustment...                                                                                                [97] Patching 0001-correct-assign-address...                                                                                                [98] Patching 0001-pcie-correct-bus-scan...                                                                                                [99] Patching 0001-update-pcie-modify-code...                                                                                                [100] Patching 0001-temporary-correct-resources-for-pcie...                                                                                                [101] Patching 0001-GIC_Init_Delete...                                                                                                [102] Patching 0001-pcie-bus-resource-debug-cord...                                                                                                [103] Patching 0001-pcie-and-uart-0-delete...                                                                                                [104] Patching 0001-usb3-gadget-temporary-update...                                                                                                [105] Patching 0001-saving-vartual-address-space-and-DEBUG-KERNEL...                                                                                                [106] Patching 0001-delete-pcie-port-2-and-3-resource...                                                                                                [107] Patching 0001-adjust-timing-for-e1000e...                                                                                                [108] Patching 0001-support-pcie-and-e1000e...                                                                                                [109] Patching 0001-gmac-work-around-fixed...                                                                                                [110] Patching 0001-modify-gadget-driver...                                                                                                [111] Patching 0001-fixed-usb-gadget-isuue...                                                                                                [112] Patching 0001-correct-prototype-parameter-for-MTD...                                                                                                [113] Patching 0001-PCR2_Semifinal2...                                                                                                [114] Patching 0001-supported-voltage-status...                                                                                                [115] Patching 0001-GMAC_Change...                                                                                                [116] Patching 0001-rtc-added-interface...                                                                                                [117] Patching 0001-removed-set-IN-bit...                                                                                                [118] Patching 0001-fixed-MTDBLOCK-issue...                                                                                                [119] Patching 0001-GMAC_JumboFrame_Support...                                                                                                [120] Patching 0001-fixed-clear-issue...                                                                                                [121] Patching 0001-pcie-fixed-link-issue...                                                                                                [122] Patching 0001-corrected-multi-access-issue...                                                                                                [123] Patching 0001-support-standard-spi-interface...                                                                                                [124] Patching 0001-added-seeprom-driver...                                                                                                [125] Patching 0001-rtc-voltage-check-issue...                                                                                                [126] Patching 0001-gadget-driver-prove-remove-issue...                                                                                                [127] Patching 0001-GMAC_update0424...                                                                                                [128] Patching 0001-modify-eeprom-driver...                                                                                                [129] Patching 0001-mtd-block-issue...                                                                                                [130] Patching 0001-xspi-driver-isuue...                                                                                                [131] Patching 0001-printer-gadget-issue...                                                                                                [132] Patching 0001-remove-double-lock-issue...                                                                                                [133] Patching 0001-support-normal-API-for-xspi-driver...                                                                                                [134] Patching 0001-delete-debug-comment...                                                                                                [135] Patching 0001-PCIe-Enable-suport-dtb...                                                                                                [136] Patching 0001-support-timer-handling-routine...                                                                                                [137] Patching 0001-remove-unused-warning-for-kernel...                                                                                                [138] Patching 0001-support-SATA-compliance-test...                                                                                                [139] Patching 0001-modified-MTD-translate-block...                                                                                                [140] Patching 0001-remove-cast-warnings-in-kernel...                                                                                                [141] Patching linux_150825PM011759...                                                                                                [142] Patching linux_150831PM032505...                                                                                                [143] Patching 0001-GMAC_JumboFrame_TxRx_Chnage...                                                                                                [144] Patching 0001-MAC-address-issue...                                                                                                [145] Patching 0001-support-MAC-address-from-DTB...                                                                                                [146] Patching 0001-Energy-Efficient-ether-support...                                                                                                [147] Patching 0001-e1000e_DMA_WorkAround...                                                                                                [148] Patching 0001-e1000e_TCP_WorkAround...                                                                                                [149] Patching 0001-stmac_eee_off_add...                                                                                                [150] Patching 0001-e1000e_driver_workaround...                                                                                                [151] Patching 0001-pci_e1000e_debug...                                                                                                [152] Patching 0001-PCIe_e1000e_workaround_fix...                                                                                                [153] Patching 0001-e1000e_TxQue_calc_change...                                                                                                [154] Patching 0200-fx_wrl6.0_Common...                                                                                                [155] Patching 0201-fx_wrl6.0_preempt...                                                                                                [156] Patching 0202-fx_wrl6.0_WrChange...                                                                                                [157] Patching 0203-correct-2038-RTC-issue...                                                                                                [158] Patching 0204-XSPI_patch...                                                                                                [159] Patching 0205-PCIe_Update...                                                                                                [160] Patching 0206-SuspendResumae_IRQ...                                                                                                [161] Patching 0207-PCIe_B0_Board_Ready...                                                                                                [162] Patching 0209-PCIe_ConfigChange...                                                                                                [163] Patching 0210-I2C_Build_Error...                                                                                                [164] Patching 0211-E1000E_mtu9000_support...                                                                                                [165] Patching 0212-XSPI_USER_APP_OK...                                                                                                [166] Patching 0213-Gadget_Serial_preempt...                                                                                                [167] Patching 0214-GPIO_96Panic...                                                                                                [168] Patching 0215-Panbug_0_0_148_change...                                                                                                [169] Patching 0216-Boardname_waikiki_to_honolulu...
-Rebasing..
-Applying: 0000-set-preempt-kernel-type
-Applying: 0001-fxcl-waikiki-base
-Applying: 0002-fxcl-waikiki-platform-base
-Applying: 0003-add-fxcl-waikiki-machine-type
-Applying: 0004-fxcl-waikiki-device-tree-base
-Applying: 0005-add-fxcl-usb-phy-base
-Applying: 0006-adjust-ethernet-driver
-Applying: 0007-fixed-kernel-lpae-support
-CONFLICT (content): Merge conflict in arch/arm/mm/ioremap.c
-CONFLICT (content): Merge conflict in arch/arm/mm/proc-v7-3level.S
-Rebase failed at 0007-fixed-kernel-lpae-support
-Attempting to resolve..
-Applying: 0007-fixed-kernel-lpae-support
-Applying: 0008-fixed-kernel-header-lpae-support
-Applying: 0009-fixed-kernel-arch-header-lpae-support
-CONFLICT (content): Merge conflict in arch/arm/include/asm/io.h
-Rebase failed at 0009-fixed-kernel-arch-header-lpae-support
-Attempting to resolve..
-Applying: 0009-fixed-kernel-arch-header-lpae-support
-Applying: 0010-register-bsp-makefile
-Applying: 0011-debug-prepare-kernel
-Applying: 0012-debug-setup-kernel
-Applying: 0013-fixed-kernel-lpae-support-2
-Applying: 0014-debug-bsp-support-code
-Applying: 0015-debug-driver-support-code-1
-Applying: 0016-bus-driver-added-base
-Applying: 0017-add-drivers-configuration
-Applying: 0018-merge-fix-base-bsp
-Applying: 0019-merge-sdhc-driver
-Applying: 0020-debug-physical-memory-address
-Applying: 0021-merge-rtc-driver-quatro53xx
-Applying: 0022-added-rtc-for-static-bsp
-Applying: 0023-merge-watchdog-timer
-Applying: 0024-merge-bus-driver
-Applying: 0025-add-driver-resource
-Applying: 0026-isolate-gpio-driver
-Applying: 0027-fixed-timer-resource-bug
-Applying: 0028-usbd-dwc3-driver-update
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/core.c
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
-Rebase failed at 0028-usbd-dwc3-driver-update
-Attempting to resolve..
-Applying: 0028-usbd-dwc3-driver-update
-Applying: 0029-modify-usb-register
-Applying: 0030-fixed-header-error
-Applying: 0031-fixed-timer-bugs
-Applying: 0032-isolate-debug-code
-Applying: fixed-configuration-error
-Applying: correct-gmac-base-address
-Applying: 0033-prepare-DTB-support
-Applying: 0034-MTD-driver-support-with-DTB
-Applying: 0035-XSPI-Driver-for-Waikiki-2nd
-Applying: 0036-modify-uio-base-driver
-Applying: 0037-SDHCI-Driver-support-fix
-Applying: 0038-SDCard-Lock-Unlock-support
-Applying: 0039-fixed-usb-device-driver
-CONFLICT (content): Merge conflict in drivers/Kconfig
-Rebase failed at 0039-fixed-usb-device-driver
-Attempting to resolve..
-Applying: 0039-fixed-usb-device-driver
-Applying: temporary-usb-host-debug-support
-Applying: added-driver-fix-and-support
-Applying: 0040-DTS-source-bease-without-PCIe
-Applying: fixed-platform-error
-Applying: i2c-bigfix
-Applying: fixed-gpio-bug
-Applying: remove-debug-code
-Applying: i2c-read-write-bug
-Applying: watchdog-timer-bug-fix
-Applying: SDHCI1-Driver-support
-Applying: added-alarm-in-rtc-driver
-Applying: fixed-device-error-on-spi
-Applying: USB-host-bug-fixed
-Applying: GPDMA-UIO-Driver-fix
-Applying: PCIE-adjust-configuration
-Applying: fixed-kernel-config
-Applying: added-XSPI-kernel-interface-header
-Applying: memory-and-tlb-bug
-Applying: 0001-SMP_Debug
-Applying: 0001-SMP_fixed
-Applying: 0001-remove-debug-code
-Applying: 0001-remove-litaral-mode
-Applying: 0001-SMP-HigtMem
-Applying: 0001-DTB__ReadOK
-Applying: 0001-dtb-and-ether-change
-Applying: 0001-0x805000000_KernelStart
-Applying: 0001-setup-device-all
-Applying: 0001-remove-atag-debug
-Applying: 0001-mtd-raw-level-driver
-Applying: 0001-add-mtd-temp-setting
-Applying: 0001-xspi-sram-access
-Applying: 0001-correct-spi-driver-and-moved-timer-channel
-Applying: 0001-correct-rtc-alram-issue
-Applying: 0001-change-IRQ-shared-for-i2c
-Applying: 0001-fixed-kernel-timer-issue
-Applying: 0001-temp-pcie-patch
-Applying: 0001-SATA-clock-and-phys-adjustment
-Applying: 0001-temp-usbhost
-Applying: 0001-adjust-usb-host-device-scan
-Applying: 0001-adjust-3gbp-for-sata
-Applying: 0001-fix-dma-and-pcie
-Applying: 0001-all-port-root-complex
-Applying: 0001-adjustment-config-resoure
-Applying: 0001-temporary-pcie-host
-Applying: 0001-temporary-LPAE-bug-fix
-CONFLICT (content): Merge conflict in arch/arm/mm/ioremap.c
-Rebase failed at 0001-temporary-LPAE-bug-fix
-Attempting to resolve..
-Applying: 0001-temporary-LPAE-bug-fix
-Applying: 0001-temporary-fix-usb-gadget
-Applying: 0001-temporary-pci-scan
-Applying: 0001-remove-debug-trace
-Applying: 0001-added-pcie-card-check
-Applying: 0001-remove-debug-infomations
-Applying: 0001-fixed-watchdog-bug
-Applying: 0001-supported-pcie-interrupt
-Applying: 0001-correct-timer-resolution
-Applying: 0001-fixed-protocol-error
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/core.c
-Rebase failed at 0001-fixed-protocol-error
-Attempting to resolve..
-Applying: 0001-fixed-protocol-error
-Applying: 0001-usb3-adjustment
-Applying: 0001-correct-assign-address
-CONFLICT (content): Merge conflict in drivers/pci/setup-res.c
-Rebase failed at 0001-correct-assign-address
-Attempting to resolve..
-Applying: 0001-correct-assign-address
-Applying: 0001-pcie-correct-bus-scan
-Applying: 0001-update-pcie-modify-code
-Applying: 0001-temporary-correct-resources-for-pcie
-Applying: 0001-GIC_Init_Delete
-Applying: 0001-pcie-bus-resource-debug-cord
-Applying: 0001-pcie-and-uart-0-delete
-Applying: 0001-usb3-gadget-temporary-update
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
-Rebase failed at 0001-usb3-gadget-temporary-update
-Attempting to resolve..
-Applying: 0001-usb3-gadget-temporary-update
-Applying: 0001-saving-vartual-address-space-and-DEBUG-KERNEL
-Applying: 0001-delete-pcie-port-2-and-3-resource
-Applying: 0001-adjust-timing-for-e1000e
-CONFLICT (content): Merge conflict in drivers/pci/setup-res.c
-Rebase failed at 0001-adjust-timing-for-e1000e
-Attempting to resolve..
-Applying: 0001-adjust-timing-for-e1000e
-Applying: 0001-support-pcie-and-e1000e
-Applying: 0001-gmac-work-around-fixed
-Applying: 0001-modify-gadget-driver
-Applying: 0001-fixed-usb-gadget-isuue
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/core.c
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
-Rebase failed at 0001-fixed-usb-gadget-isuue
-Attempting to resolve..
-Applying: 0001-fixed-usb-gadget-isuue
-Applying: 0001-correct-prototype-parameter-for-MTD
-Applying: 0001-PCR2_Semifinal2
-Applying: 0001-supported-voltage-status
-Applying: 0001-GMAC_Change
-Applying: 0001-rtc-added-interface
-Applying: 0001-removed-set-IN-bit
-Applying: 0001-fixed-MTDBLOCK-issue
-Applying: 0001-GMAC_JumboFrame_Support
-Applying: 0001-fixed-clear-issue
-Applying: 0001-pcie-fixed-link-issue
-Applying: 0001-corrected-multi-access-issue
-Applying: 0001-support-standard-spi-interface
-Applying: 0001-added-seeprom-driver
-Applying: 0001-rtc-voltage-check-issue
-Applying: 0001-gadget-driver-prove-remove-issue
-CONFLICT (content): Merge conflict in drivers/usb/dwc3/gadget.c
-Rebase failed at 0001-gadget-driver-prove-remove-issue
-Attempting to resolve..
-Applying: 0001-gadget-driver-prove-remove-issue
-Applying: 0001-GMAC_update0424
-Applying: 0001-modify-eeprom-driver
-Applying: 0001-mtd-block-issue
-Applying: 0001-xspi-driver-isuue
-Applying: 0001-printer-gadget-issue
-Applying: 0001-remove-double-lock-issue
-CONFLICT (content): Merge conflict in drivers/usb/gadget/printer.c
-Rebase failed at 0001-remove-double-lock-issue
-Attempting to resolve..
-Applying: 0001-remove-double-lock-issue
-Applying: 0001-support-normal-API-for-xspi-driver
-Applying: 0001-delete-debug-comment
-Applying: 0001-PCIe-Enable-suport-dtb
-Applying: 0001-support-timer-handling-routine
-Applying: 0001-remove-unused-warning-for-kernel
-CONFLICT (content): Merge conflict in drivers/irqchip/irq-gic.c
-Rebase failed at 0001-remove-unused-warning-for-kernel
-Attempting to resolve..
-Applying: 0001-remove-unused-warning-for-kernel
-Applying: 0001-support-SATA-compliance-test
-Applying: 0001-modified-MTD-translate-block
-Applying: 0001-remove-cast-warnings-in-kernel
-Applying: linux_150825PM011759
-Applying: linux_150831PM032505
-Applying: 0001-GMAC_JumboFrame_TxRx_Chnage
-Applying: 0001-MAC-address-issue
-Applying: 0001-support-MAC-address-from-DTB
-Applying: 0001-Energy-Efficient-ether-support
-Applying: 0001-e1000e_DMA_WorkAround
-Applying: 0001-e1000e_TCP_WorkAround
-Applying: 0001-stmac_eee_off_add
-Applying: 0001-e1000e_driver_workaround
-Applying: 0001-pci_e1000e_debug
-Applying: 0001-PCIe_e1000e_workaround_fix
-Applying: 0001-e1000e_TxQue_calc_change
-Applying: 0200-fx_wrl6.0_Common
-CONFLICT (content): Merge conflict in drivers/Kconfig
-CONFLICT (content): Merge conflict in drivers/Makefile
-Rebase failed at 0200-fx_wrl6.0_Common
-Attempting to resolve..
-Applying: 0200-fx_wrl6.0_Common
-Applying: 0201-fx_wrl6.0_preempt
-Applying: 0202-fx_wrl6.0_WrChange
-CONFLICT (content): Merge conflict in drivers/Makefile
-Rebase failed at 0202-fx_wrl6.0_WrChange
-Attempting to resolve..
-
-All resolved, generating rebased-patches...
-
-Completed 170 rebased patches.
-New layer created at /home/jacobt/jthomas/wrfx227819/rebase/staging/output/layers/3/fxcl-honolulu-lm2
-
-Done.

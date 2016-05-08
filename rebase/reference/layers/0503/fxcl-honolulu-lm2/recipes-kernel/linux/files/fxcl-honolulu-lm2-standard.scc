@@ -1,0 +1,13 @@
+define KMACHINE fxcl-honolulu-lm2
+define KTYPE standard
+define KARCH arm
+
+include ktypes/standard
+
+patch 0000-set-standard-kernel-type.patch
+
+include fxcl-honolulu-lm2.scc
+
+patch 0200-fx_wrl6.0_Common.patch
+patch 0201-fx_wrl6.0_standard.patch
+include fxcl-honolulu-lm2_new.scc

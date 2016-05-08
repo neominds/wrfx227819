@@ -1,0 +1,80 @@
+From ff31ef8e79a0737582ad07144340e72e0a7ce5e6 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Mon, 26 Jan 2015 21:39:43 +0900
+Subject: [PATCH 1/1] add mtd temp setting
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mach-lm2/xspi.c |   44 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 files changed, 44 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/mach-lm2/xspi.c b/arch/arm/mach-lm2/xspi.c
+index 1a8469c..89f45ac 100644
+--- a/arch/arm/mach-lm2/xspi.c
++++ b/arch/arm/mach-lm2/xspi.c
+@@ -7,10 +7,53 @@
+ #include <linux/platform_device.h>
+ #include <linux/module.h>
+ #include <linux/spi/spi.h>
++#include <linux/mtd/partitions.h>
++#include <linux/spi/flash.h>
+ 
+ #include "mach/irqs.h"
+ #include "mach/motherboard.h"
+ 
++static	struct	mtd_partition	lm2_flash_parts[] = {
++	{
++		.name	= "bootloader",
++		.offset	= 0x00000000,
++		.size	= 0x00600000,
++	},
++	{	
++		.name	="rootfs",
++		.offset	= 0x00600000,
++		.size	= 0x00100000,
++	},
++};
++
++static	struct flash_platform_data lm2_flash_data ={
++	.name		= "fcspi-flash",
++	.parts		= lm2_flash_parts,
++	.nr_parts	= ARRAY_SIZE( lm2_flash_parts ),
++};
++
++static	struct resource	lm2_fcspi_resource[] = {
++	{
++		.start	= 0x04110000,
++		.end	= 0x04110900,
++		.flags	= IORESOURCE_MEM,
++	},
++	{
++		.start	= 53,
++		.end	= 53,
++		.flags	= IORESOURCE_IRQ,
++	},
++};
++static	struct	platform_device	lm2_fcspi_device = {
++	.name		= "fcspi",
++	.id		= 0,
++	.resource	= lm2_fcspi_resource,
++	.num_resources	= ARRAY_SIZE( lm2_fcspi_resource),
++	.dev		= {
++		.platform_data = &lm2_flash_data,
++	},
++};
++
+ static	struct spi_board_info	lm2_spi_devices[] __initdata = {
+ 	{
+ 		.modalias	= "spidev",
+@@ -60,6 +103,7 @@ int	__init lm2_xspi_register(void)
+ 	spi_register_board_info(lm2_spi_devices,ARRAY_SIZE(lm2_spi_devices));
+ //	result = platform_device_register( &lm2_spidev_device );
+ 	result = platform_device_register( &lm2_xspi_device );
++	result = platform_device_register( &lm2_fcspi_device );
+ 	return	result;
+ }
+ 
+-- 
+1.7.1
+

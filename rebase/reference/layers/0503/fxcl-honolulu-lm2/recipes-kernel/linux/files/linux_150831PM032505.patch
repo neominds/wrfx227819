@@ -1,0 +1,12 @@
+diff -urN linux_org/drivers/rtc/rtc-quatro53xx.c linux/drivers/rtc/rtc-quatro53xx.c
+--- linux_org/drivers/rtc/rtc-quatro53xx.c	2015-08-31 10:09:48.788102592 +0900
++++ linux/drivers/rtc/rtc-quatro53xx.c	2015-08-31 15:20:26.142082736 +0900
+@@ -623,7 +623,7 @@
+ 	.driver = {
+ 		.name	= "lm2-rtc",
+ 		.owner	= THIS_MODULE,
+-		.pm	= &lm2_rtc_pm_ops,
++		/* .pm	= &lm2_rtc_pm_ops, */
+ 	},
+ 	.id_table	= lm2_rtc_id_table,
+ 	.probe		= lm2_rtc_probe,

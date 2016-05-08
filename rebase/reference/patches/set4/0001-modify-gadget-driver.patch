@@ -1,0 +1,280 @@
+From ab8f07ec38c1600ee1b8bd70598f7addf0e99131 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Sun, 15 Mar 2015 11:43:57 +0900
+Subject: [PATCH 1/1] modify gadget driver
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/usb/dwc3/core.c   |   65 +++++++++++++++++++++++++++-----------------
+ drivers/usb/dwc3/gadget.c |   29 ++++++++++++++++---
+ 2 files changed, 64 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index 9bfe912..253988c 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -242,7 +242,8 @@ static int dwc3_event_buffers_setup(struct dwc3 *dwc)
+ 
+ 	for (n = 0; n < dwc->num_event_buffers; n++) {
+ 		evt = dwc->ev_buffs[n];
+-		dev_dbg(dwc->dev, "Event buf %p dma %08llx length %d\n",
++	//	dev_dbg(dwc->dev, "Event buf %p dma %08llx length %d\n",
++		printk(KERN_ERR "Event buf %p dma %08llx length %d\n",
+ 				evt->buf, (unsigned long long) evt->dma,
+ 				evt->length);
+ 
+@@ -401,7 +402,7 @@ static int dwc3_core_init(struct dwc3 *dwc)
+ 	u32			reg;
+ 	int			ret;
+ 
+-dev_err(dwc->dev, "dwc3_core_init entry\n");
++//dev_err(dwc->dev, "dwc3_core_init entry\n");
+ 	reg = dwc3_readl(dwc->regs, DWC3_GSNPSID);
+ 	/* This should read as U3 followed by revision number */
+ 	if ((reg & DWC3_GSNPSID_MASK) != 0x55330000) {
+@@ -410,8 +411,8 @@ dev_err(dwc->dev, "dwc3_core_init entry\n");
+ 		goto err0;
+ 	}
+ 	dwc->revision = reg;
+-
+-dev_err(dwc->dev, "prepare soft reset\n");
++printk(KERN_ERR "## %s revision %x \n",__FUNCTION__,dwc->revision);
++//dev_err(dwc->dev, "prepare soft reset\n");
+ 	/* issue device SoftReset too */
+ #if	1	/*	<HN>	*/
+ 	timeout = jiffies + msecs_to_jiffies(500)*5;
+@@ -484,7 +485,7 @@ dev_err(dwc->dev, "Workraount DWC3 Switch core\n");
+ 
+ dev_err(dwc->dev, "dwc3_core_num_eps\n");
+ 	dwc3_core_num_eps(dwc);
+-
++printk(KERN_ERR "## %s Global Common Reg 0x%x\n",__FUNCTION__,reg);
+ 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+ 
+ dev_err(dwc->dev, "dwc3_alloc_scratch_buffer\n");
+@@ -506,8 +507,8 @@ err2:
+ err1:
+ //	usb_phy_shutdown(dwc->usb2_phy);
+ //	usb_phy_shutdown(dwc->usb3_phy);
+-	phy_exit(dwc->usb2_generic_phy);
+-	phy_exit(dwc->usb3_generic_phy);
++//	phy_exit(dwc->usb2_generic_phy);
++//	phy_exit(dwc->usb3_generic_phy);
+ 
+ err0:
+ 	return ret;
+@@ -518,8 +519,8 @@ static void dwc3_core_exit(struct dwc3 *dwc)
+ 	dwc3_free_scratch_buffers(dwc);
+ //	usb_phy_shutdown(dwc->usb2_phy);
+ //	usb_phy_shutdown(dwc->usb3_phy);
+-	phy_exit(dwc->usb2_generic_phy);
+-	phy_exit(dwc->usb3_generic_phy);
++//	phy_exit(dwc->usb2_generic_phy);
++//	phy_exit(dwc->usb3_generic_phy);
+ }
+ 
+ static int dwc3_core_get_phy(struct dwc3 *dwc)
+@@ -529,23 +530,27 @@ static int dwc3_core_get_phy(struct dwc3 *dwc)
+ 	int ret;
+ 
+ 	if (node) {
+-dev_info(dev, "%s node = %x \n",__FUNCTION__,node);
++//dev_info(dev, "%s node = %x \n",__FUNCTION__,node);
+ 		dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 0);
+ 		dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 1);
+ 	} else {
+-dev_info(dev, "%s static \n",__FUNCTION__);
++//dev_info(dev, "%s static \n",__FUNCTION__);
+ 		dwc->usb2_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
+ 		dwc->usb3_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB3);
+ 	}
+-
++//printk(KERN_ERR "___%s USB2 PHY %x \n",__FUNCTION__,dwc->usb2_phy);
++//printk(KERN_ERR "___%s USB3 PHY %x \n",__FUNCTION__,dwc->usb3_phy);
+ 	if (IS_ERR(dwc->usb2_phy)) {
+ 		ret = PTR_ERR(dwc->usb2_phy);
+ 		if (ret == -ENXIO || ret == -ENODEV) {
++//printk(KERN_ERR "___%s USB2 PHY error \n",__FUNCTION__);
+ 			dwc->usb2_phy = NULL;
+ 		} else if (ret == -EPROBE_DEFER) {
++//printk(KERN_ERR "___%s USB2 PHY DEFER %x \n",__FUNCTION__,-EPROBE_DEFER);
+ 			return ret;
+ 		} else {
+ 			dev_err(dev, "no usb2 phy configured\n");
++//printk(KERN_ERR "___%s USB2 PHY no configured \n",__FUNCTION__);
+ 			return ret;
+ 		}
+ 	}
+@@ -553,24 +558,31 @@ dev_info(dev, "%s static \n",__FUNCTION__);
+ 	if (IS_ERR(dwc->usb3_phy)) {
+ 		ret = PTR_ERR(dwc->usb3_phy);
+ 		if (ret == -ENXIO || ret == -ENODEV) {
++//printk(KERN_ERR "___%s USB3 PHY error \n",__FUNCTION__);
+ 			dwc->usb3_phy = NULL;
+ 		} else if (ret == -EPROBE_DEFER) {
++//printk(KERN_ERR "___%s USB3 PHY DEFER %x \n",__FUNCTION__,-EPROBE_DEFER);
+ 			return ret;
+ 		} else {
+ 			dev_err(dev, "no usb3 phy configured\n");
++//printk(KERN_ERR "___%s USB3 PHY no configured \n",__FUNCTION__);
+ 			return ret;
+ 		}
+ 	}
+ 
++//printk(KERN_ERR "___%s USB Generic PHY \n",__FUNCTION__);
+ 	dwc->usb2_generic_phy = devm_phy_get(dev, "usb2-phy");
+ 	if (IS_ERR(dwc->usb2_generic_phy)) {
+ 		ret = PTR_ERR(dwc->usb2_generic_phy);
+ 		if (ret == -ENOSYS || ret == -ENODEV) {
++//printk(KERN_ERR "___%s USB2 PHY error \n",__FUNCTION__);
+ 			dwc->usb2_generic_phy = NULL;
+ 		} else if (ret == -EPROBE_DEFER) {
++//printk(KERN_ERR "___%s USB2 PHY DEFER %x \n",__FUNCTION__,-EPROBE_DEFER);
+ 			return ret;
+ 		} else {
+ 			dev_err(dev, "no usb2 phy configured\n");
++//printk(KERN_ERR "___%s USB2 PHY no configured \n",__FUNCTION__);
+ 			return ret;
+ 		}
+ 	}
+@@ -579,15 +591,18 @@ dev_info(dev, "%s static \n",__FUNCTION__);
+ 	if (IS_ERR(dwc->usb3_generic_phy)) {
+ 		ret = PTR_ERR(dwc->usb3_generic_phy);
+ 		if (ret == -ENOSYS || ret == -ENODEV) {
++//printk(KERN_ERR "___%s USB3 PHY error \n",__FUNCTION__);
+ 			dwc->usb3_generic_phy = NULL;
+ 		} else if (ret == -EPROBE_DEFER) {
++//printk(KERN_ERR "___%s USB3 PHY DEFER %x \n",__FUNCTION__,-EPROBE_DEFER);
+ 			return ret;
+ 		} else {
+ 			dev_err(dev, "no usb3 phy configured\n");
++//printk(KERN_ERR "___%s USB3 PHY no configured \n",__FUNCTION__);
+ 			return ret;
+ 		}
+ 	}
+-
++//printk(KERN_ERR "___%s Normal Exit\n",__FUNCTION__);
+ 	return 0;
+ }
+ 
+@@ -734,7 +749,7 @@ dev_info(dev, "DWC3 USB controller init\n");
+ 
+ 	ret = dwc3_core_get_phy(dwc);
+ 	if (ret){
+-dev_info(dev, "DWC3 USB Phy Get Error\n");
++//dev_info(dev, "DWC3 USB Phy Get Error\n");
+ 			return ret;
+ 	}
+ 	dwc->xhci_resources[0].start = res->start;
+@@ -759,7 +774,7 @@ dev_info(dev, "DWC3 USB Phy Get Error\n");
+ 	dwc->regs	= regs;
+ 	dwc->regs_size	= resource_size(res);
+ 
+-dev_info(dev,"dma setting\n");
++//dev_info(dev,"dma setting\n");
+ 	dev->dma_mask	= dev->parent->dma_mask;
+ 	dev->dma_parms	= dev->parent->dma_parms;
+ 	dma_set_coherent_mask(dev, dev->parent->coherent_dma_mask);
+@@ -792,18 +807,18 @@ dev_info(dev,"dwc3_core_init\n");
+ 		goto err0;
+ 	}
+ 
+-dev_info(dev,"usb_phy_set_suspend\n");
++//dev_info(dev,"usb_phy_set_suspend\n");
+ //	usb_phy_set_suspend(dwc->usb2_phy, 0);
+ //	usb_phy_set_suspend(dwc->usb3_phy, 0);
+-dev_info(dev,"phy_power_on 2\n");
+-	ret = phy_power_on(dwc->usb2_generic_phy);
+-	if (ret < 0)
+-		goto err1;
+-
+-dev_info(dev,"phy_power_on 3\n");
+-	ret = phy_power_on(dwc->usb3_generic_phy);
+-	if (ret < 0)
+-		goto err_usb2phy_power;
++//dev_info(dev,"phy_power_on 2\n");
++//	ret = phy_power_on(dwc->usb2_generic_phy);
++//	if (ret < 0)
++//		goto err1;
++
++//dev_info(dev,"phy_power_on 3\n");
++//	ret = phy_power_on(dwc->usb3_generic_phy);
++//	if (ret < 0)
++//		goto err_usb2phy_power;
+ 
+ dev_info(dev,"event buffer\n");
+ 	ret = dwc3_event_buffers_setup(dwc);
+diff --git a/drivers/usb/dwc3/gadget.c b/drivers/usb/dwc3/gadget.c
+index 3d6937d..270bab2 100644
+--- a/drivers/usb/dwc3/gadget.c
++++ b/drivers/usb/dwc3/gadget.c
+@@ -1138,9 +1138,11 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
+ 	list_for_each_entry_safe(req, n, &dep->request_list, list) {
+ 		unsigned	length;
+ 		dma_addr_t	dma;
+-		last_one = false;	/*	Back Original	<HN> 2015-03-05 */
+-/*		last_one = true;	*//* yamano 0219 added from refer source */
+-
++#if	1	/*Original	<HN> 2015-03-05 */
++		last_one = false;
++#else	/* yamano 0219 added from refer source */
++		last_one = true;
++#endif
+ 		if (req->request.num_mapped_sgs > 0) {
+ 			struct usb_request *request = &req->request;
+ 			struct scatterlist *sg = request->sg;
+@@ -1772,6 +1774,7 @@ static void dwc3_gadget_enable_irq(struct dwc3 *dwc)
+ 	u32			reg;
+ 
+ 	/* Enable all but Start and End of Frame IRQs */
++#if	0	/*	<HN ORG>*/
+ 	reg = (DWC3_DEVTEN_VNDRDEVTSTRCVEDEN |
+ 			DWC3_DEVTEN_EVNTOVERFLOWEN |
+ 			DWC3_DEVTEN_CMDCMPLTEN |
+@@ -1781,7 +1784,16 @@ static void dwc3_gadget_enable_irq(struct dwc3 *dwc)
+ 			DWC3_DEVTEN_CONNECTDONEEN |
+ 			DWC3_DEVTEN_USBRSTEN |
+ 			DWC3_DEVTEN_DISCONNEVTEN);
+-
++#else
++	reg = (DWC3_DEVTEN_VNDRDEVTSTRCVEDEN |
++			DWC3_DEVTEN_EVNTOVERFLOWEN |
++			DWC3_DEVTEN_CMDCMPLTEN |
++			DWC3_DEVTEN_ERRTICERREN |
++			DWC3_DEVTEN_WKUPEVTEN |
++			DWC3_DEVTEN_CONNECTDONEEN |
++			DWC3_DEVTEN_USBRSTEN |
++			DWC3_DEVTEN_DISCONNEVTEN);
++#endif
+ 	dwc3_writel(dwc->regs, DWC3_DEVTEN, reg);
+ }
+ 
+@@ -2845,9 +2857,15 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
+ 		break;
+ 	case DWC3_LINK_STATE_RX_DET:	/* 2015-03-04 <HN> */
+ 		if(dwc->gadget.speed != USB_SPEED_SUPER){
+-/*			phy_dp_pull_up(1, 1);*/
+ 			dwc3_suspend_gadget(dwc);
++			phy_dp_pull_up(1, 1);
++			dwc3_resume_gadget(dwc);
+ 			act_flag |= 0x0200; 
++		} else {
++			dwc3_suspend_gadget(dwc);
++			phy_dp_pull_up(1, 1);
++			dwc3_resume_gadget(dwc);
++			act_flag |= 0x1000; 
+ 		}
+ 		break;
+ 	default:
+@@ -3277,6 +3295,7 @@ void dwc3_gadget_exit(struct dwc3 *dwc)
+ 	iounmap(cr_data_in);
+ 	iounmap(cr_write);
+ 	iounmap(cr_ack);
++    iounmap(cr_data_out);	/* added for fail-safe  0307 <HN>*/
+ #endif
+ }
+ 
+-- 
+1.7.1
+

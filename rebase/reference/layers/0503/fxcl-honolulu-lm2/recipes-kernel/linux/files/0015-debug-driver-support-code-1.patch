@@ -1,0 +1,70 @@
+From e2e9deab392ec6d1055eb6d54e65cacab21c7888 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Fri, 5 Dec 2014 21:31:48 +0900
+Subject: [PATCH 15/18] debug driver support code 1
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/ata/ahci_platform.c         |    6 +++++-
+ drivers/ata/libahci.c               |    1 -
+ drivers/tty/serial/8250/8250_core.c |    2 +-
+ 3 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/ata/ahci_platform.c b/drivers/ata/ahci_platform.c
+index 7a8a284..6a5c9aa 100644
+--- a/drivers/ata/ahci_platform.c
++++ b/drivers/ata/ahci_platform.c
+@@ -203,19 +203,23 @@ static int ahci_probe(struct platform_device *pdev)
+ 		if (!(hpriv->port_map & (1 << i)))
+ 			ap->ops = &ata_dummy_port_ops;
+ 	}
+-
++dev_info(dev,"prepare reset controller\n");
+ 	rc = ahci_reset_controller(host);
+ 	if (rc)
+ 		goto pdata_exit;
+ 
++dev_info(dev,"controlleri init\n");
+ 	ahci_init_controller(host);
++dev_info(dev,"capabilities information\n");
+ 	ahci_print_info(host, "platform");
+ 
++dev_info(dev,"Activate controller\n");
+ 	rc = ata_host_activate(host, irq, ahci_interrupt, IRQF_SHARED,
+ 			       &ahci_platform_sht);
+ 	if (rc)
+ 		goto pdata_exit;
+ 
++dev_info(dev,"Activate controller finished\n");
+ 	return 0;
+ pdata_exit:
+ 	if (pdata && pdata->exit)
+diff --git a/drivers/ata/libahci.c b/drivers/ata/libahci.c
+index 8905e03..b8a1149 100644
+--- a/drivers/ata/libahci.c
++++ b/drivers/ata/libahci.c
+@@ -2248,7 +2248,6 @@ static int ahci_port_start(struct ata_port *ap)
+ 	pp = devm_kzalloc(dev, sizeof(*pp), GFP_KERNEL);
+ 	if (!pp)
+ 		return -ENOMEM;
+-
+ 	/* check FBS capability */
+ 	if ((hpriv->cap & HOST_CAP_FBS) && sata_pmp_supported(ap)) {
+ 		void __iomem *port_mmio = ahci_port_base(ap);
+diff --git a/drivers/tty/serial/8250/8250_core.c b/drivers/tty/serial/8250/8250_core.c
+index 2fe412b..371b40d 100644
+--- a/drivers/tty/serial/8250/8250_core.c
++++ b/drivers/tty/serial/8250/8250_core.c
+@@ -46,7 +46,7 @@
+ #include <asm/irq.h>
+ 
+ #include "8250.h"
+-
++extern	void	lm2_printk(unsigned long ptr, const char *str);
+ /*
+  * Configuration:
+  *   share_irqs - whether we pass IRQF_SHARED to request_irq().  This option
+-- 
+1.7.1
+

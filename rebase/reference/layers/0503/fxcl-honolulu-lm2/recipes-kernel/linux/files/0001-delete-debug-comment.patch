@@ -1,0 +1,31 @@
+From ea33965e8e042f0e934e4c40d1948796a3fd9579 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Sat, 16 May 2015 17:11:13 +0900
+Subject: [PATCH 1/1] delete debug comment
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/char/lm2-seeprom.c |    6 +++---
+ 1 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/char/lm2-seeprom.c b/drivers/char/lm2-seeprom.c
+index 76f9001..ebf4acf 100644
+--- a/drivers/char/lm2-seeprom.c
++++ b/drivers/char/lm2-seeprom.c
+@@ -116,9 +116,9 @@ static void lm2_i2c_mrecv(struct lm2_i2c_seeprom *id)
+ 	u32	reg;
+ 
+ //	dev_info(id->adap.dev.parent, "mrecv call\n");
+-printk("read transaction \n");
+-printk("read count = %d offset address %d chip address %x\n",
+-	id->len,id->addr,id->cadr);
++//printk("read transaction \n");
++//printk("read count = %d offset address %d chip address %x\n",
++//	id->len,id->addr,id->cadr);
+ 	/* set the read count and address width */
+ 	reg = readl(id->iobase + EMSR);
+ 	reg |= ((id->len-1) << 14);
+-- 
+1.7.1
+

@@ -1,0 +1,44 @@
+From f4e783a215e76af38d73850b108aea621b82dc51 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Wed, 28 Jan 2015 19:59:14 +0900
+Subject: [PATCH 1/1] correct spi driver and moved timer channel
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mach-lm2/lm2.c |    4 ++--
+ drivers/spi/xspi.c      |    2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 89199e2..feb8f6b 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -117,9 +117,9 @@ static void __init lm2_timer_init(void)
+ 
+ /*	clksrc_timer = ioremap(LM2_TIMER_BASE + 0x38, 0x0c);	*/
+ 	clksrc_timer = ioremap(LM2_TIMER_BASE+0x10, 0x10);
+-	clkevt_timer = ioremap(LM2_TIMER_BASE+0x2c,0x0c);
++	clkevt_timer = ioremap(LM2_TIMER_BASE+0x5c,0x0c);
+ 	lm2_clocksource_init(clksrc_timer);
+-	lm2_clockevent_init(LM2_IRQ_TIMER_0,clkevt_timer);
++	lm2_clockevent_init(LM2_IRQ_TIMER_4,clkevt_timer);
+ }
+ 
+ /*
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index 71e86ab..964dc4c 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -126,7 +126,7 @@ static	void	xspi_write_disable(struct xspi_dev *dev, int cs)
+ {
+ 	u32	reg;
+ 
+-	reg = xspi_rd(dev, (SPI_CFG + cs )));
++	reg = xspi_rd(dev, (SPI_CFG + cs ));
+ 	reg = reg & 0xfffffff0;
+ 	reg = reg | 0x00000007;
+ 	xspi_wr(dev, (SPI_CFG + cs), reg);
+-- 
+1.7.1
+

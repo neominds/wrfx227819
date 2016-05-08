@@ -1,0 +1,77 @@
+From 030ac7795853369d830229ab6f294b8191904450 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Wed, 10 Dec 2014 14:17:08 +0900
+Subject: [PATCH 1/1] set standard kernel type
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/Kconfig |   31 +++++++++++++++++++++++++++++++
+ 1 files changed, 31 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 831d50a..f2f4115 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -265,6 +265,12 @@ config PHYS_OFFSET
+ 	  Please provide the physical address corresponding to the
+ 	  location of main memory in your system.
+ 
++config	ARM_LPAE_HIGH_ADDR_MEMORY
++	bool
++	depends on ARM_LPAE
++	help
++	use high address memori device by kernel.
++
+ config GENERIC_BUG
+ 	def_bool y
+ 	depends on BUG
+@@ -351,6 +357,25 @@ config ARCH_VERSATILE
+ 	help
+ 	  This enables support for ARM Ltd Versatile board.
+ 
++config ARCH_LM2
++	bool "FujiXerox Co., Ltd. Waikiki LM2 family"
++	select NEED_MACH_MEMORY_H
++	select ARM_LPAE_HIGH_ADDR_MEMORY
++        select ARCH_HAS_CPUFREQ
++        select ARCH_WANT_OPTIONAL_GPIOLIB
++        select CLKDEV_LOOKUP
++        select HAVE_MACH_CLKDEV
++        select GENERIC_CLOCKEVENTS
++        select HAVE_CLK
++	select CLKSRC_MMIO
++        select HAVE_PATA_PLATFORM
++        select ICST
++        select NO_IOPORT
++        select PLAT_WAIKIKI
++        select ARCH_DMA_ADDR_T_64BIT
++        help
++          This enables support for the Fuji Xerox Co., Ltd Waikiki LM2 boards.
++
+ config ARCH_AT91
+ 	bool "Atmel AT91"
+ 	select ARCH_REQUIRE_GPIOLIB
+@@ -1052,6 +1077,9 @@ source "arch/arm/mach-versatile/Kconfig"
+ source "arch/arm/mach-vexpress/Kconfig"
+ source "arch/arm/plat-versatile/Kconfig"
+ 
++source "arch/arm/mach-lm2/Kconfig"
++source "arch/arm/plat-waikiki/Kconfig"
++
+ source "arch/arm/mach-virt/Kconfig"
+ 
+ source "arch/arm/mach-vt8500/Kconfig"
+@@ -1085,6 +1113,9 @@ config PLAT_PXA
+ config PLAT_VERSATILE
+ 	bool
+ 
++config PLAT_WAIKIKI
++        bool
++
+ config ARM_TIMER_SP804
+ 	bool
+ 	select CLKSRC_MMIO
+-- 
+1.7.1
+

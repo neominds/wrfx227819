@@ -1,3 +1,4 @@
+./rebase/staging/output/layers/4/fxcl-honolulu-lm2/recipes-kernel/linux/files/*.patch
 ./rebase/staging/output/layers/3/fxcl-honolulu-lm2/recipes-kernel/linux/files/*.patch
 ./rebase/staging/output/patches/*.patch
 ./rebase/staging/scripts/staging_git/out.log

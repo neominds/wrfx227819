@@ -1,6 +1,6 @@
-From 368f486822b44ad8849f6b7014f5c1dc66af88e3 Mon Sep 17 00:00:00 2001
+From 5f28d356ee0e3db18d7f84a22e404e57936c9355 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:25:54 +0900
+Date: Mon, 9 May 2016 14:40:42 +0900
 Subject: [PATCH 148/170] 0001-e1000e_DMA_WorkAround
 
 

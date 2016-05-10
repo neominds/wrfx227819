@@ -1,6 +1,6 @@
-From a11511094f0c1fa9568b9cc867f250e23133452d Mon Sep 17 00:00:00 2001
+From 7d2b6bcfdc0d2c5a20ade5abc17bc2f18f0f79ac Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:15:29 +0900
+Date: Mon, 9 May 2016 14:31:56 +0900
 Subject: [PATCH 001/169] 0000-set-standard-kernel-type
 
 

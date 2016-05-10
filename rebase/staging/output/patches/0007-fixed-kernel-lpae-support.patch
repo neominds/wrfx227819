@@ -1,6 +1,6 @@
-From bea359e7ee06f1914ccada43277a973e9652f200 Mon Sep 17 00:00:00 2001
+From b16cc9301df09159415cbd7efc7fe0e9085f2819 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:22:43 +0900
+Date: Mon, 9 May 2016 14:37:40 +0900
 Subject: [PATCH 008/170] 0007-fixed-kernel-lpae-support
 
 

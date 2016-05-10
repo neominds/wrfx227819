@@ -1,6 +1,6 @@
-From 1ce77b09daf9c8c49291f856fd9e85fb6ad0a458 Mon Sep 17 00:00:00 2001
+From 2e3d16c099d6db0e619c98a8fc0acb0d3b2b3655 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:23:22 +0900
+Date: Mon, 9 May 2016 14:38:15 +0900
 Subject: [PATCH 034/170] fixed-configuration-error
 
 

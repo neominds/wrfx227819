@@ -1,6 +1,6 @@
-From d0e2d49a228438f3f678aa9b4eb9a916ef052e79 Mon Sep 17 00:00:00 2001
+From b7a22f43f3986d34c026bc46118acdef093b99b8 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:23:25 +0900
+Date: Mon, 9 May 2016 14:38:17 +0900
 Subject: [PATCH 036/170] 0033-prepare-DTB-support
 
 

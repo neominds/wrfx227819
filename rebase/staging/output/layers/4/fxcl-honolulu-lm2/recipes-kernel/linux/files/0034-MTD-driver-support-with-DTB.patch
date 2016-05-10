@@ -1,6 +1,6 @@
-From 63d15acc1ef2e0a2168b2401eaff855f1bdefd87 Mon Sep 17 00:00:00 2001
+From ad59d6db80e27b497516c5e6d766b555552039fc Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:23:26 +0900
+Date: Mon, 9 May 2016 14:38:19 +0900
 Subject: [PATCH 037/170] 0034-MTD-driver-support-with-DTB
 
 

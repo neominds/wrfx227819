@@ -1,6 +1,6 @@
-From 15b94c3c81162606266c9d4c119cdf2373d0c1ac Mon Sep 17 00:00:00 2001
+From 1d52e13fcc1cc56ed09907121bd0a06304be9f53 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:23:54 +0900
+Date: Mon, 9 May 2016 14:38:46 +0900
 Subject: [PATCH 058/170] fixed-kernel-config
 
 

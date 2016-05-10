@@ -1,6 +1,6 @@
-From e749e72e8c309295aa6328d18bba403e2a200bdb Mon Sep 17 00:00:00 2001
+From 0da928da15d45dfa9724a285aaab4f8ecec90df2 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:24:27 +0900
+Date: Mon, 9 May 2016 14:39:17 +0900
 Subject: [PATCH 082/170] 0001-adjust-3gbp-for-sata
 
 

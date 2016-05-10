@@ -1,6 +1,6 @@
-From 78b303f95636cbb692f9e3cc67837a5be726174e Mon Sep 17 00:00:00 2001
+From 2c55dc8d926bf0bdd4cd652ab861ab78de0b751f Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:26:03 +0900
+Date: Mon, 9 May 2016 14:40:50 +0900
 Subject: [PATCH 154/170] 0001-e1000e_TxQue_calc_change
 
 

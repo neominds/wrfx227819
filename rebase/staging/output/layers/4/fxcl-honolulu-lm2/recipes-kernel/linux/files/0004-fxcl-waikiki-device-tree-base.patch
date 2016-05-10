@@ -1,6 +1,6 @@
-From 09f183f50c5dc80da6d466b59160faf3e5ca811b Mon Sep 17 00:00:00 2001
+From fa30303e3fa21f807c9082517fd871d3c647915c Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:22:39 +0900
+Date: Mon, 9 May 2016 14:37:32 +0900
 Subject: [PATCH 005/170] 0004-fxcl-waikiki-device-tree-base
 
 

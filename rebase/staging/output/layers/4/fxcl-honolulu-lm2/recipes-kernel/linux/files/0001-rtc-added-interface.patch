@@ -1,6 +1,6 @@
-From 3693e6ea7c4c97605f283b07eca4ade6c007d667 Mon Sep 17 00:00:00 2001
+From 710d5442eb587a63165dcb452341dafbdb8238cf Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:25:13 +0900
+Date: Mon, 9 May 2016 14:40:02 +0900
 Subject: [PATCH 117/170] 0001-rtc-added-interface
 
 

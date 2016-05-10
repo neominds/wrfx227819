@@ -1,6 +1,6 @@
-From 7c5dd0c26c1302f79213fcc7d52d4f44e08375d5 Mon Sep 17 00:00:00 2001
+From 87ff4e4583ff208acf40047bd12c39b1042c5945 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:24:06 +0900
+Date: Mon, 9 May 2016 14:38:58 +0900
 Subject: [PATCH 067/170] 0001-dtb-and-ether-change
 
 

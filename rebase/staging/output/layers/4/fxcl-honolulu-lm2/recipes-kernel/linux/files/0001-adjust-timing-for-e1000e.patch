@@ -1,6 +1,6 @@
-From b4931ed7e28ba258f1d5d33f7fbaa371d287606a Mon Sep 17 00:00:00 2001
+From a0f813240f245c984a1d73ed4e240e5f86371abb Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:25:01 +0900
+Date: Mon, 9 May 2016 14:39:51 +0900
 Subject: [PATCH 108/170] 0001-adjust-timing-for-e1000e
 
 

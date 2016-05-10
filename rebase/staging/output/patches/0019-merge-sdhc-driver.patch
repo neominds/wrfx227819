@@ -1,6 +1,6 @@
-From ec74756771a3cc88c034531e937fc7bb772657a7 Mon Sep 17 00:00:00 2001
+From fac41ef73ca31ec7012fb954f950f7e1de20cd12 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:22:59 +0900
+Date: Mon, 9 May 2016 14:37:56 +0900
 Subject: [PATCH 020/170] 0019-merge-sdhc-driver
 
 

@@ -1,6 +1,6 @@
-From 8fe4899e9574268d860d3a37b39cfc395514abe8 Mon Sep 17 00:00:00 2001
+From 4d77a124abceafde31541ed3f04ccd277a3a4eb5 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:22:42 +0900
+Date: Mon, 9 May 2016 14:37:39 +0900
 Subject: [PATCH 007/170] 0006-adjust-ethernet-driver
 
 

@@ -1,6 +1,6 @@
-From fc5f21cd467c7bd4c5ceb5c6bebd20810292eb89 Mon Sep 17 00:00:00 2001
+From 305cce2ce93f268ebf5513840bcf7b52b0e690da Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:25:05 +0900
+Date: Mon, 9 May 2016 14:39:55 +0900
 Subject: [PATCH 111/170] 0001-modify-gadget-driver
 
 

@@ -1,6 +1,6 @@
-From 8dc32844a381745e90336c6ea64b123c769a797a Mon Sep 17 00:00:00 2001
+From 3fff8bed00292d52f6de0828714a1020a0d6daee Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:24:22 +0900
+Date: Mon, 9 May 2016 14:39:13 +0900
 Subject: [PATCH 079/170] 0001-SATA-clock-and-phys-adjustment
 
 

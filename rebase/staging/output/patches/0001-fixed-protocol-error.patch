@@ -1,6 +1,6 @@
-From aba746c57edd50c6761c59794a72baaa23d33e80 Mon Sep 17 00:00:00 2001
+From 2636fe244842db04d54fc9d438558b0d585308b2 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 10:24:45 +0900
+Date: Mon, 9 May 2016 14:39:35 +0900
 Subject: [PATCH 096/170] 0001-fixed-protocol-error
 
 

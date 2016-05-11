@@ -1,6 +1,6 @@
-From 3d50dd3b9f91db04b9ee2b0455f39b3153676484 Mon Sep 17 00:00:00 2001
+From c8a55f9d5f96d0f79d2961ae4837d38af5f335bd Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:41:07 +0900
+Date: Wed, 11 May 2016 11:36:40 +0900
 Subject: [PATCH 167/170] 0213-Gadget_Serial_preempt
 
 

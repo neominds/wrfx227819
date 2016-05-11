@@ -1,6 +1,6 @@
-From a6254a106755429df8580923336ca37e3d4c3994 Mon Sep 17 00:00:00 2001
+From 0b35aa4e1ad545470fe794c2626e66f59e69ec1e Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:39:47 +0900
+Date: Wed, 11 May 2016 11:35:15 +0900
 Subject: [PATCH 105/170] 0001-usb3-gadget-temporary-update
 
 

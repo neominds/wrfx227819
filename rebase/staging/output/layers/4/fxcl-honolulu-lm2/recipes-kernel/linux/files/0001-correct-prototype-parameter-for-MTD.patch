@@ -1,6 +1,6 @@
-From c539c2c259611ade905258beb154ca549c6c782b Mon Sep 17 00:00:00 2001
+From 9fd67d5ce5dba3ed5d206d4a8efbcbe33af2aadd Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:39:57 +0900
+Date: Wed, 11 May 2016 11:35:26 +0900
 Subject: [PATCH 113/170] 0001-correct-prototype-parameter-for-MTD
 
 

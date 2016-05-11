@@ -1,6 +1,6 @@
-From 1a3637061cba6b9ad7c0dbfcc1ea878403860850 Mon Sep 17 00:00:00 2001
+From 5b72059d762bc973f978153cd750c70e2153ee52 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:38:36 +0900
+Date: Wed, 11 May 2016 11:34:00 +0900
 Subject: [PATCH 050/170] i2c-read-write-bug
 
 

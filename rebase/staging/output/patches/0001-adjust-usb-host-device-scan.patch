@@ -1,6 +1,6 @@
-From 34419fae0308c502f3de17d3dcadd1d040b7c3f7 Mon Sep 17 00:00:00 2001
+From a3945bd1c88d84bd27be47c9bc66ba6c8fa2a919 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:39:16 +0900
+Date: Wed, 11 May 2016 11:34:42 +0900
 Subject: [PATCH 081/170] 0001-adjust-usb-host-device-scan
 
 

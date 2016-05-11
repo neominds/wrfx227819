@@ -1,6 +1,6 @@
-From f13c6bc220b83bdef13d73884e7c241123e5a303 Mon Sep 17 00:00:00 2001
+From ab6fa268a3b9b40406cf282423cede0823cfeb4b Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:40:45 +0900
+Date: Wed, 11 May 2016 11:36:16 +0900
 Subject: [PATCH 150/170] 0001-stmac_eee_off_add
 
 

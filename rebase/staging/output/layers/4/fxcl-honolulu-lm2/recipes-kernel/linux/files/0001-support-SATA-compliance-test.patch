@@ -1,6 +1,6 @@
-From 42dbf0f358d9308810ff78de1c79b741f2454e20 Mon Sep 17 00:00:00 2001
+From ea5033bcacfa1372c7fe5b65e92b2328cf3bc522 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:40:31 +0900
+Date: Wed, 11 May 2016 11:36:02 +0900
 Subject: [PATCH 139/170] 0001-support-SATA-compliance-test
 
 

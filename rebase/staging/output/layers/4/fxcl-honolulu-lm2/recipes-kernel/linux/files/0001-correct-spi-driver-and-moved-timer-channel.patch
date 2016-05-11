@@ -1,6 +1,6 @@
-From b47cfaa122df82c3c180ad79bbbbcf404041fdb9 Mon Sep 17 00:00:00 2001
+From bf36e64d3c2d3de534e121b5af604d37f9a218ad Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:39:06 +0900
+Date: Wed, 11 May 2016 11:34:33 +0900
 Subject: [PATCH 074/170] 0001-correct-spi-driver-and-moved-timer-channel
 
 

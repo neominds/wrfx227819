@@ -1,6 +1,6 @@
-From ebd4993d3ea5ce23be8e984d39c21832a770d240 Mon Sep 17 00:00:00 2001
+From eda331936d7a0e7e83f82abc8191465760e9c7e1 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:39:09 +0900
+Date: Wed, 11 May 2016 11:34:36 +0900
 Subject: [PATCH 076/170] 0001-change-IRQ-shared-for-i2c
 
 

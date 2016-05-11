@@ -1,6 +1,6 @@
-From b3cf36da7975be40191cec668fbc599571a798e1 Mon Sep 17 00:00:00 2001
+From 6e126736f989959b59d418ec80dbb059851594c1 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:38:10 +0900
+Date: Wed, 11 May 2016 11:33:33 +0900
 Subject: [PATCH 030/170] 0029-modify-usb-register
 
 

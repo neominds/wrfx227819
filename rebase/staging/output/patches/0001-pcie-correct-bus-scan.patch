@@ -1,6 +1,6 @@
-From 34eca85712dfdc7f60a7eb5ccdbca5c24fb10ca2 Mon Sep 17 00:00:00 2001
+From 2ece2fcb90041939c915f8c3e8baf1dd7165c13c Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:39:39 +0900
+Date: Wed, 11 May 2016 11:35:06 +0900
 Subject: [PATCH 099/170] 0001-pcie-correct-bus-scan
 
 

@@ -1,6 +1,6 @@
-From 3715f620cf1f805f37925dc9adac0406507c3b75 Mon Sep 17 00:00:00 2001
+From 49082c126a9e5bafc0042713abd3a37d79e5a8d4 Mon Sep 17 00:00:00 2001
 From: jthomas <jacob.thomas@windriver.com>
-Date: Mon, 9 May 2016 14:40:15 +0900
+Date: Wed, 11 May 2016 11:35:45 +0900
 Subject: [PATCH 127/170] 0001-gadget-driver-prove-remove-issue
 
 

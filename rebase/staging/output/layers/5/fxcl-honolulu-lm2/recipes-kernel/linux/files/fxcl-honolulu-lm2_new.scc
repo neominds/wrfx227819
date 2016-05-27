@@ -1,0 +1,17 @@
+patch 0202-fx_wrl6.0_WrChange.patch
+patch 0203-correct-2038-RTC-issue.patch
+patch 0204-XSPI_patch.patch
+patch 0205-PCIe_Update.patch
+patch 0206-SuspendResumae_IRQ.patch
+patch 0207-PCIe_B0_Board_Ready.patch
+#patch 0208-E1000E_DMA_512.patch
+patch 0209-PCIe_ConfigChange.patch
+patch 0210-I2C_Build_Error.patch
+patch 0211-E1000E_mtu9000_support.patch
+patch 0212-XSPI_USER_APP_OK.patch
+#
+patch 0213-Gadget_Serial_preempt.patch
+patch 0214-GPIO_96Panic.patch
+patch 0215-Panbug_0_0_148_change.patch
+patch 0216-Boardname_waikiki_to_honolulu.patch
+patch 0217-SystemTimer_Adjust.patch

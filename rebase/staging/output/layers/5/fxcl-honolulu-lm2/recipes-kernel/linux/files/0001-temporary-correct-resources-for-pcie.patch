@@ -1,0 +1,98 @@
+From d1f5ad554d5375792fbf386beeeaecc057b35e20 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:33:37 +0900
+Subject: [PATCH 101/171] 0001-temporary-correct-resources-for-pcie
+
+
+diff --git a/arch/arm/kernel/bios32.c b/arch/arm/kernel/bios32.c
+index 317da88..f690a5b 100644
+--- a/arch/arm/kernel/bios32.c
++++ b/arch/arm/kernel/bios32.c
+@@ -137,6 +137,28 @@ static void pci_fixup_unassign(struct pci_dev *dev)
+ }
+ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_WINBOND2, PCI_DEVICE_ID_WINBOND2_89C940F, pci_fixup_unassign);
+ 
++/* yamano debug */
++#if 0
++#define PCI_VENDOR_ID_FXCL	0x1135
++#define	PCI_DEVICE_ID_QUATRO	0x5500
++#endif
++static void pci_fixup_quatro(struct pci_dev *dev)
++{
++	int i;
++printk(KERN_ERR "pci fixup function for quatro\n");
++	if (dev->devfn == 0) {
++//		dev->class &= 0x060000;
++//		dev->class = 0x060000;
++//		dev->class |= PCI_CLASS_BRIDGE_HOST << 8;
++		for (i = 0; i < PCI_NUM_RESOURCES; i++) {
++			dev->resource[i].start = 0;
++			dev->resource[i].end   = 0;
++			dev->resource[i].flags = 0;
++		}
++	}
++}
++DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_FXCL, PCI_DEVICE_ID_QUATRO, pci_fixup_quatro);
++
+ /*
+  * Prevent the PCI layer from seeing the resources allocated to this device
+  * if it is the host bridge by marking it as such.  These resources are of
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 7c355e8..f2111e9 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -227,7 +227,7 @@ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int
+ 	struct pcie_port	*pp = sys_to_pcie(bus->sysdata);
+ 	void __iomem		*pcieconf_base;		/* Windows 0 cfg space */
+ 	u32			bdf_adr;
+-
++	int	debugFlag = 0;
+ #ifdef	DEBUG_TRACE1
+ //	dev_err(pp->dev, "%s entry bus=%x DevFn=%x where=%x size=%d\n",__FUNCTION__, bus->number, devfn, where, size);
+ #endif
+@@ -248,6 +248,7 @@ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int
+ 		if(devfn != 0)	return	PCIBIOS_DEVICE_NOT_FOUND;
+ //		dev_err(pp->dev, "root read access");
+ 		pcieconf_base = (void __iomem *)((u32)pp->pciegen3_base1 + where);
++		debugFlag = 1;
+ 	}
+ 	if (size == 1)
+ 		*val = synopsys_readb(pcieconf_base);
+@@ -256,7 +257,12 @@ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int
+ 	else
+ 		*val = synopsys_readl(pcieconf_base);
+ //	dev_err(pp->dev, " 0x%8.8lx : 0x%8.8lx\n", pcieconf_base, val);
+-out:	
++out:
++	if(debugFlag == 1){
++		dev_err(pp->dev, "root read access %x : %x\n",where, *val);
++		if(where == 8)
++			*val = 0x06040000;
++	}
+ #ifdef	DEBUG_TRACE1
+ 	dev_err(pp->dev, "%s exit\n", __FUNCTION__);
+ #endif
+@@ -299,6 +305,7 @@ static int synopsys_pcie_wr_conf(struct pci_bus *bus, u32 devfn,
+ 		if(devfn != 0)	return	PCIBIOS_DEVICE_NOT_FOUND;
+ //		dev_err(pp->dev, "Root write access");
+ 		pcieconf_base = (void __iomem *)((u32)pp->pciegen3_base1 + where);
++		dev_err(pp->dev, "Root write access %x : %x",where,val);
+ 	}
+ //	dev_err(pp->dev, " 0x%8.8lx : 0x%8.8x\n", pcieconf_base, val);
+ 	if(size == 1)
+diff --git a/include/linux/pci_ids.h b/include/linux/pci_ids.h
+index cd4b5b7..8dc009a 100644
+--- a/include/linux/pci_ids.h
++++ b/include/linux/pci_ids.h
+@@ -136,6 +136,8 @@
+ #define PCI_CLASS_OTHERS		0xff
+ 
+ /* Vendors and devices.  Sort key: vendor first, device next. */
++#define	PCI_VENDOR_ID_FXCL		0x1135
++#define	PCI_DEVICE_ID_QUATRO		0x5500
+ 
+ #define PCI_VENDOR_ID_TTTECH		0x0357
+ #define PCI_DEVICE_ID_TTTECH_MC322	0x000a
+-- 
+1.7.1
+

@@ -145,9 +145,9 @@ rebase_patches()
 # If you would need to change any input/output
 # directories to the script, do it below
 output_dir=./../output
-output_layer=$output_dir/layers/4
+output_layer=$output_dir/layers/6
 resolve_dir=./../../resolved
-patches_dir_curr_base=./../../../reference/patches/set4
+patches_dir_curr_base=./../../../reference/patches/set6
 reference_dir_curr_base=./../../../reference/src/rcpl12linux
 reference_dir_new_base=./../../../reference/src/rcpl27linux
 patchlist_filename=patchnames_to_rebase

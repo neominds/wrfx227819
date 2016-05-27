@@ -1,0 +1,24 @@
+From 7788f6a4e2e5113ec5ba908cd609129564eead4c Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:34:49 +0900
+Subject: [PATCH 148/171] 0001-e1000e_DMA_WorkAround
+
+
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index af5b47a..1f1e008 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -5218,6 +5218,10 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
+ 
+ 	while (len) {
+ 		buffer_info = &tx_ring->buffer_info[i];
++#if 1	/* Workaround */
++		if ( max_per_txd > 512 )
++			max_per_txd = 512;
++#endif	/* Workaround */
+ 		size = min(len, max_per_txd);
+ 
+ 		buffer_info->length = size;
+-- 
+1.7.1
+

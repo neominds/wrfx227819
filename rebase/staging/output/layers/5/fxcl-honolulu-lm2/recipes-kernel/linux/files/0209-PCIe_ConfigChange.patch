@@ -1,0 +1,134 @@
+From aa17f3bbcaba31f8f4afa246a4856b02e149022a Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:35:11 +0900
+Subject: [PATCH 163/171] 0209-PCIe_ConfigChange
+
+
+diff --git a/arch/arm/kernel/bios32.c b/arch/arm/kernel/bios32.c
+index a14cc93..840b4b6 100644
+--- a/arch/arm/kernel/bios32.c
++++ b/arch/arm/kernel/bios32.c
+@@ -341,8 +341,13 @@ void pcibios_fixup_bus(struct pci_bus *bus)
+ 		cmd |= features;
+ 		pci_write_config_word(dev, PCI_COMMAND, cmd);
+ 
++#ifdef	CONFIG_PLAT_WAIKIKI
++		pci_write_config_byte(dev, PCI_CACHE_LINE_SIZE,
++				      0);
++#else
+ 		pci_write_config_byte(dev, PCI_CACHE_LINE_SIZE,
+ 				      L1_CACHE_BYTES >> 2);
++#endif
+ 	}
+ 
+ 	/*
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index e862727..dad0a82 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -54,11 +54,6 @@
+ #include "e1000.h"
+ 
+ #define DRV_EXTRAVERSION "-k"
+-#ifdef	WR_E1000E_WORKAROUND
+-static unsigned int skip_xmit    = 0;
+-static unsigned int skip_xmit_cnt= 0;
+-#define	SKIP_XMIT_VAL		30
+-#endif
+ 
+ #define DRV_VERSION "2.3.2" DRV_EXTRAVERSION
+ char e1000e_driver_name[] = "e1000e";
+@@ -5531,20 +5526,6 @@ static netdev_tx_t e1000_xmit_frame(struct sk_buff *skb,
+ 	 * head, otherwise try next time
+ 	 */
+ #ifdef	WR_E1000E_WORKAROUND
+-	if ( skip_xmit ) {
+-		if ( skip_xmit_cnt != 0 ) {
+-			if ( skip_xmit_cnt > skip_xmit )
+-				skip_xmit_cnt=0;
+-			else
+-				skip_xmit_cnt++;
+-			return NETDEV_TX_BUSY;
+-		} else {
+-			skip_xmit_cnt++;
+-		}
+-
+-	} else {
+-		skip_xmit_cnt=0;
+-	}
+ 	if (e1000_maybe_stop_tx(tx_ring, count + 220))
+ #else
+ 	if (e1000_maybe_stop_tx(tx_ring, count + 2))
+@@ -5729,13 +5710,6 @@ static int e1000_change_mtu(struct net_device *netdev, int new_mtu)
+ 	if (netif_running(netdev))
+ 		e1000e_down(adapter);
+ 
+-#ifdef	WR_E1000E_WORKAROUND
+-	if ( netdev->mtu > 1500 ){
+-		skip_xmit = SKIP_XMIT_VAL;
+-	} else {
+-		skip_xmit = 0;
+-	}
+-#endif	/* WR_E1000E_WORKAROUND */
+ 	/* NOTE: netdev_alloc_skb reserves 16 bytes, and typically NET_IP_ALIGN
+ 	 * means we reserve 2 more, this pushes us to allocate from the next
+ 	 * larger slab size.
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index e24a237..ddd66db 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -24,6 +24,7 @@
+ 
+ #undef	DEBUG_TRACE
+ #undef	DEBUG_TRACE_IRQ
++#undef	DEBUG_TRACE_CFG
+ #undef	DEBUG_RW1
+ #undef	PCIE_IRQ_USE
+ #undef	DMA_USE
+@@ -224,8 +225,8 @@ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int
+ 	void __iomem		*pcieconf_base;		/* Windows 0 cfg space */
+ 	u32			bdf_adr;
+ 	int	debugFlag = 0;
+-#ifdef	DEBUG_TRACE1
+-//	dev_err(pp->dev, "%s entry bus=%x DevFn=%x where=%x size=%d\n",__FUNCTION__, bus->number, devfn, where, size);
++#ifdef	DEBUG_TRACE_CFG
++	printk(KERN_ERR "####%s entry bus=%x DevFn=%x where=%x size=%d\n",__FUNCTION__, bus->number, devfn, where, size);
+ #endif
+ 	if (!pp) {
+ 		BUG();
+@@ -259,8 +260,8 @@ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int
+ 		if(where == 8)
+ 			*val = 0x06040000;
+ 	}
+-#ifdef	DEBUG_TRACE1
+-	dev_err(pp->dev, "%s exit\n", __FUNCTION__);
++#ifdef	DEBUG_TRACE_CFG
++	printk(KERN_ERR "####%s val=%x\n",__FUNCTION__, *val);
+ #endif
+ 	return PCIBIOS_SUCCESSFUL;
+ }
+@@ -282,8 +283,8 @@ static int synopsys_pcie_wr_conf(struct pci_bus *bus, u32 devfn,
+ 	void __iomem	*pcieconf_base;
+ 	u32		bdf_adr;
+ 
+-#ifdef	DEBUG_TRACE1
+-//	dev_err(pp->dev, "write devfn = %x where = %x size = %x val = %x\n", devfn, where, size, val);
++#ifdef	DEBUG_TRACE_CFG
++	printk(KERN_ERR "####%s entry bus=%x DevFn=%x where=%x size=%d val=%x\n",__FUNCTION__, bus->number, devfn, where, size,val);
+ #endif
+ 	if (!pp) {
+ 		BUG();
+@@ -311,8 +312,8 @@ static int synopsys_pcie_wr_conf(struct pci_bus *bus, u32 devfn,
+ 	else
+ 		synopsys_writel(pcieconf_base, val);
+ //out:
+-#ifdef	DEBUG_TRACE1
+-//	dev_err(pp->dev, "%s exit\n",__FUNCTION__);
++#ifdef	DEBUG_TRACE_CFG
++	printk(KERN_ERR "####%s End\n",__FUNCTION__);
+ #endif
+ 	return PCIBIOS_SUCCESSFUL;
+ }
+-- 
+1.7.1
+

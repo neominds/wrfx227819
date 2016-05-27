@@ -1,0 +1,179 @@
+From 99f159abf1dde99bbd4b08c3238d6b1a57ed369c Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:32:48 +0900
+Subject: [PATCH 068/171] 0001-0x805000000_KernelStart
+
+
+diff --git a/arch/arm/boot/compressed/Makefile b/arch/arm/boot/compressed/Makefile
+index 725abfa..d7d5c6e 100644
+--- a/arch/arm/boot/compressed/Makefile
++++ b/arch/arm/boot/compressed/Makefile
+@@ -133,7 +133,7 @@ KBSS_SZ = $(shell $(CROSS_COMPILE)size $(obj)/../../../../vmlinux | \
+ LDFLAGS_vmlinux = --defsym _kernel_bss_size=$(KBSS_SZ)
+ # Supply ZRELADDR to the decompressor via a linker symbol.
+ ifneq ($(CONFIG_AUTO_ZRELADDR),y)
+-LDFLAGS_vmlinux += --defsym zreladdr=$(ZRELADDR) --defsym initrd_phys=$(INITRD_PHYS)
++LDFLAGS_vmlinux += --defsym zreladdr=$(ZRELADDR) --defsym params_phys=$(PARAMS_PHYS)
+ endif
+ ifeq ($(CONFIG_CPU_ENDIAN_BE8),y)
+ LDFLAGS_vmlinux += --be8
+diff --git a/arch/arm/boot/compressed/head.S b/arch/arm/boot/compressed/head.S
+index de6e72d..b5d4f6e 100644
+--- a/arch/arm/boot/compressed/head.S
++++ b/arch/arm/boot/compressed/head.S
+@@ -143,8 +143,7 @@ start:
+ #endif
+ 		mov	r7, r1			@ save architecture ID
+ #if 1	/* r8=atag pointer*/
+-		ldr     r8, =initrd_phys
+-		add     r8, r8, #0x100
++		ldr     r8, =params_phys
+ #else
+ 		mov	r8, r2			@ save atags pointer
+ #endif
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+index 32d8d34..462bc9d 100644
+--- a/arch/arm/boot/dts/waikiki-lm2.dts
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -17,7 +17,7 @@
+ 	#address-cells = <1>;
+ 	#size-cells = <1>;
+ 	chosen {
+-		bootargs = "root=/dev/nfs rw nfsroot=192.168.1.250:/exports/fxcl12490 ip=dhcp console=ttyS0,38400 mem=3G";
++		bootargs = "root=/dev/nfs rw nfsroot=128.224.232.42:/home/fxcl12490/ohkuma/FXCL12490/rootfs ip=128.224.231.92:128.224.232.42:128.224.231.1:255.255.255.0::eth0:none console=ttyS0,38400 mem=3G";
+ 	};
+ /*
+ 	aliases {
+diff --git a/arch/arm/include/asm/cputype.h b/arch/arm/include/asm/cputype.h
+index dba62cb..99c0bc7 100644
+--- a/arch/arm/include/asm/cputype.h
++++ b/arch/arm/include/asm/cputype.h
+@@ -144,7 +144,11 @@ static inline unsigned int __attribute_const__ read_cpuid_tcmstatus(void)
+ 
+ static inline unsigned int __attribute_const__ read_cpuid_mpidr(void)
+ {
++#if 1	 
++	return read_cpuid(CPUID_MPIDR) & 0xff;
++#else
+ 	return read_cpuid(CPUID_MPIDR);
++#endif
+ }
+ 
+ /*
+diff --git a/arch/arm/kernel/head.S b/arch/arm/kernel/head.S
+index 6771fa9..a1717d1 100644
+--- a/arch/arm/kernel/head.S
++++ b/arch/arm/kernel/head.S
+@@ -263,7 +263,7 @@ __create_page_tables:
+ 	cmp	r0, r6
+ 	bls	1b
+ 
+-#if 1	/* yamano debug */
++#if 0	/* yamano debug */
+ /* 2:	b	2b	*/ /* yamano ICE debug */
+ 	/* calculate page table address to stored r0 */
+ 	ldr	r3, =LM2_SERIAL_DEBUG_VIRT	@specify virtual address 0xf800_0000
+@@ -601,12 +601,21 @@ __fixup_pv_table:
+ 	add	r4, r4, r3	@ adjust table start address
+ 	add	r5, r5, r3	@ adjust table end address
+ 	add	r7, r7, r3	@ adjust __pv_phys_offset address
++#if 1	/* PHYS_OFFSET = 64bit */
++	mov	r9, #8		@ PHYS_OFFSET >> 32
++	strd	r8, r9, [r7]	@ save computed PHYS_OFFSET to __pv_phys_offset
++#else
+ 	str	r8, [r7]	@ save computed PHYS_OFFSET to __pv_phys_offset
++#endif
+ 	mov	r6, r3, lsr #24	@ constant for add/sub instructions
+ 	teq	r3, r6, lsl #24 @ must be 16MiB aligned
+ THUMB(	it	ne		@ cross section branch )
+ 	bne	__error
++#if 1	/* PHYS_OFFSET = 64bit */
++	str	r6, [r7, #8]	@ save to __pv_offset
++#else
+ 	str	r6, [r7, #4]	@ save to __pv_offset
++#endif
+ 	b	__fixup_a_pv_table
+ ENDPROC(__fixup_pv_table)
+ 
+@@ -658,7 +667,11 @@ ENTRY(fixup_pv_table)
+ 	mov	r3, #0			@ no offset
+ 	mov	r4, r0			@ r0 = table start
+ 	add	r5, r0, r1		@ r1 = table size
++#if 1	/* PHYS_OFFSET = 64bit */
++	ldr	r6, [r2, #8]		@ get __pv_offset
++#else
+ 	ldr	r6, [r2, #4]		@ get __pv_offset
++#endif
+ 	bl	__fixup_a_pv_table
+ 	ldmfd	sp!, {r4 - r7, pc}
+ ENDPROC(fixup_pv_table)
+@@ -669,6 +682,9 @@ ENDPROC(fixup_pv_table)
+ 	.data
+ 	.globl	__pv_phys_offset
+ 	.type	__pv_phys_offset, %object
++#if 1	/* PHYS_OFFSET = 64bit */
++	.align	3
++#endif
+ __pv_phys_offset:
+ 	.long	0
+ 	.long	0
+diff --git a/arch/arm/mach-lm2/Makefile.boot b/arch/arm/mach-lm2/Makefile.boot
+index abeff2c..956e910 100644
+--- a/arch/arm/mach-lm2/Makefile.boot
++++ b/arch/arm/mach-lm2/Makefile.boot
+@@ -3,6 +3,6 @@
+ #   zreladdr-y	+= 0x05008000
+ #params_phys-y	:= 0x05000100
+ #initrd_phys-y	:= 0x05000000
+-   zreladdr-y	+= 0x00008000
+-params_phys-y	:= 0x00000100
+-initrd_phys-y	:= 0x00000000
++   zreladdr-y	+= 0x05008000
++params_phys-y	:= 0x05000100
++initrd_phys-y	:= 0x05000000
+diff --git a/init/main.c b/init/main.c
+index 013c4d3..8f5fd1f 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -162,7 +162,7 @@ static const char *panic_later, *panic_param;
+ 
+ extern const struct obs_kernel_param __setup_start[], __setup_end[];
+ 
+-#if 1 /* yamano */
++#if 0 /* yamano */
+ #define	UART_BASE	0xfc160000
+ #define	UART_BASE2	0xffc10000
+ #define	UART_DATA(base)	(*(volatile unsigned char *)((base) + 0x10))
+@@ -514,14 +514,10 @@ asmlinkage void __init start_kernel(void)
+ 	 * Need to run as early as possible, to initialize the
+ 	 * lockdep hash:
+ 	 */
+-#if 1	/* ohkuma to TLB Flush */
++#if 1	/* TLB Flush */
+ 	asm volatile("mcr p15,0,r0,c8,c6,0");
+ #endif
+-	PHYS_OFFSET = 0x0000000800000000ULL;	/* yamano debug */
+-#if 1   /* ohkuma */
+-sprintf(buf, "__pv_phys_offset=0x%llx(%llx)\n", __pv_phys_offset, PHYS_OFFSET);
+-lm2_printk(UART_BASE,buf);
+-#endif
++//	PHYS_OFFSET = 0x0000000800000000ULL;	/* yamano debug */
+ 	lockdep_init();
+ 	smp_setup_processor_id();
+ 	debug_objects_early_init();
+diff --git a/init/main.c.orig b/init/main.c.orig
+index eb25efd..8577c13 100644
+--- a/init/main.c.orig
++++ b/init/main.c.orig
+@@ -517,7 +517,7 @@ asmlinkage void __init start_kernel(void)
+ #if 1	/* ohkuma to TLB Flush */
+ 	asm volatile("mcr p15,0,r0,c8,c6,0");
+ #endif
+-	PHYS_OFFSET = 0x0000000890000000ULL;	/* yamano debug */
++	PHYS_OFFSET = 0x0000000800000000ULL;	/* yamano debug */
+ #if 1   /* ohkuma */
+ sprintf(buf, "__pv_phys_offset=0x%llx(%llx)\n", __pv_phys_offset, PHYS_OFFSET);
+ lm2_printk(UART_BASE,buf);
+-- 
+1.7.1
+

@@ -1,0 +1,175 @@
+From ecc37d3d9158b5abccfef52149368bf50e2ee662 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:31:16 +0900
+Subject: [PATCH 007/171] 0006-adjust-ethernet-driver
+
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
+index 7e05e8d..e25ff08 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
+@@ -271,6 +271,15 @@ static int dwmac1000_irq_status(void __iomem *ioaddr,
+ 				x->pcs_speed = SPEED_10;
+ 
+ 			x->pcs_link = 1;
++#if 1	/* ohkuma workaround */
++			if ( x->pcs_speed == SPEED_1000 ) {
++				writel(0x00000800,ioaddr + 0x0410);	/* GMACTCPD */
++				writel(0x00000000,ioaddr + 0x0408);	/* GMACRCPD */
++			} else {
++				writel(0x00003f00,ioaddr + 0x0410);	/* GMACTCPD */
++				writel(0x00003f00,ioaddr + 0x0408);	/* GMACRCPD */
++			}
++#endif	/* ohkuma workaround */
+ 			pr_debug("Link is Up - %d/%s\n", (int)x->pcs_speed,
+ 				 x->pcs_duplex ? "Full" : "Half");
+ 		} else {
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index cb83154..4d419b2 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -51,6 +51,8 @@
+ #include "stmmac_ptp.h"
+ #include "stmmac.h"
+ 
++#define	OHKU_TEST
++
+ #undef STMMAC_DEBUG
+ /*#define STMMAC_DEBUG*/
+ #ifdef STMMAC_DEBUG
+@@ -969,6 +971,9 @@ static int stmmac_init_rx_buffers(struct stmmac_priv *priv, struct dma_desc *p,
+ 				  int i)
+ {
+ 	struct sk_buff *skb;
++#ifdef	OHKU_TEST
++	dma_addr_t	tmp;
++#endif
+ 
+ 	skb = __netdev_alloc_skb(priv->dev, priv->dma_buf_sz + NET_IP_ALIGN,
+ 				 GFP_KERNEL);
+@@ -982,7 +987,13 @@ static int stmmac_init_rx_buffers(struct stmmac_priv *priv, struct dma_desc *p,
+ 						priv->dma_buf_sz,
+ 						DMA_FROM_DEVICE);
+ 
++#ifdef  OHKU_TEST
++	tmp = priv->rx_skbuff_dma[i];
++	/* 64 ->32 */
++	p->des2 = tmp&0xffffffff;
++#else
+ 	p->des2 = priv->rx_skbuff_dma[i];
++#endif
+ 
+ 	if ((priv->mode == STMMAC_RING_MODE) &&
+ 	    (priv->dma_buf_sz == BUF_SIZE_16KiB))
+@@ -1779,6 +1790,9 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 	int nfrags = skb_shinfo(skb)->nr_frags;
+ 	struct dma_desc *desc, *first;
+ 	unsigned int nopaged_len = skb_headlen(skb);
++#ifdef  OHKU_TEST
++        dma_addr_t      tmp;
++#endif
+ 
+ 	if (unlikely(stmmac_tx_avail(priv) < nfrags + 1)) {
+ 		if (!netif_queue_stopped(dev)) {
+@@ -1838,9 +1852,22 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 							   csum_insertion);
+ 	}
+ 	if (likely(!is_jumbo)) {
++#ifdef  OHKU_TEST
++		tmp = dma_map_single(priv->device, skb->data, nopaged_len, DMA_TO_DEVICE);
++		desc->des2 = tmp&0xffffffff;
++		priv->tx_skbuff_dma[entry] = tmp;
++#else
+ 		desc->des2 = dma_map_single(priv->device, skb->data,
+ 					    nopaged_len, DMA_TO_DEVICE);
+ 		priv->tx_skbuff_dma[entry] = desc->des2;
++#endif
++#if 1	/* ohkuma GMAC_EXTCFG Set. */
++		if ( sizeof(dma_addr_t) == 8 ) {
++			if ( priv->tx_skbuff_dma[entry] >=0x100000000 ) {
++				writel((priv->tx_skbuff_dma[entry])>>32, priv->ioaddr + 0x041C);
++			}
++		} 
++#endif
+ 		priv->hw->desc->prepare_tx_desc(desc, 1, nopaged_len,
+ 						csum_insertion, priv->mode);
+ 	} else
+@@ -1857,9 +1884,15 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 			desc = priv->dma_tx + entry;
+ 
+ 		TX_DBG("\t[entry %d] segment len: %d\n", entry, len);
++#ifdef  OHKU_TEST
++		tmp = skb_frag_dma_map(priv->device, frag, 0, len, DMA_TO_DEVICE);
++		desc->des2 = tmp&0xffffffff;
++		priv->tx_skbuff_dma[entry] = tmp;
++#else
+ 		desc->des2 = skb_frag_dma_map(priv->device, frag, 0, len,
+ 					      DMA_TO_DEVICE);
+ 		priv->tx_skbuff_dma[entry] = desc->des2;
++#endif
+ 		priv->tx_skbuff[entry] = NULL;
+ 		priv->hw->desc->prepare_tx_desc(desc, 0, len, csum_insertion,
+ 						priv->mode);
+@@ -1964,7 +1997,11 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv)
+ 			    dma_map_single(priv->device, skb->data, bfsize,
+ 					   DMA_FROM_DEVICE);
+ 
++#ifdef  OHKU_TEST
++			p->des2 = priv->rx_skbuff_dma[entry]&0xffffffff;
++#else
+ 			p->des2 = priv->rx_skbuff_dma[entry];
++#endif
+ 
+ 			priv->hw->ring->refill_desc3(priv, p);
+ 
+@@ -2703,11 +2740,14 @@ struct stmmac_priv *stmmac_dvr_probe(struct device *device,
+ 		goto error_netdev_register;
+ 	}
+ 
++#if 1	/* ohkuma clk_get() no used */
++#else
+ 	priv->stmmac_clk = clk_get(priv->device, STMMAC_RESOURCE_NAME);
+ 	if (IS_ERR(priv->stmmac_clk)) {
+ 		pr_warn("%s: warning: cannot get CSR clock\n", __func__);
+ 		goto error_clk_get;
+ 	}
++#endif
+ 
+ 	/* If a specific clk_csr value is passed from the platform
+ 	 * this means that the CSR Clock Range selection cannot be
+@@ -2715,10 +2755,13 @@ struct stmmac_priv *stmmac_dvr_probe(struct device *device,
+ 	 * set the MDC clock dynamically according to the csr actual
+ 	 * clock input.
+ 	 */
++#if 1   /* ohkuma clk_get() no used */
++#else
+ 	if (!priv->plat->clk_csr)
+ 		stmmac_clk_csr_set(priv);
+ 	else
+ 		priv->clk_csr = priv->plat->clk_csr;
++#endif
+ 
+ 	stmmac_check_pcs_mode(priv);
+ 
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_mdio.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_mdio.c
+index cc15039..4e8a117 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_mdio.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_mdio.c
+@@ -167,10 +167,14 @@ int stmmac_mdio_register(struct net_device *ndev)
+ 	if (new_bus == NULL)
+ 		return -ENOMEM;
+ 
++#if 1	/* ohkuma IRQ=0 is poll */
++	irqlist = mdio_bus_data->irqs;
++#else
+ 	if (mdio_bus_data->irqs)
+ 		irqlist = mdio_bus_data->irqs;
+ 	else
+ 		irqlist = priv->mii_irq;
++#endif
+ 
+ 	new_bus->name = "stmmac";
+ 	new_bus->read = &stmmac_mdio_read;
+-- 
+1.7.1
+

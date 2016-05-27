@@ -1,0 +1,36 @@
+From 13d5720633929a8331177a1435db9390deda3047 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:34:52 +0900
+Subject: [PATCH 150/171] 0001-stmac_eee_off_add
+
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index 036744b..a3ea238 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -380,8 +380,7 @@ bool stmmac_eee_init(struct stmmac_priv *priv)
+ 			priv->hw->mac->set_eee_pls(priv->ioaddr,
+ 						   priv->phydev->link);
+ 
+-		pr_info("stmmac: Energy-Efficient Ethernet initialized\n");
+-
++//		pr_info("stmmac: Energy-Efficient Ethernet initialized\n");
+ 		ret = true;
+ 	}
+ out:
+diff --git a/drivers/net/phy/phy.c b/drivers/net/phy/phy.c
+index 86bc7fb..7069a94 100644
+--- a/drivers/net/phy/phy.c
++++ b/drivers/net/phy/phy.c
+@@ -1155,6 +1155,8 @@ int phy_ethtool_set_eee(struct phy_device *phydev, struct ethtool_eee *data)
+ 	int val;
+ 
+ 	val = ethtool_adv_to_mmd_eee_adv_t(data->advertised);
++	if ( !data->eee_enabled )
++		val=0;
+ 	phy_write_mmd_indirect(phydev->bus, MDIO_AN_EEE_ADV, MDIO_MMD_AN,
+ 			       phydev->addr, val);
+ 
+-- 
+1.7.1
+

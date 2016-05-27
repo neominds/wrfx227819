@@ -1,0 +1,98 @@
+	ARM CoreTile Express A15-A7 Board Support Package
+
+
+Table of Contents
+=================
+
+1. Supported Boards
+2. Change History
+3. BSP Features
+4. BSP Notes
+
+1. Supported Boards
+===================
+
+This BSP supports the following boards:
+
+ + ARM CoreTile Express A15x2-A7x3 daughterboard : A15/A7 processor (r2p1), HBI-0190D build 2185 MotherBoard
+
+2. Change History
+=================
+
+ - 2013/04 (00409173) RCPL5.0.1.4: add cgp kernel support
+ - 2013/03 (00397750) RCPL5.0.1.1: add preempt_rt kernel support
+ - 2012/11 (00349692): Initial WRL 5.0 BSP with standard kernel support
+
+3. BSP Features
+===============
+
+3.1 Supported Features
+======================
+
+The following BSP features are validated and supported on boards where
+the corresponding h/w features exist.
+
+	o General Platform
+		+ KGDBoE
+		+ KEXEC/KDUMP
+		+ Oprofile (timer mode)
+		+ CPU Hotplug
+		+ HugeTLB
+		+ LPAE
+		+ SDIV/UDIV instructions
+
+	o Network
+		+ Ethernet: SMSC LAN9118 10/100 Mb Ethernet controller
+
+	o USB
+		+ USB Host: Philips ISP1760 USB 2.0 EHCI host controller, high/full/low speed
+
+	o Storage
+		+ SD/MMC: PL180 PrimeCell Multimedia Card Interface with PIO mode only
+
+	o User_Interface_Multimedia
+		+ AC97 Audio CODEC (Line-in and Line-out)
+		+ Graphics DVI output: hdlcd controller
+		+ Keyboard: ps2 interface
+		+ Mouse: ps2 interface
+
+	o Power Management
+		+ CPU Freq
+
+	o Misc Devices
+		+ UART: PL011 UART with 4 serial ports
+		+ RTC: PL031 PrimeCell Real Time Clock Controller
+		+ Watchdog
+
+3.2 Unsupported Features
+========================
+
+The following features are not supported and validated:
+
+	x USB device controller
+	x NOR Flash
+	x GPIO
+	x SPI
+	x I2C
+	x PCIe
+	x Compact Flash
+	x PM
+
+
+4. BSP Notes
+============
+
+The CoreTile Express A15x2-A7x3 daughterboard provides a development system that you
+can use the Cortex-A15 and Cortex-A7 MPCore chip in the CoreTile Express A15x2-A7x3
+with a Motherboard Express uATX to create prototype systems.
+
+4.1 Validated Board Info
+------------------------
+
+This BSP is only validated in following environment. If you use this BSP
+in a different environment it may possibly have some issues.
+
+	Processor:		Cortex A15 and A7 MP (r2p1)
+	MotherBoard Revision:	HBI-0190D build 2185
+	BootLoader:		U-Boot
+	BootLoader Version:	U-Boot 2011.12-rc1 (Aug 15 2012 - 11:55:06)

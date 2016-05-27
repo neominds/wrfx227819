@@ -1,0 +1,348 @@
+From 0595a3109aaa0e94479efa8cba3cac405d5ca818 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:34:21 +0900
+Subject: [PATCH 129/171] 0001-modify-eeprom-driver
+
+
+diff --git a/drivers/char/lm2-seeprom.c b/drivers/char/lm2-seeprom.c
+index ce7061e..76f9001 100644
+--- a/drivers/char/lm2-seeprom.c
++++ b/drivers/char/lm2-seeprom.c
+@@ -21,13 +21,14 @@
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/of_address.h>
++#include <linux/uaccess.h>
+ #include <linux/fs.h>
+ #include <linux/cdev.h>
+ #include <linux/device.h>
+ #include <linux/kernel.h>
+ 
+ #define	DEV_NAME	"seeprom"
+-
++#define	DEFAULT_CHIPADR	0xa8
+ /* register offsets */
+ #define	EMSR		0x0000	/* EEPROM Mode Setting Register		*/
+ #define	ESAR		0x0004	/* EEPROM Slave Address Register	*/
+@@ -57,15 +58,15 @@
+ struct lm2_i2c_seeprom {
+ 	void __iomem 	*iobase;	/* self register base		*/
+ 	void __iomem	*miscbase;	/* interupt status in CIP	*/
+-	u32		addr;		/* buffer index */
+-	int		flags;		/* mode flags			*/
+-	int		status;		/* status 			*/
++	u32		addr;		/* offset address		*/
++	u32		cadr;		/* chip address			*/
++	u32		size;
++	int		adr_sel;	/* 1byte/2byte address		*/
++	unsigned int	len;		/* transaction length		*/
+ 	int		irq;		/* irq				*/
+ 	struct completion	xfer_done;
+-	struct resource *ioarea;	/* save resource data		*/
+-	unsigned int	len;
+-	unsigned char	offset;
+-	unsigned char	buf[32];
++	int		status;		/* execution status */
++	struct mutex	lock;
+ };
+ 
+ /*
+@@ -112,47 +113,65 @@ static irqreturn_t lm2_i2c_irq(int irq, void *ptr)
+ /* prepare and start a master receive operation */
+ static void lm2_i2c_mrecv(struct lm2_i2c_seeprom *id)
+ {
+-	unsigned int	reg;
++	u32	reg;
+ 
+ //	dev_info(id->adap.dev.parent, "mrecv call\n");
+-
+-	/* set the read count */
++printk("read transaction \n");
++printk("read count = %d offset address %d chip address %x\n",
++	id->len,id->addr,id->cadr);
++	/* set the read count and address width */
+ 	reg = readl(id->iobase + EMSR);
+ 	reg |= ((id->len-1) << 14);
++	if(id->adr_sel)
++		reg |= (0x1 << 13);
++
+ 	writel(reg, id->iobase + EMSR);
+ 
++	/* set chip address */
++	writel(id->cadr, id->iobase + ESAR);
++
+ 	/* set read start address */
+ 	writel(id->addr, id->iobase + EWAR);
+ 
+ 	/* start read */
+-	writel(0x00000001,id->iobase + ESTR);
++	writel(0x00000001, id->iobase + ESTR);
+ 
+ }
+ 
+ /* prepare and start a master send operation */
+ static void lm2_i2c_msend(struct lm2_i2c_seeprom *id)
+ {
+-	u32	val;
++	u32	reg;
+ 
+ //	dev_info(id->adap.dev.parent, "msend call\n");
+-	val = readl(id->iobase + EMSR);
+-	val = val | ((id->len-1) << 14);
+-	writel(val, id->iobase+EMSR);
+ 
+-	/* set address */
++	/* set data length and address byte */
++	reg = readl(id->iobase + EMSR);
++	reg = reg | ((id->len-1) << 14);
++	if(id->adr_sel)
++		reg |= (0x1 << 13);
++
++	writel(reg, id->iobase + EMSR);
++
++	/* set chip address */
++	writel(id->cadr, id->iobase + ESAR);
++
++	/* set write address */
+ 	writel(id->addr, id->iobase + EWAR);
+ 
+ 	/* transfer start */
+-	writel(0x00000002,id->iobase + ESTR);
++	writel(0x00000002, id->iobase + ESTR);
+ }
+ 
+ static inline int lm2_i2c_busy_check(struct lm2_i2c_seeprom *id)
+ {
+ 	u32	result;
+-	result = readl(id->iobase+ESTR);
++
++	result = readl(id->iobase + ESTR);
+ 	result &= 0x01;
+ 	return result;
+ }
++
+ #if 0
+ static int lm2_i2c_master_xfer(struct i2c_adapter *adap,
+ 				  struct i2c_msg *msgs,
+@@ -225,7 +244,9 @@ static int lm2_i2c_master_xfer(struct i2c_adapter *adap,
+  */
+ static	int	seeprom_open(struct inode *inode, struct file *filp)
+ {
+-	filp->private_data = &seeprom_device[iminor(inode)];
++	filp->private_data = seeprom_device;
++//	pr_info("open\n");
++
+ 	return	0;
+ }
+ 
+@@ -233,6 +254,7 @@ static	int	seeprom_release(struct inode *inode, struct file *filp)
+ {
+ 	struct lm2_i2c_seeprom	*seeprom = filp->private_data;
+ 
++//	pr_info("close\n");
+ 	filp->private_data = NULL;
+ 
+ 	return	0;
+@@ -242,25 +264,141 @@ static	ssize_t seeprom_read(struct file *filp, char __user *buf, size_t count, l
+ {
+ 	struct lm2_i2c_seeprom	*seeprom = filp->private_data;
+ 	int	retval = 0;
++	char	*kern_buf;
++	int	cur_pos;
++	int	trans,idx,length;
++
++//	pr_info("# %s count %d offset %lld\n", __func__, count, *f_pos );
++
++	kern_buf = (char *)kmalloc(count, GFP_KERNEL);
++	if(!kern_buf){
++		pr_err("Could not malloc memory\n");
++		return	-ENOMEM;
++	}
++	if(mutex_lock_interruptible(&seeprom->lock)){
++		kfree(kern_buf);
++		return -ERESTARTSYS;
++	}
++
++	cur_pos = (unsigned int)*f_pos;
++	length = count;
++	idx = 0;
++	while(length > 0){
++		if(length > 32 )
++			seeprom->len = 32;
++		else
++			seeprom->len = length;
++
++		seeprom->addr = cur_pos;
++
++                /* setup synchronize */
++                init_completion(&seeprom->xfer_done);
++
++		lm2_i2c_mrecv(seeprom);      /* recv */
++
++		/* transfer complete wait for isr */
++		wait_for_completion(&seeprom->xfer_done);
++
++		for(trans = 0 ; trans < seeprom->len ; trans++){
++			kern_buf[idx] = (char)readl(seeprom->iobase + EDR1 + trans * 4);
++			idx++;
++		}
++		length = length - seeprom->len;
++		cur_pos = cur_pos + seeprom->len;
++	}
+ 
+-	return	retval;
++	copy_to_user(buf,kern_buf,count);
++	*f_pos = *f_pos + count;
++
++	mutex_unlock(&seeprom->lock);
++	kfree(kern_buf);
++	return	count;
+ 
+ }
+ 
+ static	ssize_t	seeprom_write(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
+ {
+ 	struct lm2_i2c_seeprom	*seeprom = filp->private_data;
+-	int	retval = 0;
++	char	*kern_buf;
++	int	cur_pos;
++	int	trans,idx,length;
++	
++//	pr_info("# %s count %d offset %lld\n", __func__, count, *f_pos);
++
++	kern_buf = kmalloc(count, GFP_KERNEL);
++	if(!kern_buf){
++		pr_err("Could not malloc memory\n");
++		return	-ENOMEM;
++	}
++	if(mutex_lock_interruptible(&seeprom->lock)){
++		kfree(kern_buf);
++		return	-ERESTARTSYS;
++	}
++
++        copy_from_user(kern_buf, buf, count);
++
++        cur_pos = (unsigned int)*f_pos;
++        length = count;
++        idx = 0;
++        while(length > 0){
++                if(length > 32 )
++                        seeprom->len = 32;
++                else
++                        seeprom->len = length;
++
++                seeprom->addr = cur_pos;
++
++                for(trans = 0 ; trans < seeprom->len ; trans++){
++			writel(kern_buf[idx], seeprom->iobase + EDR1 + trans * 4);
++                        idx++;
++                }
++
++                /* setup synchronize */
++                init_completion(&seeprom->xfer_done);
++
++                lm2_i2c_msend(seeprom);      /* recv */
++
++                /* transfer complete wait for isr */
++                wait_for_completion(&seeprom->xfer_done);
+ 
+-	return	retval;
++                length = length - seeprom->len;
++                cur_pos = cur_pos + seeprom->len;
++        }
++
++        *f_pos = *f_pos + count;
++
++	mutex_unlock(&seeprom->lock);
++	kfree(kern_buf);
++
++	return	count;
+ 	
+ }
+ 
+ static	loff_t	seeprom_llseek(struct file *filp, loff_t offset, int origin)
+ {
+ 	struct lm2_i2c_seeprom * seeprom = filp->private_data;
+-	return	0;
++//	pr_info("lseek\n");
+ 
++	if(mutex_lock_interruptible(&seeprom->lock)){
++		return	-ERESTARTSYS;
++	}
++
++	switch(origin){
++	case	SEEK_END:
++		offset += seeprom->size;
++		break;
++	case	SEEK_CUR:
++		offset += filp->f_pos;
++		break;
++	}
++	if(offset < 0 || offset > seeprom->size){
++		offset = -EINVAL;
++	}else{
++		filp->f_pos = offset;
++	}
++	mutex_unlock(&seeprom->lock);
++
++	return	offset;
+ }
+ 
+ static	long	seeprom_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+@@ -269,6 +407,12 @@ static	long	seeprom_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
+ 	return	0;
+ }
+ 
++static	char	*seeprom_devnode(struct device *dev, umode_t *mode)
++{
++	*mode = S_IRUGO | S_IWUSR;
++	return	kasprintf( GFP_KERNEL, "seeprom/%s",dev_name(dev));
++}
++
+ struct file_operations seeprom_fops = {
+ 	.owner		= THIS_MODULE,
+ 	.llseek		= seeprom_llseek,
+@@ -291,7 +435,7 @@ static int lm2_seeprom_probe(struct platform_device *pdev)
+ 	dev_t	dev = MKDEV(seeprom_major,0);
+ 
+ 	/* sanity check */
+-	dev_info(&pdev->dev, "LM2 I2C EEPROM Driver loading\n");
++//	dev_info(&pdev->dev, "LM2 I2C EEPROM Driver loading\n");
+ 
+ 	/* 2 iomem 1 irq */
+ 	if(pdev->num_resources < 3){
+@@ -332,6 +476,9 @@ static int lm2_seeprom_probe(struct platform_device *pdev)
+ 
+ 	id->irq = platform_get_irq(pdev, 0);
+ 
++	id->cadr = DEFAULT_CHIPADR;
++	id->adr_sel = 0;
++	id->size = 256;	/* 8 bit address max byte */
+ 
+ 	init_completion(&id->xfer_done);
+ 
+@@ -375,7 +522,12 @@ static int lm2_seeprom_probe(struct platform_device *pdev)
+ 		ret = PTR_ERR(seeprom_class);
+ 		goto	fail_cdev;
+ 	}
++//	seeprom_class->dev_attrs = seeprom_dev_attrs;
++	seeprom_class->devnode = seeprom_devnode;
++	mutex_init(&id->lock);
+ 
++	seeprom_device = id;
++//	dev_info(&pdev->dev, "LM2 I2C EEPROM Driver \n");
+ 	return 0;
+ fail_cdev:
+ 
+@@ -488,7 +640,7 @@ static	struct of_device_id	seeprom_dt_ids[]={
+ 
+ static struct platform_driver lm2_seeprom_drv = {
+ 	.driver	= {
+-		.name	= "seeprom",
++		.name	= "lm2-eeprom",
+ 		.owner	= THIS_MODULE,
+ #ifdef	CONFIG_OF
+ 		.of_match_table = of_match_ptr(seeprom_dt_ids),
+-- 
+1.7.1
+

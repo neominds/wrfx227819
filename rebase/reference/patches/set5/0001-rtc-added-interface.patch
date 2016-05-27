@@ -1,0 +1,107 @@
+From de15bb293caf4132c040b8f65231d80ac7f3b6dd Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Mon, 6 Apr 2015 16:54:46 +0900
+Subject: [PATCH 1/1] rtc added interface
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/rtc/rtc-quatro53xx.c |   33 ++++++++++++++++++++++-----------
+ 1 files changed, 22 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/rtc/rtc-quatro53xx.c b/drivers/rtc/rtc-quatro53xx.c
+index c4359ab..03b007b 100644
+--- a/drivers/rtc/rtc-quatro53xx.c
++++ b/drivers/rtc/rtc-quatro53xx.c
+@@ -37,8 +37,8 @@
+ #define	LM2_INFOREG1_READ	0x0100
+ #define	LM2_INFOREG2_READ	0x0200
+ 
+-#define	LM2_GET		1
+-#define	LM2_SET		0
++#define	LM2_GET		0
++#define	LM2_SET		1
+ 
+ #define	RTCCNT		0x010
+ #define	RTCSECOND	0x018
+@@ -356,10 +356,12 @@ void lm2_timer_do_work(struct work_struct *work)
+ 	//printk("lm2_timer_do_work done\n");
+ }
+ 
+-static	int	lm2_get_inforeg(struct device *dev, unsigned long *value, int info)
++static	int	lm2_get_inforeg(struct device *dev, unsigned long value, int info)
+ {
+ 	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
+ 	int	result;
++	void __user *uarg = (void __user *)value;
++	unsigned int	reg;
+ 
+ 	mutex_lock(&rtc->lock);
+ 	rtc_connect(rtc->rtc_base);
+@@ -383,46 +385,55 @@ static	int	lm2_get_inforeg(struct device *dev, unsigned long *value, int info)
+ 		mutex_unlock(&rtc->lock);
+ 		return	-1;
+ 	}
+-	*value = readl(rtc->rtc_base + RTCCNT);
++	reg = readl(rtc->rtc_base + RTCCNT);
++	put_user(reg, (int *)value);
++//	copy_to_user(uarg, &reg, sizeof(int));
+ 	rtc_disconnect(rtc->rtc_base);
+ 	mutex_unlock(&rtc->lock);
+ 	return	0;
+ }
+ 
+-static	int	lm2_voltage_status(struct device *dev, unsigned long *value, int flag)
++static	int	lm2_voltage_status(struct device *dev, unsigned long value, int flag)
+ {
+ 	struct lm2_rtc	*rtc = dev_get_drvdata(dev);
+ 	char	result;
++	void __user *uarg = (void __user *) value;
++	unsigned int	reg;
+ 
+ 	mutex_lock(&rtc->lock);
+ 	if(flag){
++//		printk("Clear\n");
+ 		result = readb(rtc->rtc_base + RTCCTL_CTL);
+ 		result &= ~RTC_IN; 
+ 		writeb(result, rtc->rtc_base + RTCCTL_CTL);
+ 	}else{
+ 		result = readb(rtc->rtc_base + RTCCTL_CTL);
+ 		if(result & RTC_IN)
+-			*value = 1;
++			reg = 1;
+ 		else
+-			*value = 0;
++			reg = 0;
++		put_user(reg, (int *)value);
++//		copy_to_user(uarg, &reg, sizeof(int));
+ 	}
+ 	mutex_unlock(&rtc->lock);
+ 	return	0;
+ }
+ 
+-static	int	lm2_ioctl(struct device *dev,unsigned int opecode, unsigned long value)
++static	int	lm2_ioctl(struct device *dev, unsigned int opecode, unsigned long value)
+ {
+ 	int	result;
+ 
++
+ 	switch(opecode){
+ 	case	LM2_INFOREG1_READ:
+-		result = lm2_get_inforeg(dev, (unsigned long *)value, 0x04);
++		result = lm2_get_inforeg(dev, value, 0x04);
+ 		break;
+ 	case	LM2_INFOREG2_READ:
+-		result = lm2_get_inforeg(dev, (unsigned long *)value, 0x06);
++		result = lm2_get_inforeg(dev, value, 0x06);
+ 		break;
+ 	case	RTC_VL_READ:
+-		result = lm2_voltage_status(dev, (unsigned long *)value, LM2_GET); 
++//		printk("RTC_VL_READ\n");
++		result = lm2_voltage_status(dev, value, LM2_GET); 
+ 		break;
+ 	case	RTC_VL_CLR:
+ 		result = lm2_voltage_status(dev, 0, LM2_SET); 
+-- 
+1.7.1
+

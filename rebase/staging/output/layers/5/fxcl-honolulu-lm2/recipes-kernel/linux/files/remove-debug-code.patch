@@ -1,0 +1,234 @@
+From 9f5076827cdf439d1b5f8d58f83af1b25b39d058 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:32:21 +0900
+Subject: [PATCH 049/171] remove-debug-code
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index e081f05..66282d5 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -90,20 +90,6 @@ static struct map_desc lm2_io_desc[] __initdata = {
+ 		.length		= SZ_4K,
+ 		.type		= MT_DEVICE,
+ 	},
+-#if 0
+-	{
+-		.virtual	= LM2_CCI_VIRT,
+-		.pfn		= __phys_to_pfn(0x04060000ULL),
+-		.length		= SZ_64K,
+-		.type		= MT_DEVICE,
+-	},
+-	{
+-		.virtual	= LM2_GPIO_VIRT,
+-		.pfn		= __phys_to_pfn(0x04080000ULL),
+-		.length		= SZ_64K,
+-		.type		= MT_DEVICE,
+-	},
+-#endif
+ };
+ 
+ /*
+@@ -409,9 +395,6 @@ void __init lm2_dt_map_io(void)
+ 
+ 	iotable_init(lm2_io_desc, ARRAY_SIZE(lm2_io_desc));
+ 
+-#if defined(CONFIG_SMP)
+-	vexpress_dt_smp_map_io();
+-#endif
+ }
+ 
+ static u32 osc;
+diff --git a/arch/arm/mach-lm2/xspi.c b/arch/arm/mach-lm2/xspi.c
+index 6132ced..21936dc 100644
+--- a/arch/arm/mach-lm2/xspi.c
++++ b/arch/arm/mach-lm2/xspi.c
+@@ -6,10 +6,28 @@
+ #include <linux/kernel.h>
+ #include <linux/platform_device.h>
+ #include <linux/module.h>
++#include <linux/spi/spi.h>
+ 
+ #include "mach/irqs.h"
+ #include "mach/motherboard.h"
+ 
++static	struct spi_board_info	lm2_spi_devices[] __initdata = {
++	{
++		.modalias	= "spidev",
++		.bus_num	= 0,
++		.chip_select	= 0,
++		.max_speed_hz	= 580000,
++		.mode		= SPI_MODE_0,
++	},
++	{
++		.modalias	= "spidev",
++		.bus_num	= 0,
++		.chip_select	= 1,
++		.max_speed_hz	= 580000,
++		.mode		= SPI_MODE_0,
++	}
++};
++
+ static	struct resource	lm2_xspi_resource[] = {
+ 	{
+ 		.start	= LM2_XSPI_0_BASE,
+@@ -24,13 +42,13 @@ static	struct resource	lm2_xspi_resource[] = {
+ };
+ 
+ static	struct platform_device	lm2_xspi_device = {
+-	.name	= "xspi",
+-	.id	= -1,
++	.name	= "mmio-xspi",
++	.id	= 0,
+ 	.num_resources	= ARRAY_SIZE( lm2_xspi_resource ),
+ 	.resource	= lm2_xspi_resource,
+ };
+ 
+-static	struct platform_device lm2_spidev_device = {
++static	struct platform_device	lm2_spidev_device = {
+ 	.name	= "spidev",
+ 	.id	= -1,
+ };
+@@ -39,8 +57,9 @@ int	__init lm2_xspi_register(void)
+ {
+ 	int	result;
+ 
+-	result = platform_device_register( &lm2_xspi_device );
++	spi_register_board_info(lm2_spi_devices,ARRAY_SIZE(lm2_spi_devices));
+ 	result = platform_device_register( &lm2_spidev_device );
++	result = platform_device_register( &lm2_xspi_device );
+ 	return	result;
+ }
+ 
+diff --git a/drivers/i2c/busses/i2c-lm2.c b/drivers/i2c/busses/i2c-lm2.c
+index bbcb95a..c1faf88 100644
+--- a/drivers/i2c/busses/i2c-lm2.c
++++ b/drivers/i2c/busses/i2c-lm2.c
+@@ -148,17 +148,19 @@ static int lm2_i2c_master_xfer(struct i2c_adapter *adap,
+ 	struct	i2c_msg	dat;
+ 	u32	length;
+ 	u32	idx;
++	u32	addr;
+ 
+ 	if (lm2_i2c_busy_check(id)) {
+ 		dev_err(&adap->dev, "lm2-i2c %d: bus busy!\n", adap->nr);
+ 		return -EBUSY;
+ 	}
+-	dev_info( &adap->dev, "call master xfer %x %d\n", msgs, num);
+-	dev_info(&adap->dev, "slave addr = %d\n",msgs->addr);
+-	dev_info(&adap->dev, "flags = %x\n",msgs->flags);
+-	dev_info(&adap->dev, "msg length = %d\n",msgs->len);
+-	dev_info(&adap->dev, "buf = %x\n",msgs->buf);
+-
++//	dev_info( &adap->dev, "call master xfer %x %d\n", msgs, num);
++//	dev_info(&adap->dev, "slave addr = %d\n",msgs->addr);
++//	dev_info(&adap->dev, "flags = %x\n",msgs->flags);
++//	dev_info(&adap->dev, "msg length = %d\n",msgs->len);
++//	dev_info(&adap->dev, "buf = %x\n",msgs->buf);
++	addr = (msgs->addr)<<1;
++	writel(addr,id->iobase + ESAR);
+ 	id->msg = msgs;
+ 	length = msgs->len;
+ 	idx = 0;
+@@ -172,7 +174,7 @@ static int lm2_i2c_master_xfer(struct i2c_adapter *adap,
+ 		/* setup synchronize */
+ 		init_completion(&id->xfer_done);
+ 
+-dev_info(&adap->dev, "idx = %d length= %d\n", idx, length);
++// dev_info(&adap->dev, "idx = %d length= %d\n", idx, length);
+ 		if (msgs->flags & I2C_M_RD){
+ 			id->addr = idx;
+ 			lm2_i2c_mrecv(id);	/* recv */
+diff --git a/drivers/spi/Kconfig b/drivers/spi/Kconfig
+index 9725efb..2dd3644 100644
+--- a/drivers/spi/Kconfig
++++ b/drivers/spi/Kconfig
+@@ -531,7 +531,6 @@ config SPI_DW_MMIO
+ config SPI_XSPI
+ 	tristate "LM2 XSPI SRAM/CPLD Driver"
+ 	depends on ARCH_LM2
+-	select	SPI_SPIDEV
+ 	help
+ 
+ #
+diff --git a/drivers/spi/spidev.c b/drivers/spi/spidev.c
+index 1cc11c1..f0c72fe 100644
+--- a/drivers/spi/spidev.c
++++ b/drivers/spi/spidev.c
+@@ -580,6 +580,7 @@ static int spidev_probe(struct spi_device *spi)
+ 	int			status;
+ 	unsigned long		minor;
+ 
++	dev_info(&spi->dev, "spidev probing\n");
+ 	printk("%s:enter spidev_probe\n", __func__);
+ 	/* Allocate driver data */
+ 	spidev = kzalloc(sizeof(*spidev), GFP_KERNEL);
+@@ -689,19 +690,24 @@ static int __init spidev_init(void)
+ 	 * that will key udev/mdev to add/remove /dev nodes.  Last, register
+ 	 * the driver which manages those device numbers.
+ 	 */
++printk(KERN_ERR "===== spidev init call ======\n");
+ 	BUILD_BUG_ON(N_SPI_MINORS > 256);
+ 	status = register_chrdev(SPIDEV_MAJOR, "spi", &spidev_fops);
+-	if (status < 0)
++	if (status < 0){
++		printk(KERN_ERR "spidev could not create character device\n");
+ 		return status;
++	}
+ 
+ 	spidev_class = class_create(THIS_MODULE, "spidev");
+ 	if (IS_ERR(spidev_class)) {
++		printk(KERN_ERR "spidev could not create device class for spidev\n");
+ 		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver.driver.name);
+ 		return PTR_ERR(spidev_class);
+ 	}
+ 
+ 	status = spi_register_driver(&spidev_spi_driver);
+ 	if (status < 0) {
++		printk(KERN_ERR "spidev could not registered for spidev\n");
+ 		class_destroy(spidev_class);
+ 		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver.driver.name);
+ 	}
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index 29a1ab5..4ec619d 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -170,14 +170,13 @@ static int xspi_probe(struct platform_device *pdev)
+ 		return	-ENOMEM;
+ 	}
+ 
+-	platform_set_drvdata(pdev, master);
+-
++//	master->dev.of_node = pdev->dev.of_node;
+ 	master->mode_bits = SPI_MODE_0;
+-	master->bits_per_word_mask = BIT(8 - 1);
++//	master->bits_per_word_mask = BIT(8 - 1);
+ 	master->bus_num = -1;
+ 	master->num_chipselect = 2;
+ 	master->transfer_one_message = xspi_transfer_one;
+-	master->dev.of_node = pdev->dev.of_node;
++	platform_set_drvdata(pdev, master);
+ 
+ 	xspi= spi_master_get_devdata(master);
+ 
+@@ -235,6 +234,7 @@ static int xspi_probe(struct platform_device *pdev)
+ 	xspi_wr(xspi, SPI_CLK1, 0x40002020); /* SPI mode 0 300MHz/64 */
+ 	xspi_wr(xspi, SPI_CFG + 4, 0xc00000e0);
+ 
++//	err = devm_spi_register_master(&pdev->dev, master);
+ 	err = spi_register_master(master);
+ 	if(err){
+ 		dev_err(&pdev->dev, "could not register SPI Master Driver \n");
+@@ -281,7 +281,8 @@ MODULE_DEVICE_TABLE(of, xspi_dt_ids);
+ 
+ static struct platform_driver xspi_driver = {
+ 	.driver = {
+-		.name = "xspi",
++		.name	= "mmio-xspi",
++		.owner	= THIS_MODULE,
+ #ifdef	CONFIG_OF
+ 		.of_match_table = of_match_ptr(xspi_dt_ids),
+ #endif
+-- 
+1.7.1
+

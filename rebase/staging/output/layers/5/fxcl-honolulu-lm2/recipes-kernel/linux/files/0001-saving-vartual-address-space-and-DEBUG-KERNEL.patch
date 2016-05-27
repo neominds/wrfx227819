@@ -1,0 +1,114 @@
+From 04cd5108e01db9135cadef22cd62e11d7fa3ee02 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:33:45 +0900
+Subject: [PATCH 106/171] 0001-saving-vartual-address-space-and-DEBUG-KERNEL
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index a0609ff..bb96458 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -319,17 +319,17 @@ static struct resource lm2_pcie_resource[]={
+        },
+        {	/* port 1 */
+                .start  = 0x04a40000,
+-               .end    = 0x04a4ffff,
++               .end    = 0x04a40fff,
+                .flags  = IORESOURCE_MEM,
+        },
+        {	/* port 2 */
+                .start  = 0x04a50000,
+-               .end    = 0x04a5ffff,
++               .end    = 0x04a50fff,
+                .flags  = IORESOURCE_MEM,
+        },
+        {	/* port 3 */
+                .start  = 0x04a60000,
+-               .end    = 0x04a6ffff,
++               .end    = 0x04a60fff,
+                .flags  = IORESOURCE_MEM,
+        },
+        {	/* host bridge interrput */
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index 380d8bd..390e0b1 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -6572,10 +6572,9 @@ printk(KERN_ERR "###>>> %s Entry\n",__FUNCTION__);
+ 	mmio_len = pci_resource_len(pdev, 0);
+ 	err = -EIO;
+ 	adapter->hw.hw_addr = ioremap(mmio_start, mmio_len);
+-printk(KERN_ERR "pci resource start : 0x%llx len : 0x%x vart : 0x%xn",mmio_start,mmio_len,i*adapter->hw.hw_addr);
+ 	if (!adapter->hw.hw_addr)
+ 		goto err_ioremap;
+-
++printk(KERN_ERR "pci resource start : 0x%llx len : 0x%x \n",mmio_start,mmio_len);
+ 	if ((adapter->flags & FLAG_HAS_FLASH) &&
+ 	    (pci_resource_flags(pdev, 1) & IORESOURCE_MEM)) {
+ 		flash_start = pci_resource_start(pdev, 1);
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 87ee995..7bdcabd 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -1147,7 +1147,7 @@ static int synopsys_add_pcie_port(struct pcie_port *pp, struct platform_device *
+ 	if (IS_ERR(pp->pciegen3_base1))
+ 		return PTR_ERR(pp->pciegen3_base1);
+ 	
+-	
++#if 0	
+ 	tmp = platform_get_resource(pdev, IORESOURCE_MEM, 3);
+ 	if (!tmp) {
+ 		dev_err(pp->dev, "add_pcie_port: couldn't get pciegen3_2 base resource\n");
+@@ -1166,7 +1166,7 @@ static int synopsys_add_pcie_port(struct pcie_port *pp, struct platform_device *
+ 	pp->pciegen3_base3 = devm_ioremap_resource(&pdev->dev, tmp);
+ 	if (IS_ERR(pp->pciegen3_base3))
+ 		return PTR_ERR(pp->pciegen3_base3);
+-	
++#endif	/* saving vartual address space */	
+ //	pp->irq = IRQ_V2M_PCIE;
+ 	pp->irq = platform_get_irq(pdev, 0);
+ 	if (!pp->irq) {
+@@ -1256,7 +1256,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	pp->io.start	= 0x410000000ULL;
+ 	pp->io.end	= 0x41000ffffULL;
+ 	pp->io.flags	= IORESOURCE_IO;
+-	pp->va_io = ioremap(0x410000000ULL,SZ_64K);
++//	pp->va_io = ioremap(0x410000000ULL,SZ_64K);
+ 	pp->config[0].io.name = "Port 0 IO space";
+ 	pp->config[0].io.start = 0x410000000ULL;
+ 	pp->config[0].io.end   = 0x41000FFFFULL;
+@@ -1268,8 +1268,8 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	pp->mem.start	= 0x404000000ULL;
+ 	pp->mem.end	= 0x4040fffffULL;
+ 	pp->mem.flags	= IORESOURCE_MEM;
+-	pp->va_cfg = ioremap(0x400000000ULL,SZ_64M);
+-	pp->va_mem = ioremap(0x404000000ULL,SZ_128M+SZ_64K);
++	pp->va_cfg = ioremap(0x400000000ULL,SZ_32M);
++//	pp->va_mem = ioremap(0x404000000ULL,SZ_128M+SZ_64K);
+ 	pp->config[0].mem.name = "Port 0 Memory";
+ 	pp->config[0].mem.start = 0x404000000ULL;
+ 	pp->config[0].mem.end  	= 0x4040fffffULL;
+diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
+index 1129d66..2b1a9e9 100644
+--- a/lib/Kconfig.debug
++++ b/lib/Kconfig.debug
+@@ -525,7 +525,7 @@ config DEBUG_KMEMLEAK_DEFAULT_OFF
+ 
+ config DEBUG_PREEMPT
+ 	bool "Debug preemptible kernel"
+-	depends on DEBUG_KERNEL && PREEMPT && TRACE_IRQFLAGS_SUPPORT
++	depends on DEBUG_KERNEL && PREEMPT && TRACE_IRQFLAGS_SUPPORT && !ARCH_LM2
+ 	default y
+ 	help
+ 	  If you say Y here then the kernel will use a debug variant of the
+@@ -671,7 +671,7 @@ config TRACE_IRQFLAGS
+ config DEBUG_ATOMIC_SLEEP
+ 	bool "Sleep inside atomic section checking"
+ 	select PREEMPT_COUNT
+-	depends on DEBUG_KERNEL
++	depends on DEBUG_KERNEL && !ARCH_LM2
+ 	help
+ 	  If you say Y here, various routines which may sleep will become very
+ 	  noisy if they are called inside atomic sections: when a spinlock is
+-- 
+1.7.1
+

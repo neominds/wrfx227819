@@ -1,0 +1,116 @@
+From d1ec8d65eee6a72475daf5a8dc120052d182f107 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:32:19 +0900
+Subject: [PATCH 048/171] fixed-gpio-bug
+
+
+diff --git a/drivers/gpio/gpio-lm2.c b/drivers/gpio/gpio-lm2.c
+index 5a47a79..a1c4d92 100644
+--- a/drivers/gpio/gpio-lm2.c
++++ b/drivers/gpio/gpio-lm2.c
+@@ -58,21 +58,27 @@ static	int	gpio_get(struct gpio_chip *chip, unsigned int offset)
+ {
+ 	struct mmgpios	*gpio = container_of(chip, struct mmgpios, chip);
+ 	unsigned int	dat;
++	int		shift;
+ 
+-	dev_info(&chip->dev,"GOIP Get Function call offset = %d\n",offset);
+-	switch(offset){
+-		case 0:	/* port a*/
++//	dev_info(&chip->dev,"GOIP Get Function call offset = %d\n",offset);
++
++	dat = 0;
++	shift = 0;
++
++	if(offset < 32){
+ 		dat = readl(gpio->regbase + PIODATA);
+-		break;
+-		case 32:	/* port b */
++		shift = offset;
++	}
++	if(offset > 31 && offset < 64){
+ 		dat = readl(gpio->regbase + PIODATB);
+-		break;
+-		case 64:
++		shift = offset - 32;
++	}
++	if(offset > 63 && offset < 96){
+ 		dat = readl(gpio->regbase + PIODATC);
+-		break;
+-		default:
+-		break;
++		shift = offset - 64;
+ 	}
++	dat = dat >> shift;
++	dat &= 0x00000001;
+ 	return	dat;
+ 
+ }
+@@ -80,20 +86,42 @@ static	int	gpio_get(struct gpio_chip *chip, unsigned int offset)
+ static	void	gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
+ {
+ 	struct mmgpios	*gpio = container_of(chip, struct mmgpios, chip);
++	unsigned int	dat;
+ 
+-	dev_info(&chip->dev,"GOIP Set Function call\n");
+-	switch(offset){
+-		case 0:	/* port a*/
+-		writel(value, gpio->regbase + PIODATA);
+-		break;
+-		case 32:	/* port b */
+-		writel(value, gpio->regbase + PIODATB);
+-		break;
+-		case 64:
+-		writel(value, gpio->regbase + PIODATC);
+-		break;
+-		default:
+-		break;
++//	dev_info(&chip->dev,"GOIP Set Function call offset = %d value = %d \n",offset,value);
++
++	if(value == 0){
++		if(offset < 32){
++			dat = readl(gpio->regbase + PIODATA);
++			dat &= ~(1 << offset);
++			writel(dat, gpio->regbase + PIODATA);
++		}else if(offset > 31 && offset < 64){
++			dat = readl(gpio->regbase + PIODATB);
++			dat &= ~(1  << (offset - 32));
++			writel(dat, gpio->regbase + PIODATB);
++		}else if(offset > 63 && offset < 96){
++			dat = readl(gpio->regbase + PIODATC);
++			dat &= ~(1 << (offset - 64));
++			writel(dat, gpio->regbase + PIODATC);
++		}else{
++			dev_err(&chip->dev, "GPIO could not access port\n");
++		}
++	}else{
++		if(offset < 32){
++			dat = readl(gpio->regbase + PIODATA);
++			dat |= value << offset;
++			writel(dat, gpio->regbase + PIODATA);
++		}else if(offset > 31 && offset < 64){
++			dat = readl(gpio->regbase + PIODATB);
++			dat |= value  << (offset - 32);
++			writel(dat, gpio->regbase + PIODATB);
++		}else if(offset > 63 && offset < 96){
++			dat = readl(gpio->regbase + PIODATC);
++			dat |= value << (offset - 64);
++			writel(dat, gpio->regbase + PIODATC);
++		}else{
++			dev_err(&chip->dev, "GPIO could not access port\n");
++		}
+ 	}
+ }
+ 
+@@ -130,7 +158,7 @@ static	int	gpio_probe(struct platform_device *pdev)
+ 	chip->dev = &pdev->dev;
+ 	chip->get = gpio_get;
+ 	chip->set = gpio_set;
+-	chip->ngpio = 3;
++	chip->ngpio = 96;
+ 
+ 	result = gpiochip_add(chip);
+ 	if(result < 0){
+-- 
+1.7.1
+

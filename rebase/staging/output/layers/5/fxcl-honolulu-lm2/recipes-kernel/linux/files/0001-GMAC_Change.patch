@@ -1,0 +1,358 @@
+From b6ad174d75263626b1e1ba491df1733f1d1c2275 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:34:02 +0900
+Subject: [PATCH 116/171] 0001-GMAC_Change
+
+
+diff --git a/arch/arm/kernel/deepsleep.S b/arch/arm/kernel/deepsleep.S
+index 0de2d30..aaff7ef 100644
+--- a/arch/arm/kernel/deepsleep.S
++++ b/arch/arm/kernel/deepsleep.S
+@@ -8,6 +8,7 @@
+  */
+ 
+ #define LM2_CHKSUM_ADDR chksum_info
++#define LM2_FORCE_LOOP
+ 
+ 	__HEAD
+ ENTRY(deepsleep_up)
+@@ -212,7 +213,14 @@ ENTRY(lm2_wfi0)
+ 	str	r1, [r0, #0x08]
+ 	bl	set_chksum
+ 	bl	v7_flush_kern_cache_all
++#ifdef	LM2_FORCE_LOOP
++__lm2_force_loop0:
+ 	wfi
++	nop
++	b	__lm2_force_loop0
++#else
++	wfi
++#endif	/* LM2_FORCE_LOOP */
+ __core0_start:
+ 	ldmfd   sp!, {r0-r12, pc}
+ ENDPROC(lm2_wfi0)
+@@ -227,8 +235,17 @@ ENTRY(lm2_wfi1)
+ 	str	r1, [r0, #0x08]
+ 	bl	set_chksum
+ 	bl	v7_flush_kern_cache_all
++#ifdef  LM2_FORCE_LOOP
++__lm2_force_loop1:
++	wfi
++	nop
++	b	__lm2_force_loop1
++__core1_start:
++	wfi
++#else	/* LM2_FORCE_LOOP */
+ __core1_start:
+ 	wfi
++#endif	/* LM2_FORCE_LOOP */
+ 	ldmfd	sp!, {r0-r12, pc}
+ ENDPROC(lm2_wfi1)
+ 
+diff --git a/arch/arm/mach-lm2/lm2_pm.c b/arch/arm/mach-lm2/lm2_pm.c
+index a82f66f..3f0b7c1 100644
+--- a/arch/arm/mach-lm2/lm2_pm.c
++++ b/arch/arm/mach-lm2/lm2_pm.c
+@@ -133,15 +133,6 @@ static void lm2_pm_end(void)
+ #endif  /* LM2_PM_DEBUG */
+ }
+ 
+-static int lm2_suspend_finish(unsigned long val)
+-{
+-        outer_flush_all();
+-        outer_disable();
+-        cpu_do_idle();
+-
+-        return 0;
+-}
+-
+ 
+ static void lm2_pm_suspend(void)
+ {
+@@ -159,7 +150,7 @@ static void lm2_pm_suspend(void)
+ #else	/* PM_TEST */
+ 	irq_to_a7(LM2_IRQ_CIPUI);	//  64
+ #endif	/* PM_TEST */
+-        irq_to_a7(LM2_IRQ_GMACK_STAT);	// 126
++	irq_to_a7(LM2_IRQ_GMACK_STAT);	// 126
+ 	irq_to_a7(LM2_IRQ_SPI_0);	//  44
+ 	irq_to_a7(LM2_IRQ_SPI_2);	//  46
+ 
+@@ -174,6 +165,8 @@ extern void dw3_reg_save(void);
+ extern void dw3_reg_load(void);
+ extern void lm2_pcie_suspend(void);
+ extern void lm2_pcie_resume(void);
++extern void stmac_reg_save(void);
++extern void stmac_reg_load(void);
+ 
+ static int lm2_pm_enter(suspend_state_t suspend_state)
+ {
+@@ -181,11 +174,19 @@ static int lm2_pm_enter(suspend_state_t suspend_state)
+ 	switch (suspend_state) {
+ 		case PM_SUSPEND_STANDBY:
+ 		case PM_SUSPEND_MEM:
++#ifdef  LM2_PM_DEBUG
++printk(KERN_ERR "LM2_PM: Register Save\n");
++#endif
++			stmac_reg_save();
+ 			lm2_pcie_suspend();
+ 			dw3_reg_save();
+ 			lm2_pm_suspend();
++#ifdef  LM2_PM_DEBUG
++printk(KERN_ERR "LM2_PM: Register Load\n");
++#endif
+ 			dw3_reg_load();
+ 			lm2_pcie_resume();
++			stmac_reg_load();
+ 			break;
+ 		default:
+ 			ret = -EINVAL;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index a24683d..6ab20f0 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -149,7 +149,6 @@ static void stmmac_exit_fs(void);
+ #define STMMAC_COAL_TIMER(x) (jiffies + usecs_to_jiffies(x))
+ 
+ #ifdef	CONFIG_ARCH_LM2
+-//#define	LM2_PM_DEBUG
+ struct reg_access_t {
+         unsigned short  offset;
+         unsigned int    variable;
+@@ -1615,9 +1614,6 @@ static int stmmac_open(struct net_device *dev)
+ {
+ 	struct stmmac_priv *priv = netdev_priv(dev);
+ 	int ret;
+-#ifdef LM2_PM_DEBUG
+-printk(KERN_ERR "== %s\n",__func__);
+-#endif
+ 
+ 	clk_prepare_enable(priv->stmmac_clk);
+ 
+@@ -1767,9 +1763,6 @@ static int stmmac_release(struct net_device *dev)
+ {
+ 	struct stmmac_priv *priv = netdev_priv(dev);
+         int ret;
+-#ifdef LM2_PM_DEBUG
+-printk(KERN_ERR "== %s\n",__func__);
+-#endif
+ 
+ 	if (priv->eee_enabled)
+ 		del_timer_sync(&priv->eee_ctrl_timer);
+@@ -2861,8 +2854,6 @@ int stmmac_dvr_remove(struct net_device *ndev)
+ #ifdef CONFIG_PM
+ 
+ #ifdef	CONFIG_ARCH_LM2
+-#define	LM2_OHKU_OK
+-
+ #define	LM2_REGBAK_SIZE	100
+ static unsigned int	reg_bak[LM2_REGBAK_SIZE];
+ 					// 0x0000 - 0x003C backup
+@@ -2923,6 +2914,7 @@ void stmac_reg_save(void) {
+ 	for(i=0; i<LM2_REGBAK_SIZE; i++)
+ 		reg_bak_chksum += reg_bak[i];
+ }
++EXPORT_SYMBOL(stmac_reg_save);
+ 
+ void stmac_reg_load(void) {
+ 	int i=0;
+@@ -2945,15 +2937,10 @@ void stmac_reg_load(void) {
+ 	iounmap(base);
+ 
+ 	base = ioremap_nocache(0x04411000, 0x30);
+-#ifdef	LM2_OHKU_OK
+ 	gmac_reg_load(base, &i, 0x000,  3);
+ 	i++;
+ 	i++;
+ 	gmac_reg_load(base, &i, 0x014,  5);
+-#else
+-	lm2_wdt        = reg_bak[i + 9];
+-	i += 10;
+-#endif
+ 	iounmap(base);
+ 
+ 	base = ioremap_nocache(0x04418000, 0x20);
+@@ -2961,6 +2948,7 @@ void stmac_reg_load(void) {
+ 	gmac_reg_load(base, &i, 0x01c,  1);
+ 	iounmap(base);
+ }
++EXPORT_SYMBOL(stmac_reg_load);
+ #endif	/* CONFIG_ARCH_LM2 */
+ 
+ int stmmac_suspend(struct net_device *ndev)
+@@ -2971,9 +2959,6 @@ int stmmac_suspend(struct net_device *ndev)
+ 	if (!ndev || !netif_running(ndev))
+ 		return 0;
+ 
+-#ifdef  LM2_PM_DEBUG
+-printk(KERN_ERR "== %s:\n",__func__);
+-#endif
+ 	if (priv->eee_enabled)
+ 		del_timer_sync(&priv->eee_ctrl_timer);
+ 
+@@ -3010,9 +2995,6 @@ printk(KERN_ERR "== %s:\n",__func__);
+ 	spin_unlock_irqrestore(&priv->lock, flags);
+ 
+ 	stmmac_release_ptp(priv);
+-#ifdef  CONFIG_ARCH_LM2
+-	stmac_reg_save();
+-#endif	/* CONFIG_ARCH_LM2 */
+ 	return 0;
+ }
+ 
+@@ -3025,13 +3007,6 @@ int stmmac_resume(struct net_device *ndev)
+ 	if (!netif_running(ndev))
+ 		return 0;
+ 
+-#ifdef  LM2_PM_DEBUG
+-printk(KERN_ERR "== %s:\n",__func__);
+-#endif
+-#ifdef  CONFIG_ARCH_LM2
+-        stmac_reg_load();
+-#endif  /* CONFIG_ARCH_LM2 */
+-
+ 	rtn = stmmac_init_phy(ndev);
+ 	if (rtn) {
+ 		pr_err("%s: Cannot attach to PHY (error: %d)\n",__func__, rtn);
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
+index 1d3780f..63ccb0c 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
+@@ -28,6 +28,8 @@
+ #include <linux/of_net.h>
+ #include "stmmac.h"
+ 
++#define GMAC_EXTCFG	0x801c
++
+ #ifdef CONFIG_OF
+ static int stmmac_probe_config_dt(struct platform_device *pdev,
+ 				  struct plat_stmmacenet_data *plat,
+@@ -135,6 +137,10 @@ static int stmmac_pltfr_probe(struct platform_device *pdev)
+ 		return -ENXIO;
+ 	}
+ 
++#ifdef  CONFIG_ARCH_LM2	/* No19 */
++	/* GMAC_EXTCFG Set */
++	writel(0x18 , priv->ioaddr + GMAC_EXTCFG);
++#endif	/* CONFIG_ARCH_LM2 */
+ 	/*
+ 	 * On some platforms e.g. SPEAr the wake up irq differs from the mac irq
+ 	 * The external wake up irq can be passed through the platform code
+diff --git a/drivers/net/phy/mdio_bus.c b/drivers/net/phy/mdio_bus.c
+index 2dffbca..dc92097 100644
+--- a/drivers/net/phy/mdio_bus.c
++++ b/drivers/net/phy/mdio_bus.c
+@@ -358,9 +358,6 @@ static int mdio_bus_suspend(struct device *dev)
+ 	struct phy_driver *phydrv = to_phy_driver(dev->driver);
+ 	struct phy_device *phydev = to_phy_device(dev);
+ 
+-#ifdef	CONFIG_ARCH_LM2
+-	return phydrv->suspend(phydev);
+-#else	/* CONFIG_ARCH_LM2 */
+ 	/*
+ 	 * We must stop the state machine manually, otherwise it stops out of
+ 	 * control, possibly with the phydev->lock held. Upon resume, netdev
+@@ -374,7 +371,6 @@ static int mdio_bus_suspend(struct device *dev)
+ 		return 0;
+ 
+ 	return phydrv->suspend(phydev);
+-#endif	/* CONFIG_ARCH_LM2 */
+ }
+ 
+ static int mdio_bus_resume(struct device *dev)
+@@ -383,11 +379,6 @@ static int mdio_bus_resume(struct device *dev)
+ 	struct phy_device *phydev = to_phy_device(dev);
+ 	int ret;
+ 
+-#ifdef	CONFIG_ARCH_LM2
+-	ret = phydrv->resume(phydev);
+-	if (ret < 0)
+-		return ret;
+-#else	/* CONFIG_ARCH_LM2 */
+ 	if (!mdio_bus_phy_may_suspend(phydev))
+ 		goto no_resume;
+ 
+@@ -400,7 +391,6 @@ no_resume:
+ 		phy_start_machine(phydev, NULL);
+ 
+ 	return 0;
+-#endif	/* CONFIG_ARCH_LM2 */
+ }
+ 
+ static int mdio_bus_restore(struct device *dev)
+diff --git a/drivers/usb/dwc3/gadget.c b/drivers/usb/dwc3/gadget.c
+index e69f9a1..cd9ccde 100644
+--- a/drivers/usb/dwc3/gadget.c
++++ b/drivers/usb/dwc3/gadget.c
+@@ -3136,11 +3136,11 @@ static irqreturn_t dwc3_interrupt(int irq, void *_dwc)
+ 	irqreturn_t	ret = IRQ_NONE;
+ 	unsigned long	flags;
+ 
+-#if 1	/* ohkuma */
++#if 1
+ //	spin_lock_irqsave(&dwc->lock,flags);
+ #else
+ 	spin_lock(&dwc->lock);
+-#endif	/* ohkuma */
++#endif
+ 	for (i = 0; i < dwc->num_event_buffers; i++) {
+ 		irqreturn_t status;
+ 
+@@ -3148,11 +3148,11 @@ static irqreturn_t dwc3_interrupt(int irq, void *_dwc)
+ 		if (status == IRQ_WAKE_THREAD)
+ 			ret = status;
+ 	}
+-#if 1	/* ohkuma */
++#if 1
+ //	spin_unlock_irqrestore(&dwc->lock,flags);
+ #else
+ 	spin_unlock(&dwc->lock);
+-#endif	/* ohkuma */
++#endif
+ 	return ret;
+ }
+ 
+diff --git a/drivers/usb/gadget/ether.c b/drivers/usb/gadget/ether.c
+index cf1b816..85e6775 100644
+--- a/drivers/usb/gadget/ether.c
++++ b/drivers/usb/gadget/ether.c
+@@ -352,8 +352,25 @@ fail:
+ static int __exit eth_unbind(struct usb_composite_dev *cdev)
+ {
+ 	gether_cleanup(the_dev);
++}
++
++#if 0
++static void gether_suspend(struct usb_composite_dev *cdev)
++{
++#ifdef LM2_PM_DEBUG
++printk(KERN_ERR "%s:\n",__func__);
++#endif
++	eth_unbind(cdev);
++}
++static void gether_resume(struct usb_composite_dev *cdev)
++{
++#ifdef LM2_PM_DEBUG
++printk(KERN_ERR "%s:\n",__func__);
++#endif
++	eth_bind(cdev);
+ 	return 0;
+ }
++#endif	/* CONFIG_ARCH_LM2 */
+ 
+ static __refdata struct usb_composite_driver eth_driver = {
+ 	.name		= "g_ether",
+@@ -362,6 +379,10 @@ static __refdata struct usb_composite_driver eth_driver = {
+ 	.max_speed	= USB_SPEED_SUPER,
+ 	.bind		= eth_bind,
+ 	.unbind		= __exit_p(eth_unbind),
++#if  0
++	.suspend	= gether_suspend,
++	.resume		= gether_resume,
++#endif	/* CONFIG_ARCH_LM2 */
+ };
+ 
+ MODULE_DESCRIPTION(PREFIX DRIVER_DESC);
+-- 
+1.7.1
+

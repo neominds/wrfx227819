@@ -1,0 +1,627 @@
+From 387d8392f4f88b75e0133f42642125d727fc1c46 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:33:12 +0900
+Subject: [PATCH 084/171] 0001-all-port-root-complex
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 84f889f..316589a 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -305,9 +305,29 @@ static	struct platform_device lm2_i2c_device = {
+ };
+ 
+ static struct resource lm2_pcie_resource[]={
+-       {
++       {	/* reset gen */
++               .start  = 0x04010000,
++               .end    = 0x040101ff,
++               .flags  = IORESOURCE_MEM,
++       },
++       {	/* warp */
++               .start  = 0x04a70000,
++               .end    = 0x04a701ff,
++               .flags  = IORESOURCE_MEM,
++       },
++       {	/* port 1 */
+                .start  = 0x04a40000,
+-               .end    = 0x04a80000,
++               .end    = 0x04a4ffff,
++               .flags  = IORESOURCE_MEM,
++       },
++       {	/* port 2 */
++               .start  = 0x04a50000,
++               .end    = 0x04a5ffff,
++               .flags  = IORESOURCE_MEM,
++       },
++       {	/* port 3 */
++               .start  = 0x04a60000,
++               .end    = 0x04a6ffff,
+                .flags  = IORESOURCE_MEM,
+        },
+ };
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 29b4845..7a1dc08 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -31,6 +31,14 @@
+ #define	DEBUG_TRACE
+ #define	DEBUG_RW
+ 
++#define	PCIE_PORT1	1
++#define	PCIE_PORT2	2
++#define	PCIE_PORT3	3
++
++#define	PCIE_LANE_PHY_CONF_1	1	/* link1:l4:cont1:p0 */
++#define	PCIE_LANE_PHY_CONF_2	2
++#define	PCIE_LANE_PHY_CONF_3	3	/* l1:p1:cont1:p0 */
++
+ struct pcie_port_info {
+ 	u32		io_size;
+ 	u32		mem_size;
+@@ -150,7 +158,9 @@ static int synopsys_pcie_link_up(struct pcie_port *pp)
+ 	return 0;
+ }
+ 
+-
++/*
++ * PCI Express Configuration Register Access primitive
++ */
+ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int size, u32 *val)
+ {
+ 	struct pcie_port *pp = sys_to_pcie(bus->sysdata);
+@@ -489,29 +499,29 @@ static void synopsys_pcie_gpexd_core_clk_ratio(struct pcie_port *pp, int which)
+ 	switch(which)
+ 	{
+ 		case 1: synopsys_writel(pciegen3_base1 + PCIE_GPEXD_CORE_CLK_RATIO, 0x10);
+-				while (regVal != PCIE1_MISC_STAT__GDA_PAB_DL_UP__MASK)
+-				{
+-					regVal = synopsys_readl(pciewrap_base + PCIE1_MISC_STAT);
+-					regVal &= PCIE1_MISC_STAT__GDA_PAB_DL_UP__MASK;
+-				}
++			while (regVal != PCIE1_MISC_STAT__GDA_PAB_DL_UP__MASK)
++			{
++				regVal = synopsys_readl(pciewrap_base + PCIE1_MISC_STAT);
++				regVal &= PCIE1_MISC_STAT__GDA_PAB_DL_UP__MASK;
++			}
+ 		        break;
+ 		case 2: synopsys_writel(pciegen3_base2 + PCIE_GPEXD_CORE_CLK_RATIO, 0x10);
+-				while (regVal != PCIE2_MISC_STAT__GDA_PAB_DL_UP__MASK)
+-				{
+-					regVal = synopsys_readl(pciewrap_base + PCIE2_MISC_STAT);
+-					regVal &= PCIE2_MISC_STAT__GDA_PAB_DL_UP__MASK;
+-				}
++			while (regVal != PCIE2_MISC_STAT__GDA_PAB_DL_UP__MASK)
++			{
++				regVal = synopsys_readl(pciewrap_base + PCIE2_MISC_STAT);
++				regVal &= PCIE2_MISC_STAT__GDA_PAB_DL_UP__MASK;
++			}
+ 		        break;
+ 		case 3: synopsys_writel(pciegen3_base3 + PCIE_GPEXD_CORE_CLK_RATIO, 0x10);
+-				while (regVal != PCIE3_MISC_STAT__GDA_PAB_DL_UP__MASK)
+-				{
+-					regVal = synopsys_readl(pciewrap_base + PCIE3_MISC_STAT);
+-					regVal &= PCIE3_MISC_STAT__GDA_PAB_DL_UP__MASK;
+-				}
++			while (regVal != PCIE3_MISC_STAT__GDA_PAB_DL_UP__MASK)
++			{
++				regVal = synopsys_readl(pciewrap_base + PCIE3_MISC_STAT);
++				regVal &= PCIE3_MISC_STAT__GDA_PAB_DL_UP__MASK;
++			}
+ 		        break;
+ 		default:
+-				dev_err(pp->dev, "synopsys_pcie_gpexd_core_clk_ratio: which is %d Error\n",which);
+-				break;
++			dev_err(pp->dev, "synopsys_pcie_gpexd_core_clk_ratio: which is %d Error\n",which);
++			break;
+ 	}
+ }
+ 
+@@ -876,7 +886,6 @@ static int synopsys_pcie_establish_link(struct pcie_port *pp)
+ 		dev_err(pp->dev, "synopsys_pcie_establish_link: Link already up\n");
+ 		return 0;
+ 	}
+-
+ 	/* assert PHY Reset */
+ 	synopsys_pcie_assert_phy_reset(pp);
+ 
+@@ -886,10 +895,11 @@ static int synopsys_pcie_establish_link(struct pcie_port *pp)
+ 	/* assert GPEX Reset */
+ 	synopsys_pcie_assert_gpex_reset(pp);
+ 	
+-	/* Set sw_bootstrap */
++	/* Set sw_bootstrap Root Complex*/
+ 	synopsys_pcie_set_bootstrap(pp, rc_num, 1);
+ 	synopsys_pcie_set_bootstrap(pp, ep_num, 0);
+ 	synopsys_pcie_set_bootstrap(pp, nu_num, 0);
++	/* Connetc lane */
+ 	synopsys_pcie_pcie_bifur(pp, bifur_num);
+ 	
+ 	// - NEW FOR 55xx PHY
+@@ -898,6 +908,7 @@ static int synopsys_pcie_establish_link(struct pcie_port *pp)
+ 	val  = synopsys_readl(pciewrap_base + PCIE_PHY_CLK_CTRL);
+ 	val |= PCIE_PHY_CLK_CTRL__PHY_REF_USE_PAD__MASK;
+ 	synopsys_writel(pciewrap_base + PCIE_PHY_CLK_CTRL, val);
++
+ 	// - NEW FOR 55xx PHY
+ 	//   - assert macP_pclkreq_n inputs to PHY for each PIPE being used
+ 	//   - if you do not do this then PHY will kill mpll_dword_clk output
+@@ -917,33 +928,31 @@ static int synopsys_pcie_establish_link(struct pcie_port *pp)
+ 	
+ 	/*  PIPE Status Check */
+ 	synopsys_pcie_pipe_ok(pp, rc_num);
+-	synopsys_pcie_pipe_ok(pp, ep_num);
++//	synopsys_pcie_pipe_ok(pp, ep_num);
+ 	
+ 	/* de-assert GPEX Reset */
+ 	synopsys_pcie_deassert_gpex_reset(pp, rc_num, 0);
+-	synopsys_pcie_deassert_gpex_reset(pp, ep_num, 0);
++//	synopsys_pcie_deassert_gpex_reset(pp, ep_num, 0);
+ 	
+ 	/* Set GPEXD_CORE_CLK_RATIO  */
+-	synopsys_pcie_gpexd_core_clk_ratio(pp, rc_num);
+-	synopsys_pcie_gpexd_core_clk_ratio(pp, ep_num);
+-	
++//	synopsys_pcie_gpexd_core_clk_ratio(pp, rc_num);	/* yamano */
++//	synopsys_pcie_gpexd_core_clk_ratio(pp, ep_num);
+ 	//-------------------------------------------------------
+ 	// - INITIALIZE AXI and PEX WINDOWS
+ 	//-------------------------------------------------------
+-	synopsys_writel(pciegen3_base1 + PCIE_PAB_CTRL, 0x00000a2f);
+-	synopsys_writel(pciegen3_base2 + PCIE_PAB_CTRL, 0x00000a2f);
+-	
++//	synopsys_writel(pciegen3_base1 + PCIE_PAB_CTRL, 0x00000a2f);	/* yamano */
++//	synopsys_writel(pciegen3_base2 + PCIE_PAB_CTRL, 0x00000a2f);
+ 	/* initialize AXI to PEX windows for RC to EP accesses */
+ 	synopsys_pcie_AxiToPexInit(pp, rc_num, ep_num, rc_num);
+ 	
+ 	/* initialize AXI to PEX windows for EP to RC accesses */
+-	synopsys_pcie_AxiToPexInit(pp, ep_num, rc_num, rc_num);
++//	synopsys_pcie_AxiToPexInit(pp, ep_num, rc_num, rc_num);	/* yamano */
+ 	
+ 	/* initialize root complex registers */
+ 	synopsys_pcie_PexToAxiInitRc(pp, rc_num);
+ 	
+ 	/* initialize endpoint registers */
+-	synopsys_pcie_PexToAxiInitEp(pp, ep_num);
++//	synopsys_pcie_PexToAxiInitEp(pp, ep_num);	/* yamano debug */
+ 	
+ //	/* check if the link is up or not */
+ //	while (!synopsys_pcie_link_up(pp)) {
+@@ -956,6 +965,7 @@ static int synopsys_pcie_establish_link(struct pcie_port *pp)
+ //	}
+ //	
+ //	dev_info(pp->dev, "Link up\n");
++out:
+ #ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "synopsys_pcie_establish_link: End\n");
+ #endif
+@@ -1016,7 +1026,6 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ 	val = synopsys_readl(resetgen_base + RSTGENSWRSTSTATIC10);
+ 	val &= 0xff0fffff;
+ 	synopsys_writel(resetgen_base + RSTGENSWRSTSTATIC10, val);
+-	
+ 	/* enable link */
+ 	synopsys_pcie_establish_link(pp);
+ 
+@@ -1038,7 +1047,7 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ 	if ( val != 0x123411de ) {
+ 		dev_err(pp->dev, "synopsys_pcie_host_init: PCIE_GPEXD_ID error rc(0x%x != 0x123411de)\n",val);
+ 	}
+-	
++#if 0	
+ 	/* PCIE2 (EP) */
+ 	val = synopsys_readl(pciegen3_base2 + PCIE_GPEXP_CFG_VENDORID);
+ 	if ( val != 0x000811de ) {
+@@ -1074,25 +1083,26 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ 	if ( val != 0x11223344 ) {
+ 		dev_err(pp->dev, "synopsys_pcie_host_init: PCIE_GPEXD_SUBSYS_ID error ep(0x%x != 0x11223344)\n",val);
+ 	}
+-	
++#endif	
+ 	/* SET GPEXD_CFG_RDY bit */
+ 	val = synopsys_readl(pciegen3_base1 + PCIE_GPEXD_CFG_RDY);
+ 	if ( (val & 0x1) != 0x0 ) {
+ 		dev_err(pp->dev, "synopsys_pcie_host_init: PCIE_GPEXD_CFG_RDY error\n");
+ 	}
++/*
+ 	val = synopsys_readl(pciegen3_base2 + PCIE_GPEXD_CFG_RDY);
+ 	if ( (val & 0x1) != 0x0 ) {
+ 		dev_err(pp->dev, "synopsys_pcie_host_init: PCIE_GPEXD_CFG_RDY error\n");
+ 	}
+-	
++*/	
+ 	val = synopsys_readl(pciegen3_base1 + PCIE_GPEXD_CFG_RDY);
+ 	val |= 0x1;
+ 	synopsys_writel(pciegen3_base1 + PCIE_GPEXD_CFG_RDY, val);
+-	
++/*	
+ 	val = synopsys_readl(pciegen3_base2 + PCIE_GPEXD_CFG_RDY);
+ 	val |= 0x1;
+ 	synopsys_writel(pciegen3_base2 + PCIE_GPEXD_CFG_RDY, val);
+-	
++*/	
+ 	/* locally initialize more PCIE1 RC CFG regs (45xx legacy code) */
+ 	val = synopsys_readl(pciegen3_base1 + PCIE_GPEXP_CFG_CACHE);
+ 	val = synopsys_readl(pciegen3_base1 + PCIE_GPEXP_CFG_BASE3_IOBASE);
+@@ -1115,6 +1125,7 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ //	synopsys_writel(resetgen_base + PCIE1_MISC_CTRL, val);
+ 	
+ 	synopsys_pcie_enable_interrupts(pp);
++out:
+ #ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "synopsys_pcie_host_init: End\n");
+ #endif
+@@ -1200,6 +1211,9 @@ static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+ 	return 0;
+ }
+ 
++/*
++ * PCI-Express Driver probe
++ */
+ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ {
+ 	struct pcie_port *pp;
+@@ -1317,9 +1331,9 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	if (ret < 0)
+ 		goto fail_bus_clk;
+ 
+-	pp->controller = synopsys_pci.nr_controllers;
+-	synopsys_pci.nr_controllers=-1;
++	synopsys_pci.nr_controllers = 1;
+ 	synopsys_pci.private_data = (void **)&pp;
++	pp->controller = synopsys_pci.nr_controllers;
+ 
+ 	pci_common_init(&synopsys_pci);
+ 	pci_assign_unassigned_resources();
+diff --git a/drivers/pci/pcie/synopsys_pcie.h b/drivers/pci/pcie/synopsys_pcie.h
+index bd22679..5406bc7 100644
+--- a/drivers/pci/pcie/synopsys_pcie.h
++++ b/drivers/pci/pcie/synopsys_pcie.h
+@@ -35,10 +35,10 @@
+ 
+ // - define AXI address of 55xx internal resources
+ //   - this is fixed by 55xx definition
+-#define AXI_ADDR_DDR			0x80000000
+-#define AXI_ADDR_SP			0x05400000
+-#define AXI_ADDR_XYZ			0xF0000000
+-#define ENABLE_BIT			0x00000001 
++#define AXI_ADDR_DDR		0x80000000
++#define AXI_ADDR_SP		0x05400000
++#define AXI_ADDR_XYZ		0xF0000000
++#define ENABLE_BIT		0x00000001 
+ 
+ 
+ // - NOTE, AXI address for partitioning fixed 1.0 GB AXI address space
+@@ -56,7 +56,7 @@
+ //     and the programmable windows setup in PCIE controller
+ #define AXI_ADDR_PCIE1_TO_PCIE23_CFG	0x40000000
+ #define AXI_ADDR_PCIE1_TO_PCIE23_DDR	0x50000000
+-#define AXI_ADDR_PCIE1_TO_PCIE23_SP		0x58000000
++#define AXI_ADDR_PCIE1_TO_PCIE23_SP	0x58000000
+ #define AXI_ADDR_PCIE1_TO_PCIE23_XYZ	0x5C000000
+ // - same principle for PCIE2 going out onto PCIElink
+ //   - note this is only 256 MB space, not 512 MB, so when enumerating
+@@ -64,7 +64,7 @@
+ //     done with that you can remap the 256 MB for things like DDR, SP, etc.
+ #define AXI_ADDR_PCIE2_TO_PCIE13_CFG	0x60000000
+ #define AXI_ADDR_PCIE2_TO_PCIE13_DDR	0x68000000
+-#define AXI_ADDR_PCIE2_TO_PCIE13_SP		0x6c000000
++#define AXI_ADDR_PCIE2_TO_PCIE13_SP	0x6c000000
+ #define AXI_ADDR_PCIE2_TO_PCIE13_XYZ	0x6e000000
+ // - same principle for PCIE3 going out onto PCIElink
+ //   - note this is only 256 MB space, not 512 MB, so when enumerating
+@@ -72,7 +72,7 @@
+ //     done with that you can remap the 256 MB for things like DDR, SP, etc.
+ #define AXI_ADDR_PCIE3_TO_PCIE12_CFG	0x70000000
+ #define AXI_ADDR_PCIE3_TO_PCIE12_DDR	0x78000000
+-#define AXI_ADDR_PCIE3_TO_PCIE12_SP		0x7c000000
++#define AXI_ADDR_PCIE3_TO_PCIE12_SP	0x7c000000
+ #define AXI_ADDR_PCIE3_TO_PCIE12_XYZ	0x7e000000
+ 
+ // - KEY NOTE, if the CFG/DDR/SP/XYZ partiitoning above changes the
+@@ -191,18 +191,18 @@
+ 
+ #define PCIE1_MEM_LIMIT_BASE 		0x3FFF2000
+ #define PCIE1_PMEM_LIMIT_BASE_L		0xFFFF0000
+-#define PCIE1_PMEM_BASE_U			0x00002000
+-#define PCIE1_PMEM_LIMIT_U			0x000032FF
++#define PCIE1_PMEM_BASE_U		0x00002000
++#define PCIE1_PMEM_LIMIT_U		0x000032FF
+ 
+ #define PCIE2_MEM_LIMIT_BASE 		0x3FFF1000
+ #define PCIE2_PMEM_LIMIT_BASE_L		0xFFFF0000
+-#define PCIE2_PMEM_BASE_U			0x00001000
+-#define PCIE2_PMEM_LIMIT_U			0x000032FF
++#define PCIE2_PMEM_BASE_U		0x00001000
++#define PCIE2_PMEM_LIMIT_U		0x000032FF
+ 
+ #define PCIE3_MEM_LIMIT_BASE 		0x2FFF1000
+ #define PCIE3_PMEM_LIMIT_BASE_L		0xFFFF0000
+-#define PCIE3_PMEM_BASE_U			0x00001000
+-#define PCIE3_PMEM_LIMIT_U			0x000022FF
++#define PCIE3_PMEM_BASE_U		0x00001000
++#define PCIE3_PMEM_LIMIT_U		0x000022FF
+ 
+ 
+ //--------------------------------------------------------------
+@@ -227,144 +227,144 @@
+ #define DMA_WRITE 0x1
+ 
+ /**********************************************************************************************************/
+-#define	RSTGEN_BASE										0x04010000
+-#define	PCIEWRAP_BASE									0x04A70000
+-#define	PCIE_GEN3_CONTROLLERS_1_BASE					0x04A40000
+-#define	PCIE_GEN3_CONTROLLERS_2_BASE					0x04A50000
+-#define	PCIE_GEN3_CONTROLLERS_3_BASE					0x04A60000
++#define	RSTGEN_BASE			0x04010000
++#define	PCIEWRAP_BASE			0x04A70000
++#define	PCIE_GEN3_CONTROLLERS_1_BASE	0x04A40000
++#define	PCIE_GEN3_CONTROLLERS_2_BASE	0x04A50000
++#define	PCIE_GEN3_CONTROLLERS_3_BASE	0x04A60000
+ // RSTGEN
+-#define	RSTGENSWRSTSTATIC10								0x0104
++#define	RSTGENSWRSTSTATIC10		0x0104
+ // PCIEWRAP: PCIe General Function registers
+-#define	PCIE_PHY_RST_CTRL								0x0108
+-#define	PCIE1_SW_RST									0x0010
+-#define	PCIE2_SW_RST									0x0014
+-#define	PCIE3_SW_RST									0x0018
+-#define	PCIE_SW_BOOTSTRAP								0x003C
+-#define	PCIE_PHY_CLK_CTRL								0x010C
+-#define	PCIE_PHY_PIPE_CTRL								0x0110
+-#define	PCIE_PHY_PIPE_STAT								0x0114
+-#define	PCIE1_MISC_STAT									0x0030
+-#define	PCIE2_MISC_STAT									0x0034
+-#define	PCIE3_MISC_STAT									0x0038
+-#define	PCIE1_MISC_CTRL									0x0020
+-#define	PCIE1_INT_EN									0x0060
+-#define	PCIE2_INT_EN									0x0064
+-#define	PCIE3_INT_EN									0x0068
+-#define	PCIE1_INT_CLR									0x0070
+-#define	PCIE2_INT_CLR									0x0074
+-#define	PCIE3_INT_CLR									0x0078
++#define	PCIE_PHY_RST_CTRL		0x0108
++#define	PCIE1_SW_RST			0x0010
++#define	PCIE2_SW_RST			0x0014
++#define	PCIE3_SW_RST			0x0018
++#define	PCIE_SW_BOOTSTRAP		0x003C
++#define	PCIE_PHY_CLK_CTRL		0x010C
++#define	PCIE_PHY_PIPE_CTRL		0x0110
++#define	PCIE_PHY_PIPE_STAT		0x0114
++#define	PCIE1_MISC_STAT			0x0030
++#define	PCIE2_MISC_STAT			0x0034
++#define	PCIE3_MISC_STAT			0x0038
++#define	PCIE1_MISC_CTRL			0x0020
++#define	PCIE1_INT_EN			0x0060
++#define	PCIE2_INT_EN			0x0064
++#define	PCIE3_INT_EN			0x0068
++#define	PCIE1_INT_CLR			0x0070
++#define	PCIE2_INT_CLR			0x0074
++#define	PCIE3_INT_CLR			0x0078
+ // PCIe Gen3 Controllers registers
+-#define	PCIE_GPEXD_CORE_CLK_RATIO						0x0440
+-#define	PCIE_PAB_CTRL									0x0808
+-#define	PCIE_PAB_AXI_PIO_CTRL0							0x0844
+-#define	PCIE_PAB_AXI_AMAP_CTRL0							0x0CA4
+-#define	PCIE_PAB_AXI_AMAP_AXI_BASE0						0x0CA8
+-#define	PCIE_PAB_AXI_AMAP_PEX_BASEL0					0x0CAC
+-#define	PCIE_PAB_AXI_AMAP_PEX_BASEH0					0x0CB0
+-#define	PCIE_PAB_AXI_AMAP_CTRL1							0x0CB4
+-#define	PCIE_PAB_AXI_AMAP_AXI_BASE1						0x0CB8
+-#define	PCIE_PAB_AXI_AMAP_PEX_BASEL1					0x0CBC
+-#define	PCIE_PAB_AXI_AMAP_PEX_BASEH1					0x0CC0
+-#define	PCIE_PAB_AXI_AMAP_CTRL2							0x0CC4
+-#define	PCIE_PAB_AXI_AMAP_AXI_BASE2						0x0CC8
+-#define	PCIE_PAB_AXI_AMAP_PEX_BASEL2					0x0CCC
+-#define	PCIE_PAB_AXI_AMAP_PEX_BASEH2					0x0CD0
+-#define	PCIE_PAB_AXI_AMAP_CTRL3							0x0CD4
+-#define	PCIE_PAB_AXI_AMAP_AXI_BASE3						0x0CD8
+-#define	PCIE_PAB_AXI_AMAP_PEX_BASEL3					0x0CDC
+-#define	PCIE_PAB_AXI_AMAP_PEX_BASEH3					0x0CE0
+-#define	PCIE_PAB_PEX_PIO_CTRL0							0x08E4
+-#define	PCIE_PAB_PEX_AMAP_CTRL0							0x0EA0
+-#define	PCIE_PAB_PEX_AMAP_AXI_BASE0						0x0EA4
+-#define	PCIE_PAB_PEX_AMAP_PEX_BASEL0					0x0EA8
+-#define	PCIE_PAB_PEX_AMAP_PEX_BASEH0					0x0EAC
+-#define	PCIE_PAB_PEX_AMAP_CTRL1							0x0EB0
+-#define	PCIE_PAB_PEX_AMAP_AXI_BASE1						0x0EB4
+-#define	PCIE_PAB_PEX_AMAP_PEX_BASEL1					0x0EB8
+-#define	PCIE_PAB_PEX_AMAP_PEX_BASEH1					0x0EBC
+-#define	PCIE_PAB_PEX_AMAP_CTRL2							0x0EC0
+-#define	PCIE_PAB_PEX_AMAP_AXI_BASE2						0x0EC4
+-#define	PCIE_PAB_PEX_AMAP_PEX_BASEL2					0x0EC8
+-#define	PCIE_PAB_PEX_AMAP_PEX_BASEH2					0x0ECC
+-#define	PCIE_PAB_PEX_AMAP_CTRL3							0x0ED0
+-#define	PCIE_PAB_PEX_AMAP_AXI_BASE3						0x0ED4
+-#define	PCIE_PAB_PEX_AMAP_PEX_BASEL3					0x0ED8
+-#define	PCIE_PAB_PEX_AMAP_PEX_BASEH3					0x0EDC
+-#define	PCIE_PAB_PEX_AMAP_BAR0_F0						0x0DE4
+-#define	PCIE_PAB_PEX_AMAP_BAR1_F0						0x0DE8
+-#define	PCIE_PAB_PEX_AMAP_BAR2_F0						0x0DEC
+-#define	PCIE_GPEXP_CFG_VENDORID							0x0000
+-#define	PCIE_GPEXD_ID									0x0470
+-#define	PCIE_GPEXP_CFG_SUBVENID_PLIMITUDW				0x002C
+-#define	PCIE_GPEXD_SUBSYS_ID							0x0478
+-#define	PCIE_GPEXD_CFG_RDY								0x04B0
+-#define	PCIE_GPEXP_CFG_CACHE							0x000C
+-#define	PCIE_GPEXP_CFG_BASE3_IOBASE						0x001C
+-#define	PCIE_GPEXP_CFG_BASE4_MEMBASE					0x0020
+-#define	PCIE_GPEXP_CFG_BASE5_PMEMBASE					0x0024
+-#define	PCIE_GPEXP_CFG_X_PBASEUDW						0x0028
+-#define	PCIE_GPEXP_CFG_SUBVENID_PLIMITUDW				0x002C
+-#define	PCIE_GPEXP_CFG_COMMAND							0x0004
+-
+-#define	PCIE_PHY_RST_CTRL__PHY_RESET__INV_MASK			0xffffffef
+-#define	PCIE_PHY_RST_CTRL__PHY_RESET__MASK				0x00000010
+-#define PCIE_PHY_RST_CTRL__PIPE0_RESET_N__MASK			0x00000001
+-#define	PCIE_PHY_RST_CTRL__PIPE0_RESET_N__INV_MASK		0xfffffffe
+-#define	PCIE_PHY_RST_CTRL__PIPE1_RESET_N__MASK			0x00000002
+-#define	PCIE_PHY_RST_CTRL__PIPE1_RESET_N__INV_MASK		0xfffffffd
+-#define	PCIE_PHY_RST_CTRL__PIPE2_RESET_N__MASK			0x00000004
+-#define	PCIE_PHY_RST_CTRL__PIPE2_RESET_N__INV_MASK		0xfffffffb
+-#define	PCIE1_SW_RST__PAB_N__MASK						0x00000008
+-#define	PCIE1_SW_RST__PAB_N__INV_MASK					0xfffffff7
+-#define	PCIE1_SW_RST__AMBA_N__MASK						0x00000004
+-#define	PCIE1_SW_RST__AMBA_N__INV_MASK					0xfffffffb
+-#define	PCIE1_SW_RST__PBUS_N__MASK						0x00000002
+-#define	PCIE1_SW_RST__PBUS_N__INV_MASK					0xfffffffd
+-#define	PCIE1_SW_RST__LINK_N__MASK						0x00000002
+-#define	PCIE1_SW_RST__LINK_N__INV_MASK					0xfffffffe
+-#define	PCIE2_SW_RST__PAB_N__MASK						0x00000008
+-#define	PCIE2_SW_RST__PAB_N__INV_MASK					0xfffffff7
+-#define	PCIE2_SW_RST__AMBA_N__MASK						0x00000004
+-#define	PCIE2_SW_RST__AMBA_N__INV_MASK					0xfffffffb
+-#define	PCIE2_SW_RST__PBUS_N__MASK						0x00000002
+-#define	PCIE2_SW_RST__PBUS_N__INV_MASK					0xfffffffd
+-#define	PCIE2_SW_RST__LINK_N__MASK						0x00000002
+-#define	PCIE2_SW_RST__LINK_N__INV_MASK					0xfffffffe
+-#define	PCIE3_SW_RST__PAB_N__MASK						0x00000008
+-#define	PCIE3_SW_RST__PAB_N__INV_MASK					0xfffffff7
+-#define	PCIE3_SW_RST__AMBA_N__MASK						0x00000004
+-#define	PCIE3_SW_RST__AMBA_N__INV_MASK					0xfffffffb
+-#define	PCIE3_SW_RST__PBUS_N__MASK						0x00000002
+-#define	PCIE3_SW_RST__PBUS_N__INV_MASK					0xfffffffd
+-#define	PCIE3_SW_RST__LINK_N__MASK						0x00000002
+-#define	PCIE3_SW_RST__LINK_N__INV_MASK					0xfffffffe
+-#define	PCIE_SW_BOOTSTRAP__PCIE1_EP_RC_SEL__MASK		0x00000040
++#define	PCIE_GPEXD_CORE_CLK_RATIO	0x0440
++#define	PCIE_PAB_CTRL			0x0808
++#define	PCIE_PAB_AXI_PIO_CTRL0		0x0844
++#define	PCIE_PAB_AXI_AMAP_CTRL0		0x0CA4
++#define	PCIE_PAB_AXI_AMAP_AXI_BASE0	0x0CA8
++#define	PCIE_PAB_AXI_AMAP_PEX_BASEL0	0x0CAC
++#define	PCIE_PAB_AXI_AMAP_PEX_BASEH0	0x0CB0
++#define	PCIE_PAB_AXI_AMAP_CTRL1		0x0CB4
++#define	PCIE_PAB_AXI_AMAP_AXI_BASE1	0x0CB8
++#define	PCIE_PAB_AXI_AMAP_PEX_BASEL1	0x0CBC
++#define	PCIE_PAB_AXI_AMAP_PEX_BASEH1	0x0CC0
++#define	PCIE_PAB_AXI_AMAP_CTRL2		0x0CC4
++#define	PCIE_PAB_AXI_AMAP_AXI_BASE2	0x0CC8
++#define	PCIE_PAB_AXI_AMAP_PEX_BASEL2	0x0CCC
++#define	PCIE_PAB_AXI_AMAP_PEX_BASEH2	0x0CD0
++#define	PCIE_PAB_AXI_AMAP_CTRL3		0x0CD4
++#define	PCIE_PAB_AXI_AMAP_AXI_BASE3	0x0CD8
++#define	PCIE_PAB_AXI_AMAP_PEX_BASEL3	0x0CDC
++#define	PCIE_PAB_AXI_AMAP_PEX_BASEH3	0x0CE0
++#define	PCIE_PAB_PEX_PIO_CTRL0		0x08E4
++#define	PCIE_PAB_PEX_AMAP_CTRL0		0x0EA0
++#define	PCIE_PAB_PEX_AMAP_AXI_BASE0	0x0EA4
++#define	PCIE_PAB_PEX_AMAP_PEX_BASEL0	0x0EA8
++#define	PCIE_PAB_PEX_AMAP_PEX_BASEH0	0x0EAC
++#define	PCIE_PAB_PEX_AMAP_CTRL1		0x0EB0
++#define	PCIE_PAB_PEX_AMAP_AXI_BASE1	0x0EB4
++#define	PCIE_PAB_PEX_AMAP_PEX_BASEL1	0x0EB8
++#define	PCIE_PAB_PEX_AMAP_PEX_BASEH1	0x0EBC
++#define	PCIE_PAB_PEX_AMAP_CTRL2		0x0EC0
++#define	PCIE_PAB_PEX_AMAP_AXI_BASE2	0x0EC4
++#define	PCIE_PAB_PEX_AMAP_PEX_BASEL2	0x0EC8
++#define	PCIE_PAB_PEX_AMAP_PEX_BASEH2	0x0ECC
++#define	PCIE_PAB_PEX_AMAP_CTRL3		0x0ED0
++#define	PCIE_PAB_PEX_AMAP_AXI_BASE3	0x0ED4
++#define	PCIE_PAB_PEX_AMAP_PEX_BASEL3	0x0ED8
++#define	PCIE_PAB_PEX_AMAP_PEX_BASEH3	0x0EDC
++#define	PCIE_PAB_PEX_AMAP_BAR0_F0	0x0DE4
++#define	PCIE_PAB_PEX_AMAP_BAR1_F0	0x0DE8
++#define	PCIE_PAB_PEX_AMAP_BAR2_F0	0x0DEC
++#define	PCIE_GPEXP_CFG_VENDORID		0x0000
++#define	PCIE_GPEXD_ID			0x0470
++#define	PCIE_GPEXP_CFG_SUBVENID_PLIMITUDW	0x002C
++#define	PCIE_GPEXD_SUBSYS_ID			0x0478
++#define	PCIE_GPEXD_CFG_RDY			0x04B0
++#define	PCIE_GPEXP_CFG_CACHE			0x000C
++#define	PCIE_GPEXP_CFG_BASE3_IOBASE		0x001C
++#define	PCIE_GPEXP_CFG_BASE4_MEMBASE		0x0020
++#define	PCIE_GPEXP_CFG_BASE5_PMEMBASE		0x0024
++#define	PCIE_GPEXP_CFG_X_PBASEUDW		0x0028
++#define	PCIE_GPEXP_CFG_SUBVENID_PLIMITUDW	0x002C
++#define	PCIE_GPEXP_CFG_COMMAND			0x0004
++
++#define	PCIE_PHY_RST_CTRL__PHY_RESET__INV_MASK		0xffffffef
++#define	PCIE_PHY_RST_CTRL__PHY_RESET__MASK		0x00000010
++#define PCIE_PHY_RST_CTRL__PIPE0_RESET_N__MASK		0x00000001
++#define	PCIE_PHY_RST_CTRL__PIPE0_RESET_N__INV_MASK	0xfffffffe
++#define	PCIE_PHY_RST_CTRL__PIPE1_RESET_N__MASK		0x00000002
++#define	PCIE_PHY_RST_CTRL__PIPE1_RESET_N__INV_MASK	0xfffffffd
++#define	PCIE_PHY_RST_CTRL__PIPE2_RESET_N__MASK		0x00000004
++#define	PCIE_PHY_RST_CTRL__PIPE2_RESET_N__INV_MASK	0xfffffffb
++#define	PCIE1_SW_RST__PAB_N__MASK			0x00000008
++#define	PCIE1_SW_RST__PAB_N__INV_MASK			0xfffffff7
++#define	PCIE1_SW_RST__AMBA_N__MASK			0x00000004
++#define	PCIE1_SW_RST__AMBA_N__INV_MASK			0xfffffffb
++#define	PCIE1_SW_RST__PBUS_N__MASK			0x00000002
++#define	PCIE1_SW_RST__PBUS_N__INV_MASK			0xfffffffd
++#define	PCIE1_SW_RST__LINK_N__MASK			0x00000002
++#define	PCIE1_SW_RST__LINK_N__INV_MASK			0xfffffffe
++#define	PCIE2_SW_RST__PAB_N__MASK			0x00000008
++#define	PCIE2_SW_RST__PAB_N__INV_MASK			0xfffffff7
++#define	PCIE2_SW_RST__AMBA_N__MASK			0x00000004
++#define	PCIE2_SW_RST__AMBA_N__INV_MASK			0xfffffffb
++#define	PCIE2_SW_RST__PBUS_N__MASK			0x00000002
++#define	PCIE2_SW_RST__PBUS_N__INV_MASK			0xfffffffd
++#define	PCIE2_SW_RST__LINK_N__MASK			0x00000002
++#define	PCIE2_SW_RST__LINK_N__INV_MASK			0xfffffffe
++#define	PCIE3_SW_RST__PAB_N__MASK			0x00000008
++#define	PCIE3_SW_RST__PAB_N__INV_MASK			0xfffffff7
++#define	PCIE3_SW_RST__AMBA_N__MASK			0x00000004
++#define	PCIE3_SW_RST__AMBA_N__INV_MASK			0xfffffffb
++#define	PCIE3_SW_RST__PBUS_N__MASK			0x00000002
++#define	PCIE3_SW_RST__PBUS_N__INV_MASK			0xfffffffd
++#define	PCIE3_SW_RST__LINK_N__MASK			0x00000002
++#define	PCIE3_SW_RST__LINK_N__INV_MASK			0xfffffffe
++#define	PCIE_SW_BOOTSTRAP__PCIE1_EP_RC_SEL__MASK	0x00000040
+ #define	PCIE_SW_BOOTSTRAP__PCIE1_EP_RC_SEL__INV_MASK	0xffffffbf
+-#define	PCIE_SW_BOOTSTRAP__PCIE2_EP_RC_SEL__MASK		0x00000020
++#define	PCIE_SW_BOOTSTRAP__PCIE2_EP_RC_SEL__MASK	0x00000020
+ #define	PCIE_SW_BOOTSTRAP__PCIE2_EP_RC_SEL__INV_MASK	0xffffffdf
+-#define	PCIE_SW_BOOTSTRAP__PCIE3_EP_RC_SEL__MASK		0x00000010
++#define	PCIE_SW_BOOTSTRAP__PCIE3_EP_RC_SEL__MASK	0x00000010
+ #define	PCIE_SW_BOOTSTRAP__PCIE3_EP_RC_SEL__INV_MASK	0xffffffef
+-#define	PCIE_SW_BOOTSTRAP__PIPE_PORT_SEL__INV_MASK		0xfffffff0
+-#define	PCIE_SW_BOOTSTRAP__PIPE_PORT_SEL__SHIFT			0
+-#define	PCIE_PHY_CLK_CTRL__PHY_REF_USE_PAD__MASK		0x00000200
++#define	PCIE_SW_BOOTSTRAP__PIPE_PORT_SEL__INV_MASK	0xfffffff0
++#define	PCIE_SW_BOOTSTRAP__PIPE_PORT_SEL__SHIFT		0
++#define	PCIE_PHY_CLK_CTRL__PHY_REF_USE_PAD__MASK	0x00000200
+ #define	PCIE_PHY_PIPE_CTRL__MAC0_PCLKREQ_N__INV_MASK	0xfffcffff
+ #define	PCIE_PHY_PIPE_CTRL__MAC1_PCLKREQ_N__INV_MASK	0xfff3ffff
+-#define	PCIE_PHY_PIPE_STAT__PIPE0_PHYSTATUS__MASK		0x00000001
+-#define	PCIE_PHY_PIPE_STAT__PIPE1_PHYSTATUS__MASK		0x00000002
+-#define	PCIE_PHY_PIPE_STAT__PIPE2_PHYSTATUS__MASK		0x00000004
+-#define	PCIE1_MISC_STAT__GDA_PAB_DL_UP__MASK			0x00000001
+-#define	PCIE2_MISC_STAT__GDA_PAB_DL_UP__MASK			0x00000001
+-#define	PCIE3_MISC_STAT__GDA_PAB_DL_UP__MASK			0x00000001
+-#define	PCIE1_INT_EN__PERST_N_PIN__MASK					0x00000020
+-#define	PCIE1_INT_EN__GDA_PAB__MASK						0x00000001
+-#define	PCIE2_INT_EN__PERST_N_PIN__MASK					0x00000020
+-#define	PCIE2_INT_EN__GDA_PAB__MASK						0x00000001
+-#define	PCIE3_INT_EN__PERST_N_PIN__MASK					0x00000020
+-#define	PCIE3_INT_EN__GDA_PAB__MASK						0x00000001
+-#define	PCIE1_INT_CLR__PERST_N_PIN__MASK				0x00000020
+-#define	PCIE1_INT_CLR__GDA_PAB__MASK					0x00000001
+-#define	PCIE2_INT_CLR__PERST_N_PIN__MASK				0x00000020
+-#define	PCIE2_INT_CLR__GDA_PAB__MASK					0x00000001
+-#define	PCIE3_INT_CLR__PERST_N_PIN__MASK				0x00000020
+-#define	PCIE3_INT_CLR__GDA_PAB__MASK					0x00000001
++#define	PCIE_PHY_PIPE_STAT__PIPE0_PHYSTATUS__MASK	0x00000001
++#define	PCIE_PHY_PIPE_STAT__PIPE1_PHYSTATUS__MASK	0x00000002
++#define	PCIE_PHY_PIPE_STAT__PIPE2_PHYSTATUS__MASK	0x00000004
++#define	PCIE1_MISC_STAT__GDA_PAB_DL_UP__MASK		0x00000001
++#define	PCIE2_MISC_STAT__GDA_PAB_DL_UP__MASK		0x00000001
++#define	PCIE3_MISC_STAT__GDA_PAB_DL_UP__MASK		0x00000001
++#define	PCIE1_INT_EN__PERST_N_PIN__MASK			0x00000020
++#define	PCIE1_INT_EN__GDA_PAB__MASK			0x00000001
++#define	PCIE2_INT_EN__PERST_N_PIN__MASK			0x00000020
++#define	PCIE2_INT_EN__GDA_PAB__MASK			0x00000001
++#define	PCIE3_INT_EN__PERST_N_PIN__MASK			0x00000020
++#define	PCIE3_INT_EN__GDA_PAB__MASK			0x00000001
++#define	PCIE1_INT_CLR__PERST_N_PIN__MASK		0x00000020
++#define	PCIE1_INT_CLR__GDA_PAB__MASK			0x00000001
++#define	PCIE2_INT_CLR__PERST_N_PIN__MASK		0x00000020
++#define	PCIE2_INT_CLR__GDA_PAB__MASK			0x00000001
++#define	PCIE3_INT_CLR__PERST_N_PIN__MASK		0x00000020
++#define	PCIE3_INT_CLR__GDA_PAB__MASK			0x00000001
+ #endif	/* SYNOPSYS_PCIE_H */
+-- 
+1.7.1
+

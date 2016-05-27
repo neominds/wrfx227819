@@ -1,0 +1,41 @@
+From 74c71da22b8946c1bedc4dd17aed00b3710c0442 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Wed, 4 Feb 2015 17:30:58 +0900
+Subject: [PATCH 1/1] adjust 3gbp for sata
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/ata/libata-core.c |   12 ++++++++++--
+ 1 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/ata/libata-core.c b/drivers/ata/libata-core.c
+index b688211..34ec0bb 100644
+--- a/drivers/ata/libata-core.c
++++ b/drivers/ata/libata-core.c
+@@ -3789,12 +3789,20 @@ printk("##### %s set needed spd scontrole = %x \n",__FUNCTION__,scontrol); /* ya
+ 	if ((rc = sata_scr_read(link, SCR_CONTROL, &scontrol)))
+ 		goto out;
+ 
+-	scontrol = (scontrol & 0x0f0) | 0x301;
+-//	scontrol = (scontrol & 0x0f0) | 0x321;
++//	scontrol = (scontrol & 0x0f0) | 0x301;
++	scontrol = (scontrol & 0x0f0) | 0x321;
+ printk("##### %s scontrole = %x \n",__FUNCTION__,scontrol); /* yamano */
+ 
+ 	if ((rc = sata_scr_write_flush(link, SCR_CONTROL, scontrol)))
+ 		goto out;
++/* yamano append issue link up 3.0 Gbps*/
++	if ((rc = sata_scr_read(link, SCR_CONTROL, &scontrol)))
++		goto out;
++	
++	scontrol = (scontrol & 0x0f0) | 0x020;
++	if ((rc = sata_scr_write_flush(link, SCR_CONTROL, scontrol)))
++		goto out;
++/* yamano append end */
+ 
+ 	/* Couldn't find anything in SATA I/II specs, but AHCI-1.1
+ 	 * 10.4.2 says at least 1 ms.
+-- 
+1.7.1
+

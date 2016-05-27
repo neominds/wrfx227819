@@ -1,0 +1,408 @@
+From ae3b5dcd73a6ddd968c63db1e966732a93450eba Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:31:27 +0900
+Subject: [PATCH 013/171] 0012-debug-setup-kernel
+
+
+diff --git a/arch/arm/kernel/atags_parse.c b/arch/arm/kernel/atags_parse.c
+index 14512e6..bad47d9 100644
+--- a/arch/arm/kernel/atags_parse.c
++++ b/arch/arm/kernel/atags_parse.c
+@@ -29,9 +29,8 @@
+ #include <asm/mach/arch.h>
+ 
+ #include "atags.h"
+-
+ static char default_command_line[COMMAND_LINE_SIZE] __initdata = CONFIG_CMDLINE;
+-
++#if 0	/* yamano */
+ #ifndef MEM_SIZE
+ #define MEM_SIZE	(16*1024*1024)
+ #endif
+@@ -49,6 +48,55 @@ static struct {
+ 	{ MEM_SIZE },
+ 	{ 0, ATAG_NONE }
+ };
++#else
++#ifndef	MEM_SIZE
++#define	MEM_SIZE	(512*1024*1024)		/* 512M */
++#endif	/* MEM_SIZE */
++static	struct {
++	struct	tag_header	hdr1;
++	struct	tag_core	core;
++	struct	tag_header	hdr2;
++	struct	tag_mem32	mem;
++	struct	tag_header	hdr3;
++} default_tags __initdata = {
++	{ tag_size (tag_core),ATAG_CORE},
++	{ 1,PAGE_SIZE,0xff},
++	{ tag_size(tag_mem32),ATAG_MEM},
++	{ MEM_SIZE},
++	{ 0, ATAG_NONE}
++};
++#endif	/* yamano debug */
++#if 1 /* yamano */
++#define UART_BASE       0xfc160000
++#define UART_DATA(base) (*(volatile unsigned char *)((base) + 0x10))
++#define UART_STAT(base) (*(volatile unsigned char *)((base) + 0x15))
++static  void    putchar(int c)
++{
++        while((UART_STAT(UART_BASE) & 0x40) == 0)
++                barrier();
++        UART_DATA(UART_BASE) = c;
++        return;
++}
++
++static  void    flush(void)
++{
++        while((UART_STAT(UART_BASE) & 0x40) == 0)
++                barrier();
++}
++
++static  void    putstr(const char *ptr)
++{
++        char    c;
++
++        while((c = *ptr++) != '\0'){
++                if(c == '\n')
++                        putchar('\r');
++                putchar(c);
++        }
++        flush();
++}
++
++#endif  /* yamano */
+ 
+ static int __init parse_tag_core(const struct tag *tag)
+ {
+@@ -184,17 +232,25 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 	struct tag *tags = (struct tag *)&default_tags;
+ 	struct machine_desc *mdesc = NULL, *p;
+ 	char *from = default_command_line;
++	char	buf[256];	/* yamano debug */
+ 
+ 	default_tags.mem.start = PHYS_OFFSET;
+-
++	sprintf(buf,"machine_nr:%x\n",machine_nr);
++	putstr(buf);
++	machine_nr = 0x157c;	/* yamano debug */
+ 	/*
+ 	 * locate machine in the list of supported machines.
+ 	 */
+ 	for_each_machine_desc(p)
+ 		if (machine_nr == p->nr) {
+ 			printk("Machine: %s\n", p->name);
++			putstr(p->name);	/* yamano debug */
+ 			mdesc = p;
+ 			break;
++		}else{	/* yamano debug */
++			putstr(p->name);
++			sprintf(buf,"%x",p->nr);
++			putstr(buf);
+ 		}
+ 
+ 	if (!mdesc) {
+@@ -220,7 +276,6 @@ struct machine_desc * __init setup_machine_tags(phys_addr_t __atags_pointer,
+ 		early_print("Warning: Neither atags nor dtb found\n");
+ 		tags = (struct tag *)&default_tags;
+ 	}
+-
+ 	if (mdesc->fixup)
+ 		mdesc->fixup(tags, &from, &meminfo);
+ 
+diff --git a/arch/arm/kernel/head.S b/arch/arm/kernel/head.S
+index 45e8935..3364690 100644
+--- a/arch/arm/kernel/head.S
++++ b/arch/arm/kernel/head.S
+@@ -28,6 +28,12 @@
+ #endif
+ 
+ /*
++ * debug yamano 
++ */
++#define	LM2_SERIAL_DEBUG_PHYS	0x04160000
++#define	LM2_SERIAL_DEBUG_VIRT	0xfc160000
++
++/*
+  * swapper_pg_dir is the virtual address of the initial page table.
+  * We place the page tables 16K below KERNEL_RAM_VADDR.  Therefore, we must
+  * make sure that KERNEL_RAM_VADDR is correctly set.  Currently, we expect
+@@ -52,7 +58,8 @@
+ 	.equ	swapper_pg_dir, KERNEL_RAM_VADDR - PG_DIR_SIZE
+ 
+ 	.macro	pgtbl, rd, phys
+-	add	\rd, \phys, #TEXT_OFFSET - PG_DIR_SIZE
++	add	\rd, \phys, #TEXT_OFFSET 
++	sub	\rd, \rd, #PG_DIR_SIZE
+ 	.endm
+ 
+ /*
+@@ -82,7 +89,7 @@ ENTRY(stext)
+  THUMB(	bx	r9		)	@ If this is a Thumb-2 kernel,
+  THUMB(	.thumb			)	@ switch to Thumb now.
+  THUMB(1:			)
+-
++/*1:	b	1b*/	/* yamano debug */
+ #ifdef CONFIG_ARM_VIRT_EXT
+ 	bl	__hyp_stub_install
+ #endif
+@@ -111,7 +118,7 @@ ENTRY(stext)
+ #else
+ 	ldr	r8, =PHYS_OFFSET		@ always constant in this case
+ #endif
+-
++/* 1:	b	1b */	/* yamano ICE debug */
+ 	/*
+ 	 * r1 = machine no, r2 = atags or dtb,
+ 	 * r8 = phys_offset, r9 = cpuid, r10 = procinfo
+@@ -183,7 +190,8 @@ __create_page_tables:
+ 	add	r3, r4, #0x1000			@ first PMD table address
+ 	orr	r3, r3, #3			@ PGD block type
+ 	mov	r6, #4				@ PTRS_PER_PGD
+-	mov	r7, #1 << (55 - 32)		@ L_PGD_SWAPPER
++	mov	r7, #1 << (55 - 32)		@ L_PGD_SWAPPER software use not XN bit
++	orr	r7, r7, #0x08	/* yamano phys high addr 0x08_xxxx_xxxx */
+ 1:
+ #ifdef CONFIG_CPU_ENDIAN_BE8
+ 	str	r7, [r0], #4			@ set top PGD entry bits
+@@ -200,10 +208,19 @@ __create_page_tables:
+ #ifdef CONFIG_CPU_ENDIAN_BE8
+ 	add	r4, r4, #4			@ we only write the bottom word
+ #endif
+-#endif
++#endif	/* CONFIG_ARM_LPAE */
+ 
+ 	ldr	r7, [r10, #PROCINFO_MM_MMUFLAGS] @ mm_mmuflags
+ 
++	/* secure booting page table */
++	mov	r0, r4
++	add	r0, r0, #0x2400
++	mov	r5, r7
++	orr	r5, r5, r8
++	mov	r6, #0x08
++	str	r5, [r0], #4
++	str	r6, [r0]
++
+ 	/*
+ 	 * Create identity mapping to cater for __enable_mmu.
+ 	 * This identity mapping will be removed by paging_init().
+@@ -213,27 +230,58 @@ __create_page_tables:
+ 	sub	r0, r0, r3			@ virt->phys offset
+ 	add	r5, r5, r0			@ phys __turn_mmu_on
+ 	add	r6, r6, r0			@ phys __turn_mmu_on_end
+-	mov	r5, r5, lsr #SECTION_SHIFT
++	mov	r5, r5, lsr #SECTION_SHIFT	@ SECTION_SHIFT 15
+ 	mov	r6, r6, lsr #SECTION_SHIFT
+-
++	mov	r0, #0x08	/* high addr yamano */
+ 1:	orr	r3, r7, r5, lsl #SECTION_SHIFT	@ flags + kernel base
+-	str	r3, [r4, r5, lsl #PMD_ORDER]	@ identity mapping
++#if 1 /* yamano */
++	add	r7, r4, r5, lsl #PMD_ORDER
++	str	r3, [r7], #4
++	str	r0, [r7], #4
++#else
++	str	r3, [r4, r5, lsl #PMD_ORDER]	@ identity mapping yamano
++#endif	/* yamano */
+ 	cmp	r5, r6
+ 	addlo	r5, r5, #1			@ next section
+ 	blo	1b
+ 
++	/* restore r7 */
++	ldr	r7, [r10, #PROCINFO_MM_MMUFLAGS] @ mm_mmuflags
++
+ 	/*
+ 	 * Map our RAM from the start to the end of the kernel .bss section.
+ 	 */
+ 	add	r0, r4, #PAGE_OFFSET >> (SECTION_SHIFT - PMD_ORDER)
+ 	ldr	r6, =(_end - 1)
+ 	orr	r3, r8, r7
++	mov	r5, #0x08	/* yamano */
+ 	add	r6, r4, r6, lsr #(SECTION_SHIFT - PMD_ORDER)
+-1:	str	r3, [r0], #1 << PMD_ORDER
++/* 1:	str	r3, [r0], #1 << PMD_ORDER */	/* yamano */
++1:	str	r3, [r0], #4	/* yamano */
++	str	r5, [r0], #4 	/* yamano */
+ 	add	r3, r3, #1 << SECTION_SHIFT
+ 	cmp	r0, r6
+ 	bls	1b
+ 
++#if 1	/* yamano debug */
++/* 2:	b	2b	*/ /* yamano ICE debug */
++	/* calculate page table address to stored r0 */
++	ldr	r3, =LM2_SERIAL_DEBUG_VIRT	@specify virtual address 0xf800_0000
++	mov	r3, r3, lsr #SECTION_SHIFT
++	mov	r3, r3, lsl #PMD_ORDER
++	add	r0, r4, r3			@ store page table address
++
++	/* calculate page table entry address to stored r3 */
++	ldr	r7, =LM2_SERIAL_DEBUG_PHYS	@ specify physical address  0x04154000
++	mov	r3, r7, lsr #SECTION_SHIFT
++	ldr	r7, [r10, #PROCINFO_IO_MMUFLAGS]
++	orr	r3, r7, r3, lsl #SECTION_SHIFT
++
++	mov	r7, #1 << (54 -32)		@ never executable set
++	str	r3, [r0], #4
++	str	r7, [r0], #4
++/* 2:	b	2b*/	/* yamano debug */	
++#endif	/* yamano debug */
+ #ifdef CONFIG_XIP_KERNEL
+ 	/*
+ 	 * Map the kernel image separately as it is not located in RAM.
+@@ -253,6 +301,7 @@ __create_page_tables:
+ 	bls	1b
+ #endif
+ 
++	/* dont forget this code for support LPAE yamano */
+ 	/*
+ 	 * Then map boot params address in r2 if specified.
+ 	 * We map 2 sections in case the ATAGs/DTB crosses a section boundary.
+@@ -463,6 +512,7 @@ ENTRY(__turn_mmu_on)
+ 	instr_sync
+ 	mov	r3, r3
+ 	mov	r3, r13
++/*1:	b	1b	*/	/* yamano next start_kernel*/
+ 	mov	pc, r3
+ __turn_mmu_on_end:
+ ENDPROC(__turn_mmu_on)
+diff --git a/arch/arm/kernel/setup.c b/arch/arm/kernel/setup.c
+index ac06bf0..2ded688 100644
+--- a/arch/arm/kernel/setup.c
++++ b/arch/arm/kernel/setup.c
+@@ -115,6 +115,40 @@ struct outer_cache_fns outer_cache __read_mostly;
+ EXPORT_SYMBOL(outer_cache);
+ #endif
+ 
++#if 1 /* yamano */
++#define UART_BASE       0xfc160000
++#define	UART_BASE2	0xfc000000
++#define UART_DATA(base) (*(volatile unsigned char *)((base) + 0x10))
++#define UART_STAT(base) (*(volatile unsigned char *)((base) + 0x15))
++
++static  void    putchar(u32 base, int c)
++{
++        while((UART_STAT(base) & 0x40) == 0)
++                barrier();
++        UART_DATA(base) = c;
++        return;
++}
++
++static  void    flush(u32 base)
++{
++        while((UART_STAT(base) & 0x40) == 0)
++                barrier();
++}
++
++static  void    putstr(u32 base,const char *ptr)
++{
++        char    c;
++
++        while((c = *ptr++) != '\0'){
++                if(c == '\n')
++                        putchar(base,'\r');
++                putchar(base,c);
++        }
++        flush(base);
++}
++
++#endif  /* yamano */
++
+ /*
+  * Cached cpu_architecture() result for use by assembler code.
+  * C code should use the cpu_architecture() function instead of accessing this
+@@ -453,10 +487,15 @@ u32 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = MPIDR_INVALID };
+ 
+ void __init smp_setup_processor_id(void)
+ {
++#if 0	/* yamano */
+ 	int i;
+ 	u32 mpidr = is_smp() ? read_cpuid_mpidr() & MPIDR_HWID_BITMASK : 0;
+-	u32 cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
++#else
++	int	i;
++	u32	mpidr;
+ 
++	mpidr = 0;	/* yamano force single processor */
++	u32 cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
+ 	cpu_logical_map(0) = cpu;
+ 	for (i = 1; i < nr_cpu_ids; ++i)
+ 		cpu_logical_map(i) = i == cpu ? 0 : i;
+@@ -469,6 +508,7 @@ void __init smp_setup_processor_id(void)
+ 	set_my_cpu_offset(0);
+ 
+ 	printk(KERN_INFO "Booting Linux on physical CPU 0x%x\n", mpidr);
++#endif	/* yamano */
+ }
+ 
+ static void __init setup_processor(void)
+@@ -640,6 +680,7 @@ static void __init request_standard_resources(struct machine_desc *mdesc)
+ {
+ 	struct memblock_region *region;
+ 	struct resource *res;
++	char	buf[128];
+ 
+ 	kernel_code.start   = virt_to_phys(_text);
+ 	kernel_code.end     = virt_to_phys(_etext - 1);
+@@ -793,6 +834,7 @@ void __init hyp_mode_check(void)
+ void __init setup_arch(char **cmdline_p)
+ {
+ 	struct machine_desc *mdesc;
++	char	buf[128];	/* yamano debug */ 
+ 
+ 	setup_processor();
+ 	mdesc = setup_machine_fdt(__atags_pointer);
+@@ -800,7 +842,6 @@ void __init setup_arch(char **cmdline_p)
+ 		mdesc = setup_machine_tags(__atags_pointer, __machine_arch_type);
+ 	machine_desc = mdesc;
+ 	machine_name = mdesc->name;
+-
+ 	setup_dma_zone(mdesc);
+ 
+ 	if (mdesc->restart_mode)
+@@ -810,20 +851,17 @@ void __init setup_arch(char **cmdline_p)
+ 	init_mm.end_code   = (unsigned long) _etext;
+ 	init_mm.end_data   = (unsigned long) _edata;
+ 	init_mm.brk	   = (unsigned long) _end;
+-
+ 	/* populate cmd_line too for later use, preserving boot_command_line */
+ 	strlcpy(cmd_line, boot_command_line, COMMAND_LINE_SIZE);
+ 	*cmdline_p = cmd_line;
+-
+ 	parse_early_param();
+ 
++
+ 	sort(&meminfo.bank, meminfo.nr_banks, sizeof(meminfo.bank[0]), meminfo_cmp, NULL);
+ 	sanity_check_meminfo();
+ 	arm_memblock_init(&meminfo, mdesc);
+-
+-	paging_init(mdesc);
++	paging_init(mdesc);	/* reset debug I/O memory page  yamano */
+ 	request_standard_resources(mdesc);
+-
+ 	if (mdesc->restart)
+ 		arm_pm_restart = mdesc->restart;
+ 
+@@ -843,7 +881,7 @@ void __init setup_arch(char **cmdline_p)
+ 	reserve_crashkernel();
+ 
+ #ifdef CONFIG_MULTI_IRQ_HANDLER
+-	handle_arch_irq = mdesc->handle_irq;
++//	handle_arch_irq = mdesc->handle_irq;
+ #endif
+ 
+ #ifdef CONFIG_VT
+@@ -853,9 +891,10 @@ void __init setup_arch(char **cmdline_p)
+ 	conswitchp = &dummy_con;
+ #endif
+ #endif
+-
++#if 0
+ 	if (mdesc->init_early)
+ 		mdesc->init_early();
++#endif
+ }
+ 
+ 
+-- 
+1.7.1
+

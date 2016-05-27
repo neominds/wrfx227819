@@ -1,0 +1,5986 @@
+From eb187b006b82c95c4ada4ea44096af3b8d579075 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:31:32 +0900
+Subject: [PATCH 016/171] 0015-debug-driver-support-code-1
+
+
+diff --git a/drivers/ata/ahci_platform.c b/drivers/ata/ahci_platform.c
+index 7a8a284..6a5c9aa 100644
+--- a/drivers/ata/ahci_platform.c
++++ b/drivers/ata/ahci_platform.c
+@@ -203,19 +203,23 @@ static int ahci_probe(struct platform_device *pdev)
+ 		if (!(hpriv->port_map & (1 << i)))
+ 			ap->ops = &ata_dummy_port_ops;
+ 	}
+-
++dev_info(dev,"prepare reset controller\n");
+ 	rc = ahci_reset_controller(host);
+ 	if (rc)
+ 		goto pdata_exit;
+ 
++dev_info(dev,"controlleri init\n");
+ 	ahci_init_controller(host);
++dev_info(dev,"capabilities information\n");
+ 	ahci_print_info(host, "platform");
+ 
++dev_info(dev,"Activate controller\n");
+ 	rc = ata_host_activate(host, irq, ahci_interrupt, IRQF_SHARED,
+ 			       &ahci_platform_sht);
+ 	if (rc)
+ 		goto pdata_exit;
+ 
++dev_info(dev,"Activate controller finished\n");
+ 	return 0;
+ pdata_exit:
+ 	if (pdata && pdata->exit)
+diff --git a/drivers/ata/libahci.c b/drivers/ata/libahci.c
+index 79edb5d..30adaf4 100644
+--- a/drivers/ata/libahci.c
++++ b/drivers/ata/libahci.c
+@@ -2255,7 +2255,6 @@ static int ahci_port_start(struct ata_port *ap)
+ 	pp = devm_kzalloc(dev, sizeof(*pp), GFP_KERNEL);
+ 	if (!pp)
+ 		return -ENOMEM;
+-
+ 	/* check FBS capability */
+ 	if ((hpriv->cap & HOST_CAP_FBS) && sata_pmp_supported(ap)) {
+ 		void __iomem *port_mmio = ahci_port_base(ap);
+diff --git a/drivers/ata/libahci.c.orig b/drivers/ata/libahci.c.orig
+new file mode 100644
+index 0000000..79edb5d
+--- /dev/null
++++ b/drivers/ata/libahci.c.orig
+@@ -0,0 +1,2444 @@
++/*
++ *  libahci.c - Common AHCI SATA low-level routines
++ *
++ *  Maintained by:  Tejun Heo <tj@kernel.org>
++ *    		    Please ALWAYS copy linux-ide@vger.kernel.org
++ *		    on emails.
++ *
++ *  Copyright 2004-2005 Red Hat, Inc.
++ *
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *
++ *
++ * libata documentation is available via 'make {ps|pdf}docs',
++ * as Documentation/DocBook/libata.*
++ *
++ * AHCI hardware documentation:
++ * http://www.intel.com/technology/serialata/pdf/rev1_0.pdf
++ * http://www.intel.com/technology/serialata/pdf/rev1_1.pdf
++ *
++ */
++
++#include <linux/kernel.h>
++#include <linux/gfp.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/blkdev.h>
++#include <linux/delay.h>
++#include <linux/interrupt.h>
++#include <linux/dma-mapping.h>
++#include <linux/device.h>
++#include <scsi/scsi_host.h>
++#include <scsi/scsi_cmnd.h>
++#include <linux/libata.h>
++#include "ahci.h"
++#include "libata.h"
++
++static int ahci_skip_host_reset;
++int ahci_ignore_sss;
++EXPORT_SYMBOL_GPL(ahci_ignore_sss);
++
++module_param_named(skip_host_reset, ahci_skip_host_reset, int, 0444);
++MODULE_PARM_DESC(skip_host_reset, "skip global host reset (0=don't skip, 1=skip)");
++
++module_param_named(ignore_sss, ahci_ignore_sss, int, 0444);
++MODULE_PARM_DESC(ignore_sss, "Ignore staggered spinup flag (0=don't ignore, 1=ignore)");
++
++static int ahci_set_lpm(struct ata_link *link, enum ata_lpm_policy policy,
++			unsigned hints);
++static ssize_t ahci_led_show(struct ata_port *ap, char *buf);
++static ssize_t ahci_led_store(struct ata_port *ap, const char *buf,
++			      size_t size);
++static ssize_t ahci_transmit_led_message(struct ata_port *ap, u32 state,
++					ssize_t size);
++
++
++
++static int ahci_scr_read(struct ata_link *link, unsigned int sc_reg, u32 *val);
++static int ahci_scr_write(struct ata_link *link, unsigned int sc_reg, u32 val);
++static unsigned int ahci_qc_issue(struct ata_queued_cmd *qc);
++static bool ahci_qc_fill_rtf(struct ata_queued_cmd *qc);
++static int ahci_port_start(struct ata_port *ap);
++static void ahci_port_stop(struct ata_port *ap);
++static void ahci_qc_prep(struct ata_queued_cmd *qc);
++static int ahci_pmp_qc_defer(struct ata_queued_cmd *qc);
++static void ahci_freeze(struct ata_port *ap);
++static void ahci_thaw(struct ata_port *ap);
++static void ahci_set_aggressive_devslp(struct ata_port *ap, bool sleep);
++static void ahci_enable_fbs(struct ata_port *ap);
++static void ahci_disable_fbs(struct ata_port *ap);
++static void ahci_pmp_attach(struct ata_port *ap);
++static void ahci_pmp_detach(struct ata_port *ap);
++static int ahci_softreset(struct ata_link *link, unsigned int *class,
++			  unsigned long deadline);
++static int ahci_pmp_retry_softreset(struct ata_link *link, unsigned int *class,
++			  unsigned long deadline);
++static int ahci_hardreset(struct ata_link *link, unsigned int *class,
++			  unsigned long deadline);
++static void ahci_postreset(struct ata_link *link, unsigned int *class);
++static void ahci_error_handler(struct ata_port *ap);
++static void ahci_post_internal_cmd(struct ata_queued_cmd *qc);
++static void ahci_dev_config(struct ata_device *dev);
++#ifdef CONFIG_PM
++static int ahci_port_suspend(struct ata_port *ap, pm_message_t mesg);
++#endif
++static ssize_t ahci_activity_show(struct ata_device *dev, char *buf);
++static ssize_t ahci_activity_store(struct ata_device *dev,
++				   enum sw_activity val);
++static void ahci_init_sw_activity(struct ata_link *link);
++
++static ssize_t ahci_show_host_caps(struct device *dev,
++				   struct device_attribute *attr, char *buf);
++static ssize_t ahci_show_host_cap2(struct device *dev,
++				   struct device_attribute *attr, char *buf);
++static ssize_t ahci_show_host_version(struct device *dev,
++				      struct device_attribute *attr, char *buf);
++static ssize_t ahci_show_port_cmd(struct device *dev,
++				  struct device_attribute *attr, char *buf);
++static ssize_t ahci_read_em_buffer(struct device *dev,
++				   struct device_attribute *attr, char *buf);
++static ssize_t ahci_store_em_buffer(struct device *dev,
++				    struct device_attribute *attr,
++				    const char *buf, size_t size);
++static ssize_t ahci_show_em_supported(struct device *dev,
++				      struct device_attribute *attr, char *buf);
++
++static DEVICE_ATTR(ahci_host_caps, S_IRUGO, ahci_show_host_caps, NULL);
++static DEVICE_ATTR(ahci_host_cap2, S_IRUGO, ahci_show_host_cap2, NULL);
++static DEVICE_ATTR(ahci_host_version, S_IRUGO, ahci_show_host_version, NULL);
++static DEVICE_ATTR(ahci_port_cmd, S_IRUGO, ahci_show_port_cmd, NULL);
++static DEVICE_ATTR(em_buffer, S_IWUSR | S_IRUGO,
++		   ahci_read_em_buffer, ahci_store_em_buffer);
++static DEVICE_ATTR(em_message_supported, S_IRUGO, ahci_show_em_supported, NULL);
++
++struct device_attribute *ahci_shost_attrs[] = {
++	&dev_attr_link_power_management_policy,
++	&dev_attr_em_message_type,
++	&dev_attr_em_message,
++	&dev_attr_ahci_host_caps,
++	&dev_attr_ahci_host_cap2,
++	&dev_attr_ahci_host_version,
++	&dev_attr_ahci_port_cmd,
++	&dev_attr_em_buffer,
++	&dev_attr_em_message_supported,
++	NULL
++};
++EXPORT_SYMBOL_GPL(ahci_shost_attrs);
++
++struct device_attribute *ahci_sdev_attrs[] = {
++	&dev_attr_sw_activity,
++	&dev_attr_unload_heads,
++	NULL
++};
++EXPORT_SYMBOL_GPL(ahci_sdev_attrs);
++
++struct ata_port_operations ahci_ops = {
++	.inherits		= &sata_pmp_port_ops,
++
++	.qc_defer		= ahci_pmp_qc_defer,
++	.qc_prep		= ahci_qc_prep,
++	.qc_issue		= ahci_qc_issue,
++	.qc_fill_rtf		= ahci_qc_fill_rtf,
++
++	.freeze			= ahci_freeze,
++	.thaw			= ahci_thaw,
++	.softreset		= ahci_softreset,
++	.hardreset		= ahci_hardreset,
++	.postreset		= ahci_postreset,
++	.pmp_softreset		= ahci_softreset,
++	.error_handler		= ahci_error_handler,
++	.post_internal_cmd	= ahci_post_internal_cmd,
++	.dev_config		= ahci_dev_config,
++
++	.scr_read		= ahci_scr_read,
++	.scr_write		= ahci_scr_write,
++	.pmp_attach		= ahci_pmp_attach,
++	.pmp_detach		= ahci_pmp_detach,
++
++	.set_lpm		= ahci_set_lpm,
++	.em_show		= ahci_led_show,
++	.em_store		= ahci_led_store,
++	.sw_activity_show	= ahci_activity_show,
++	.sw_activity_store	= ahci_activity_store,
++#ifdef CONFIG_PM
++	.port_suspend		= ahci_port_suspend,
++	.port_resume		= ahci_port_resume,
++#endif
++	.port_start		= ahci_port_start,
++	.port_stop		= ahci_port_stop,
++};
++EXPORT_SYMBOL_GPL(ahci_ops);
++
++struct ata_port_operations ahci_pmp_retry_srst_ops = {
++	.inherits		= &ahci_ops,
++	.softreset		= ahci_pmp_retry_softreset,
++};
++EXPORT_SYMBOL_GPL(ahci_pmp_retry_srst_ops);
++
++int ahci_em_messages = 1;
++EXPORT_SYMBOL_GPL(ahci_em_messages);
++module_param(ahci_em_messages, int, 0444);
++/* add other LED protocol types when they become supported */
++MODULE_PARM_DESC(ahci_em_messages,
++	"AHCI Enclosure Management Message control (0 = off, 1 = on)");
++
++int devslp_idle_timeout = 1000;	/* device sleep idle timeout in ms */
++module_param(devslp_idle_timeout, int, 0644);
++MODULE_PARM_DESC(devslp_idle_timeout, "device sleep idle timeout");
++
++static void ahci_enable_ahci(void __iomem *mmio)
++{
++	int i;
++	u32 tmp;
++
++	/* turn on AHCI_EN */
++	tmp = readl(mmio + HOST_CTL);
++	if (tmp & HOST_AHCI_EN)
++		return;
++
++	/* Some controllers need AHCI_EN to be written multiple times.
++	 * Try a few times before giving up.
++	 */
++	for (i = 0; i < 5; i++) {
++		tmp |= HOST_AHCI_EN;
++		writel(tmp, mmio + HOST_CTL);
++		tmp = readl(mmio + HOST_CTL);	/* flush && sanity check */
++		if (tmp & HOST_AHCI_EN)
++			return;
++		msleep(10);
++	}
++
++	WARN_ON(1);
++}
++
++static ssize_t ahci_show_host_caps(struct device *dev,
++				   struct device_attribute *attr, char *buf)
++{
++	struct Scsi_Host *shost = class_to_shost(dev);
++	struct ata_port *ap = ata_shost_to_port(shost);
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++
++	return sprintf(buf, "%x\n", hpriv->cap);
++}
++
++static ssize_t ahci_show_host_cap2(struct device *dev,
++				   struct device_attribute *attr, char *buf)
++{
++	struct Scsi_Host *shost = class_to_shost(dev);
++	struct ata_port *ap = ata_shost_to_port(shost);
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++
++	return sprintf(buf, "%x\n", hpriv->cap2);
++}
++
++static ssize_t ahci_show_host_version(struct device *dev,
++				   struct device_attribute *attr, char *buf)
++{
++	struct Scsi_Host *shost = class_to_shost(dev);
++	struct ata_port *ap = ata_shost_to_port(shost);
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++
++	return sprintf(buf, "%x\n", readl(mmio + HOST_VERSION));
++}
++
++static ssize_t ahci_show_port_cmd(struct device *dev,
++				  struct device_attribute *attr, char *buf)
++{
++	struct Scsi_Host *shost = class_to_shost(dev);
++	struct ata_port *ap = ata_shost_to_port(shost);
++	void __iomem *port_mmio = ahci_port_base(ap);
++
++	return sprintf(buf, "%x\n", readl(port_mmio + PORT_CMD));
++}
++
++static ssize_t ahci_read_em_buffer(struct device *dev,
++				   struct device_attribute *attr, char *buf)
++{
++	struct Scsi_Host *shost = class_to_shost(dev);
++	struct ata_port *ap = ata_shost_to_port(shost);
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	void __iomem *em_mmio = mmio + hpriv->em_loc;
++	u32 em_ctl, msg;
++	unsigned long flags;
++	size_t count;
++	int i;
++
++	spin_lock_irqsave(ap->lock, flags);
++
++	em_ctl = readl(mmio + HOST_EM_CTL);
++	if (!(ap->flags & ATA_FLAG_EM) || em_ctl & EM_CTL_XMT ||
++	    !(hpriv->em_msg_type & EM_MSG_TYPE_SGPIO)) {
++		spin_unlock_irqrestore(ap->lock, flags);
++		return -EINVAL;
++	}
++
++	if (!(em_ctl & EM_CTL_MR)) {
++		spin_unlock_irqrestore(ap->lock, flags);
++		return -EAGAIN;
++	}
++
++	if (!(em_ctl & EM_CTL_SMB))
++		em_mmio += hpriv->em_buf_sz;
++
++	count = hpriv->em_buf_sz;
++
++	/* the count should not be larger than PAGE_SIZE */
++	if (count > PAGE_SIZE) {
++		if (printk_ratelimit())
++			ata_port_warn(ap,
++				      "EM read buffer size too large: "
++				      "buffer size %u, page size %lu\n",
++				      hpriv->em_buf_sz, PAGE_SIZE);
++		count = PAGE_SIZE;
++	}
++
++	for (i = 0; i < count; i += 4) {
++		msg = readl(em_mmio + i);
++		buf[i] = msg & 0xff;
++		buf[i + 1] = (msg >> 8) & 0xff;
++		buf[i + 2] = (msg >> 16) & 0xff;
++		buf[i + 3] = (msg >> 24) & 0xff;
++	}
++
++	spin_unlock_irqrestore(ap->lock, flags);
++
++	return i;
++}
++
++static ssize_t ahci_store_em_buffer(struct device *dev,
++				    struct device_attribute *attr,
++				    const char *buf, size_t size)
++{
++	struct Scsi_Host *shost = class_to_shost(dev);
++	struct ata_port *ap = ata_shost_to_port(shost);
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	void __iomem *em_mmio = mmio + hpriv->em_loc;
++	const unsigned char *msg_buf = buf;
++	u32 em_ctl, msg;
++	unsigned long flags;
++	int i;
++
++	/* check size validity */
++	if (!(ap->flags & ATA_FLAG_EM) ||
++	    !(hpriv->em_msg_type & EM_MSG_TYPE_SGPIO) ||
++	    size % 4 || size > hpriv->em_buf_sz)
++		return -EINVAL;
++
++	spin_lock_irqsave(ap->lock, flags);
++
++	em_ctl = readl(mmio + HOST_EM_CTL);
++	if (em_ctl & EM_CTL_TM) {
++		spin_unlock_irqrestore(ap->lock, flags);
++		return -EBUSY;
++	}
++
++	for (i = 0; i < size; i += 4) {
++		msg = msg_buf[i] | msg_buf[i + 1] << 8 |
++		      msg_buf[i + 2] << 16 | msg_buf[i + 3] << 24;
++		writel(msg, em_mmio + i);
++	}
++
++	writel(em_ctl | EM_CTL_TM, mmio + HOST_EM_CTL);
++
++	spin_unlock_irqrestore(ap->lock, flags);
++
++	return size;
++}
++
++static ssize_t ahci_show_em_supported(struct device *dev,
++				      struct device_attribute *attr, char *buf)
++{
++	struct Scsi_Host *shost = class_to_shost(dev);
++	struct ata_port *ap = ata_shost_to_port(shost);
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	u32 em_ctl;
++
++	em_ctl = readl(mmio + HOST_EM_CTL);
++
++	return sprintf(buf, "%s%s%s%s\n",
++		       em_ctl & EM_CTL_LED ? "led " : "",
++		       em_ctl & EM_CTL_SAFTE ? "saf-te " : "",
++		       em_ctl & EM_CTL_SES ? "ses-2 " : "",
++		       em_ctl & EM_CTL_SGPIO ? "sgpio " : "");
++}
++
++/**
++ *	ahci_save_initial_config - Save and fixup initial config values
++ *	@dev: target AHCI device
++ *	@hpriv: host private area to store config values
++ *	@force_port_map: force port map to a specified value
++ *	@mask_port_map: mask out particular bits from port map
++ *
++ *	Some registers containing configuration info might be setup by
++ *	BIOS and might be cleared on reset.  This function saves the
++ *	initial values of those registers into @hpriv such that they
++ *	can be restored after controller reset.
++ *
++ *	If inconsistent, config values are fixed up by this function.
++ *
++ *	LOCKING:
++ *	None.
++ */
++void ahci_save_initial_config(struct device *dev,
++			      struct ahci_host_priv *hpriv,
++			      unsigned int force_port_map,
++			      unsigned int mask_port_map)
++{
++	void __iomem *mmio = hpriv->mmio;
++	u32 cap, cap2, vers, port_map;
++	int i;
++
++	/* make sure AHCI mode is enabled before accessing CAP */
++	ahci_enable_ahci(mmio);
++
++	/* Values prefixed with saved_ are written back to host after
++	 * reset.  Values without are used for driver operation.
++	 */
++	hpriv->saved_cap = cap = readl(mmio + HOST_CAP);
++	hpriv->saved_port_map = port_map = readl(mmio + HOST_PORTS_IMPL);
++
++	/* CAP2 register is only defined for AHCI 1.2 and later */
++	vers = readl(mmio + HOST_VERSION);
++	if ((vers >> 16) > 1 ||
++	   ((vers >> 16) == 1 && (vers & 0xFFFF) >= 0x200))
++		hpriv->saved_cap2 = cap2 = readl(mmio + HOST_CAP2);
++	else
++		hpriv->saved_cap2 = cap2 = 0;
++
++	/* some chips have errata preventing 64bit use */
++	if ((cap & HOST_CAP_64) && (hpriv->flags & AHCI_HFLAG_32BIT_ONLY)) {
++		dev_info(dev, "controller can't do 64bit DMA, forcing 32bit\n");
++		cap &= ~HOST_CAP_64;
++	}
++
++	if ((cap & HOST_CAP_NCQ) && (hpriv->flags & AHCI_HFLAG_NO_NCQ)) {
++		dev_info(dev, "controller can't do NCQ, turning off CAP_NCQ\n");
++		cap &= ~HOST_CAP_NCQ;
++	}
++
++	if (!(cap & HOST_CAP_NCQ) && (hpriv->flags & AHCI_HFLAG_YES_NCQ)) {
++		dev_info(dev, "controller can do NCQ, turning on CAP_NCQ\n");
++		cap |= HOST_CAP_NCQ;
++	}
++
++	if ((cap & HOST_CAP_PMP) && (hpriv->flags & AHCI_HFLAG_NO_PMP)) {
++		dev_info(dev, "controller can't do PMP, turning off CAP_PMP\n");
++		cap &= ~HOST_CAP_PMP;
++	}
++
++	if ((cap & HOST_CAP_SNTF) && (hpriv->flags & AHCI_HFLAG_NO_SNTF)) {
++		dev_info(dev,
++			 "controller can't do SNTF, turning off CAP_SNTF\n");
++		cap &= ~HOST_CAP_SNTF;
++	}
++
++	if ((cap2 & HOST_CAP2_SDS) && (hpriv->flags & AHCI_HFLAG_NO_DEVSLP)) {
++		dev_info(dev,
++			 "controller can't do DEVSLP, turning off\n");
++		cap2 &= ~HOST_CAP2_SDS;
++		cap2 &= ~HOST_CAP2_SADM;
++	}
++
++	if (!(cap & HOST_CAP_FBS) && (hpriv->flags & AHCI_HFLAG_YES_FBS)) {
++		dev_info(dev, "controller can do FBS, turning on CAP_FBS\n");
++		cap |= HOST_CAP_FBS;
++	}
++
++	if (force_port_map && port_map != force_port_map) {
++		dev_info(dev, "forcing port_map 0x%x -> 0x%x\n",
++			 port_map, force_port_map);
++		port_map = force_port_map;
++	}
++
++	if (mask_port_map) {
++		dev_warn(dev, "masking port_map 0x%x -> 0x%x\n",
++			port_map,
++			port_map & mask_port_map);
++		port_map &= mask_port_map;
++	}
++
++	/* cross check port_map and cap.n_ports */
++	if (port_map) {
++		int map_ports = 0;
++
++		for (i = 0; i < AHCI_MAX_PORTS; i++)
++			if (port_map & (1 << i))
++				map_ports++;
++
++		/* If PI has more ports than n_ports, whine, clear
++		 * port_map and let it be generated from n_ports.
++		 */
++		if (map_ports > ahci_nr_ports(cap)) {
++			dev_warn(dev,
++				 "implemented port map (0x%x) contains more ports than nr_ports (%u), using nr_ports\n",
++				 port_map, ahci_nr_ports(cap));
++			port_map = 0;
++		}
++	}
++
++	/* fabricate port_map from cap.nr_ports */
++	if (!port_map) {
++		port_map = (1 << ahci_nr_ports(cap)) - 1;
++		dev_warn(dev, "forcing PORTS_IMPL to 0x%x\n", port_map);
++
++		/* write the fixed up value to the PI register */
++		hpriv->saved_port_map = port_map;
++	}
++
++	/* record values to use during operation */
++	hpriv->cap = cap;
++	hpriv->cap2 = cap2;
++	hpriv->port_map = port_map;
++}
++EXPORT_SYMBOL_GPL(ahci_save_initial_config);
++
++/**
++ *	ahci_restore_initial_config - Restore initial config
++ *	@host: target ATA host
++ *
++ *	Restore initial config stored by ahci_save_initial_config().
++ *
++ *	LOCKING:
++ *	None.
++ */
++static void ahci_restore_initial_config(struct ata_host *host)
++{
++	struct ahci_host_priv *hpriv = host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++
++	writel(hpriv->saved_cap, mmio + HOST_CAP);
++	if (hpriv->saved_cap2)
++		writel(hpriv->saved_cap2, mmio + HOST_CAP2);
++	writel(hpriv->saved_port_map, mmio + HOST_PORTS_IMPL);
++	(void) readl(mmio + HOST_PORTS_IMPL);	/* flush */
++}
++
++static unsigned ahci_scr_offset(struct ata_port *ap, unsigned int sc_reg)
++{
++	static const int offset[] = {
++		[SCR_STATUS]		= PORT_SCR_STAT,
++		[SCR_CONTROL]		= PORT_SCR_CTL,
++		[SCR_ERROR]		= PORT_SCR_ERR,
++		[SCR_ACTIVE]		= PORT_SCR_ACT,
++		[SCR_NOTIFICATION]	= PORT_SCR_NTF,
++	};
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++
++	if (sc_reg < ARRAY_SIZE(offset) &&
++	    (sc_reg != SCR_NOTIFICATION || (hpriv->cap & HOST_CAP_SNTF)))
++		return offset[sc_reg];
++	return 0;
++}
++
++static int ahci_scr_read(struct ata_link *link, unsigned int sc_reg, u32 *val)
++{
++	void __iomem *port_mmio = ahci_port_base(link->ap);
++	int offset = ahci_scr_offset(link->ap, sc_reg);
++
++	if (offset) {
++		*val = readl(port_mmio + offset);
++		return 0;
++	}
++	return -EINVAL;
++}
++
++static int ahci_scr_write(struct ata_link *link, unsigned int sc_reg, u32 val)
++{
++	void __iomem *port_mmio = ahci_port_base(link->ap);
++	int offset = ahci_scr_offset(link->ap, sc_reg);
++
++	if (offset) {
++		writel(val, port_mmio + offset);
++		return 0;
++	}
++	return -EINVAL;
++}
++
++void ahci_start_engine(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 tmp;
++
++	/* start DMA */
++	tmp = readl(port_mmio + PORT_CMD);
++	tmp |= PORT_CMD_START;
++	writel(tmp, port_mmio + PORT_CMD);
++	readl(port_mmio + PORT_CMD); /* flush */
++}
++EXPORT_SYMBOL_GPL(ahci_start_engine);
++
++int ahci_stop_engine(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 tmp;
++
++	tmp = readl(port_mmio + PORT_CMD);
++
++	/* check if the HBA is idle */
++	if ((tmp & (PORT_CMD_START | PORT_CMD_LIST_ON)) == 0)
++		return 0;
++
++	/* setting HBA to idle */
++	tmp &= ~PORT_CMD_START;
++	writel(tmp, port_mmio + PORT_CMD);
++
++	/* wait for engine to stop. This could be as long as 500 msec */
++	tmp = ata_wait_register(ap, port_mmio + PORT_CMD,
++				PORT_CMD_LIST_ON, PORT_CMD_LIST_ON, 1, 500);
++	if (tmp & PORT_CMD_LIST_ON)
++		return -EIO;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(ahci_stop_engine);
++
++static void ahci_start_fis_rx(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	struct ahci_port_priv *pp = ap->private_data;
++	u32 tmp;
++
++	/* set FIS registers */
++	if (hpriv->cap & HOST_CAP_64)
++		writel((pp->cmd_slot_dma >> 16) >> 16,
++		       port_mmio + PORT_LST_ADDR_HI);
++	writel(pp->cmd_slot_dma & 0xffffffff, port_mmio + PORT_LST_ADDR);
++
++	if (hpriv->cap & HOST_CAP_64)
++		writel((pp->rx_fis_dma >> 16) >> 16,
++		       port_mmio + PORT_FIS_ADDR_HI);
++	writel(pp->rx_fis_dma & 0xffffffff, port_mmio + PORT_FIS_ADDR);
++
++	/* enable FIS reception */
++	tmp = readl(port_mmio + PORT_CMD);
++	tmp |= PORT_CMD_FIS_RX;
++	writel(tmp, port_mmio + PORT_CMD);
++
++	/* flush */
++	readl(port_mmio + PORT_CMD);
++}
++
++static int ahci_stop_fis_rx(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 tmp;
++
++	/* disable FIS reception */
++	tmp = readl(port_mmio + PORT_CMD);
++	tmp &= ~PORT_CMD_FIS_RX;
++	writel(tmp, port_mmio + PORT_CMD);
++
++	/* wait for completion, spec says 500ms, give it 1000 */
++	tmp = ata_wait_register(ap, port_mmio + PORT_CMD, PORT_CMD_FIS_ON,
++				PORT_CMD_FIS_ON, 10, 1000);
++	if (tmp & PORT_CMD_FIS_ON)
++		return -EBUSY;
++
++	return 0;
++}
++
++static void ahci_power_up(struct ata_port *ap)
++{
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 cmd;
++
++	cmd = readl(port_mmio + PORT_CMD) & ~PORT_CMD_ICC_MASK;
++
++	/* spin up device */
++	if (hpriv->cap & HOST_CAP_SSS) {
++		cmd |= PORT_CMD_SPIN_UP;
++		writel(cmd, port_mmio + PORT_CMD);
++	}
++
++	/* wake up link */
++	writel(cmd | PORT_CMD_ICC_ACTIVE, port_mmio + PORT_CMD);
++}
++
++static int ahci_set_lpm(struct ata_link *link, enum ata_lpm_policy policy,
++			unsigned int hints)
++{
++	struct ata_port *ap = link->ap;
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	struct ahci_port_priv *pp = ap->private_data;
++	void __iomem *port_mmio = ahci_port_base(ap);
++
++	if (policy != ATA_LPM_MAX_POWER) {
++		/*
++		 * Disable interrupts on Phy Ready. This keeps us from
++		 * getting woken up due to spurious phy ready
++		 * interrupts.
++		 */
++		pp->intr_mask &= ~PORT_IRQ_PHYRDY;
++		writel(pp->intr_mask, port_mmio + PORT_IRQ_MASK);
++
++		sata_link_scr_lpm(link, policy, false);
++	}
++
++	if (hpriv->cap & HOST_CAP_ALPM) {
++		u32 cmd = readl(port_mmio + PORT_CMD);
++
++		if (policy == ATA_LPM_MAX_POWER || !(hints & ATA_LPM_HIPM)) {
++			cmd &= ~(PORT_CMD_ASP | PORT_CMD_ALPE);
++			cmd |= PORT_CMD_ICC_ACTIVE;
++
++			writel(cmd, port_mmio + PORT_CMD);
++			readl(port_mmio + PORT_CMD);
++
++			/* wait 10ms to be sure we've come out of LPM state */
++			ata_msleep(ap, 10);
++		} else {
++			cmd |= PORT_CMD_ALPE;
++			if (policy == ATA_LPM_MIN_POWER)
++				cmd |= PORT_CMD_ASP;
++
++			/* write out new cmd value */
++			writel(cmd, port_mmio + PORT_CMD);
++		}
++	}
++
++	/* set aggressive device sleep */
++	if ((hpriv->cap2 & HOST_CAP2_SDS) &&
++	    (hpriv->cap2 & HOST_CAP2_SADM) &&
++	    (link->device->flags & ATA_DFLAG_DEVSLP)) {
++		if (policy == ATA_LPM_MIN_POWER)
++			ahci_set_aggressive_devslp(ap, true);
++		else
++			ahci_set_aggressive_devslp(ap, false);
++	}
++
++	if (policy == ATA_LPM_MAX_POWER) {
++		sata_link_scr_lpm(link, policy, false);
++
++		/* turn PHYRDY IRQ back on */
++		pp->intr_mask |= PORT_IRQ_PHYRDY;
++		writel(pp->intr_mask, port_mmio + PORT_IRQ_MASK);
++	}
++
++	return 0;
++}
++
++#ifdef CONFIG_PM
++static void ahci_power_down(struct ata_port *ap)
++{
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 cmd, scontrol;
++
++	if (!(hpriv->cap & HOST_CAP_SSS))
++		return;
++
++	/* put device into listen mode, first set PxSCTL.DET to 0 */
++	scontrol = readl(port_mmio + PORT_SCR_CTL);
++	scontrol &= ~0xf;
++	writel(scontrol, port_mmio + PORT_SCR_CTL);
++
++	/* then set PxCMD.SUD to 0 */
++	cmd = readl(port_mmio + PORT_CMD) & ~PORT_CMD_ICC_MASK;
++	cmd &= ~PORT_CMD_SPIN_UP;
++	writel(cmd, port_mmio + PORT_CMD);
++}
++#endif
++
++static void ahci_start_port(struct ata_port *ap)
++{
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ata_link *link;
++	struct ahci_em_priv *emp;
++	ssize_t rc;
++	int i;
++
++	/* enable FIS reception */
++	ahci_start_fis_rx(ap);
++
++	/* enable DMA */
++	if (!(hpriv->flags & AHCI_HFLAG_DELAY_ENGINE))
++		ahci_start_engine(ap);
++
++	/* turn on LEDs */
++	if (ap->flags & ATA_FLAG_EM) {
++		ata_for_each_link(link, ap, EDGE) {
++			emp = &pp->em_priv[link->pmp];
++
++			/* EM Transmit bit maybe busy during init */
++			for (i = 0; i < EM_MAX_RETRY; i++) {
++				rc = ahci_transmit_led_message(ap,
++							       emp->led_state,
++							       4);
++				if (rc == -EBUSY)
++					ata_msleep(ap, 1);
++				else
++					break;
++			}
++		}
++	}
++
++	if (ap->flags & ATA_FLAG_SW_ACTIVITY)
++		ata_for_each_link(link, ap, EDGE)
++			ahci_init_sw_activity(link);
++
++}
++
++static int ahci_deinit_port(struct ata_port *ap, const char **emsg)
++{
++	int rc;
++
++	/* disable DMA */
++	rc = ahci_stop_engine(ap);
++	if (rc) {
++		*emsg = "failed to stop engine";
++		return rc;
++	}
++
++	/* disable FIS reception */
++	rc = ahci_stop_fis_rx(ap);
++	if (rc) {
++		*emsg = "failed stop FIS RX";
++		return rc;
++	}
++
++	return 0;
++}
++
++int ahci_reset_controller(struct ata_host *host)
++{
++	struct ahci_host_priv *hpriv = host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	u32 tmp;
++
++	/* we must be in AHCI mode, before using anything
++	 * AHCI-specific, such as HOST_RESET.
++	 */
++	ahci_enable_ahci(mmio);
++
++	/* global controller reset */
++	if (!ahci_skip_host_reset) {
++		tmp = readl(mmio + HOST_CTL);
++		if ((tmp & HOST_RESET) == 0) {
++			writel(tmp | HOST_RESET, mmio + HOST_CTL);
++			readl(mmio + HOST_CTL); /* flush */
++		}
++
++		/*
++		 * to perform host reset, OS should set HOST_RESET
++		 * and poll until this bit is read to be "0".
++		 * reset must complete within 1 second, or
++		 * the hardware should be considered fried.
++		 */
++		tmp = ata_wait_register(NULL, mmio + HOST_CTL, HOST_RESET,
++					HOST_RESET, 10, 1000);
++
++		if (tmp & HOST_RESET) {
++			dev_err(host->dev, "controller reset failed (0x%x)\n",
++				tmp);
++			return -EIO;
++		}
++
++		/* turn on AHCI mode */
++		ahci_enable_ahci(mmio);
++
++		/* Some registers might be cleared on reset.  Restore
++		 * initial values.
++		 */
++		ahci_restore_initial_config(host);
++	} else
++		dev_info(host->dev, "skipping global host reset\n");
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(ahci_reset_controller);
++
++static void ahci_sw_activity(struct ata_link *link)
++{
++	struct ata_port *ap = link->ap;
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ahci_em_priv *emp = &pp->em_priv[link->pmp];
++
++	if (!(link->flags & ATA_LFLAG_SW_ACTIVITY))
++		return;
++
++	emp->activity++;
++	if (!timer_pending(&emp->timer))
++		mod_timer(&emp->timer, jiffies + msecs_to_jiffies(10));
++}
++
++static void ahci_sw_activity_blink(unsigned long arg)
++{
++	struct ata_link *link = (struct ata_link *)arg;
++	struct ata_port *ap = link->ap;
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ahci_em_priv *emp = &pp->em_priv[link->pmp];
++	unsigned long led_message = emp->led_state;
++	u32 activity_led_state;
++	unsigned long flags;
++
++	led_message &= EM_MSG_LED_VALUE;
++	led_message |= ap->port_no | (link->pmp << 8);
++
++	/* check to see if we've had activity.  If so,
++	 * toggle state of LED and reset timer.  If not,
++	 * turn LED to desired idle state.
++	 */
++	spin_lock_irqsave(ap->lock, flags);
++	if (emp->saved_activity != emp->activity) {
++		emp->saved_activity = emp->activity;
++		/* get the current LED state */
++		activity_led_state = led_message & EM_MSG_LED_VALUE_ON;
++
++		if (activity_led_state)
++			activity_led_state = 0;
++		else
++			activity_led_state = 1;
++
++		/* clear old state */
++		led_message &= ~EM_MSG_LED_VALUE_ACTIVITY;
++
++		/* toggle state */
++		led_message |= (activity_led_state << 16);
++		mod_timer(&emp->timer, jiffies + msecs_to_jiffies(100));
++	} else {
++		/* switch to idle */
++		led_message &= ~EM_MSG_LED_VALUE_ACTIVITY;
++		if (emp->blink_policy == BLINK_OFF)
++			led_message |= (1 << 16);
++	}
++	spin_unlock_irqrestore(ap->lock, flags);
++	ahci_transmit_led_message(ap, led_message, 4);
++}
++
++static void ahci_init_sw_activity(struct ata_link *link)
++{
++	struct ata_port *ap = link->ap;
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ahci_em_priv *emp = &pp->em_priv[link->pmp];
++
++	/* init activity stats, setup timer */
++	emp->saved_activity = emp->activity = 0;
++	setup_timer(&emp->timer, ahci_sw_activity_blink, (unsigned long)link);
++
++	/* check our blink policy and set flag for link if it's enabled */
++	if (emp->blink_policy)
++		link->flags |= ATA_LFLAG_SW_ACTIVITY;
++}
++
++int ahci_reset_em(struct ata_host *host)
++{
++	struct ahci_host_priv *hpriv = host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	u32 em_ctl;
++
++	em_ctl = readl(mmio + HOST_EM_CTL);
++	if ((em_ctl & EM_CTL_TM) || (em_ctl & EM_CTL_RST))
++		return -EINVAL;
++
++	writel(em_ctl | EM_CTL_RST, mmio + HOST_EM_CTL);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(ahci_reset_em);
++
++static ssize_t ahci_transmit_led_message(struct ata_port *ap, u32 state,
++					ssize_t size)
++{
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	struct ahci_port_priv *pp = ap->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	u32 em_ctl;
++	u32 message[] = {0, 0};
++	unsigned long flags;
++	int pmp;
++	struct ahci_em_priv *emp;
++
++	/* get the slot number from the message */
++	pmp = (state & EM_MSG_LED_PMP_SLOT) >> 8;
++	if (pmp < EM_MAX_SLOTS)
++		emp = &pp->em_priv[pmp];
++	else
++		return -EINVAL;
++
++	spin_lock_irqsave(ap->lock, flags);
++
++	/*
++	 * if we are still busy transmitting a previous message,
++	 * do not allow
++	 */
++	em_ctl = readl(mmio + HOST_EM_CTL);
++	if (em_ctl & EM_CTL_TM) {
++		spin_unlock_irqrestore(ap->lock, flags);
++		return -EBUSY;
++	}
++
++	if (hpriv->em_msg_type & EM_MSG_TYPE_LED) {
++		/*
++		 * create message header - this is all zero except for
++		 * the message size, which is 4 bytes.
++		 */
++		message[0] |= (4 << 8);
++
++		/* ignore 0:4 of byte zero, fill in port info yourself */
++		message[1] = ((state & ~EM_MSG_LED_HBA_PORT) | ap->port_no);
++
++		/* write message to EM_LOC */
++		writel(message[0], mmio + hpriv->em_loc);
++		writel(message[1], mmio + hpriv->em_loc+4);
++
++		/*
++		 * tell hardware to transmit the message
++		 */
++		writel(em_ctl | EM_CTL_TM, mmio + HOST_EM_CTL);
++	}
++
++	/* save off new led state for port/slot */
++	emp->led_state = state;
++
++	spin_unlock_irqrestore(ap->lock, flags);
++	return size;
++}
++
++static ssize_t ahci_led_show(struct ata_port *ap, char *buf)
++{
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ata_link *link;
++	struct ahci_em_priv *emp;
++	int rc = 0;
++
++	ata_for_each_link(link, ap, EDGE) {
++		emp = &pp->em_priv[link->pmp];
++		rc += sprintf(buf, "%lx\n", emp->led_state);
++	}
++	return rc;
++}
++
++static ssize_t ahci_led_store(struct ata_port *ap, const char *buf,
++				size_t size)
++{
++	int state;
++	int pmp;
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ahci_em_priv *emp;
++
++	state = simple_strtoul(buf, NULL, 0);
++
++	/* get the slot number from the message */
++	pmp = (state & EM_MSG_LED_PMP_SLOT) >> 8;
++	if (pmp < EM_MAX_SLOTS)
++		emp = &pp->em_priv[pmp];
++	else
++		return -EINVAL;
++
++	/* mask off the activity bits if we are in sw_activity
++	 * mode, user should turn off sw_activity before setting
++	 * activity led through em_message
++	 */
++	if (emp->blink_policy)
++		state &= ~EM_MSG_LED_VALUE_ACTIVITY;
++
++	return ahci_transmit_led_message(ap, state, size);
++}
++
++static ssize_t ahci_activity_store(struct ata_device *dev, enum sw_activity val)
++{
++	struct ata_link *link = dev->link;
++	struct ata_port *ap = link->ap;
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ahci_em_priv *emp = &pp->em_priv[link->pmp];
++	u32 port_led_state = emp->led_state;
++
++	/* save the desired Activity LED behavior */
++	if (val == OFF) {
++		/* clear LFLAG */
++		link->flags &= ~(ATA_LFLAG_SW_ACTIVITY);
++
++		/* set the LED to OFF */
++		port_led_state &= EM_MSG_LED_VALUE_OFF;
++		port_led_state |= (ap->port_no | (link->pmp << 8));
++		ahci_transmit_led_message(ap, port_led_state, 4);
++	} else {
++		link->flags |= ATA_LFLAG_SW_ACTIVITY;
++		if (val == BLINK_OFF) {
++			/* set LED to ON for idle */
++			port_led_state &= EM_MSG_LED_VALUE_OFF;
++			port_led_state |= (ap->port_no | (link->pmp << 8));
++			port_led_state |= EM_MSG_LED_VALUE_ON; /* check this */
++			ahci_transmit_led_message(ap, port_led_state, 4);
++		}
++	}
++	emp->blink_policy = val;
++	return 0;
++}
++
++static ssize_t ahci_activity_show(struct ata_device *dev, char *buf)
++{
++	struct ata_link *link = dev->link;
++	struct ata_port *ap = link->ap;
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ahci_em_priv *emp = &pp->em_priv[link->pmp];
++
++	/* display the saved value of activity behavior for this
++	 * disk.
++	 */
++	return sprintf(buf, "%d\n", emp->blink_policy);
++}
++
++static void ahci_port_init(struct device *dev, struct ata_port *ap,
++			   int port_no, void __iomem *mmio,
++			   void __iomem *port_mmio)
++{
++	const char *emsg = NULL;
++	int rc;
++	u32 tmp;
++
++	/* make sure port is not active */
++	rc = ahci_deinit_port(ap, &emsg);
++	if (rc)
++		dev_warn(dev, "%s (%d)\n", emsg, rc);
++
++	/* clear SError */
++	tmp = readl(port_mmio + PORT_SCR_ERR);
++	VPRINTK("PORT_SCR_ERR 0x%x\n", tmp);
++	writel(tmp, port_mmio + PORT_SCR_ERR);
++
++	/* clear port IRQ */
++	tmp = readl(port_mmio + PORT_IRQ_STAT);
++	VPRINTK("PORT_IRQ_STAT 0x%x\n", tmp);
++	if (tmp)
++		writel(tmp, port_mmio + PORT_IRQ_STAT);
++
++	writel(1 << port_no, mmio + HOST_IRQ_STAT);
++}
++
++void ahci_init_controller(struct ata_host *host)
++{
++	struct ahci_host_priv *hpriv = host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	int i;
++	void __iomem *port_mmio;
++	u32 tmp;
++
++	for (i = 0; i < host->n_ports; i++) {
++		struct ata_port *ap = host->ports[i];
++
++		port_mmio = ahci_port_base(ap);
++		if (ata_port_is_dummy(ap))
++			continue;
++
++		ahci_port_init(host->dev, ap, i, mmio, port_mmio);
++	}
++
++	tmp = readl(mmio + HOST_CTL);
++	VPRINTK("HOST_CTL 0x%x\n", tmp);
++	writel(tmp | HOST_IRQ_EN, mmio + HOST_CTL);
++	tmp = readl(mmio + HOST_CTL);
++	VPRINTK("HOST_CTL 0x%x\n", tmp);
++}
++EXPORT_SYMBOL_GPL(ahci_init_controller);
++
++static void ahci_dev_config(struct ata_device *dev)
++{
++	struct ahci_host_priv *hpriv = dev->link->ap->host->private_data;
++
++	if (hpriv->flags & AHCI_HFLAG_SECT255) {
++		dev->max_sectors = 255;
++		ata_dev_info(dev,
++			     "SB600 AHCI: limiting to 255 sectors per cmd\n");
++	}
++}
++
++unsigned int ahci_dev_classify(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	struct ata_taskfile tf;
++	u32 tmp;
++
++	tmp = readl(port_mmio + PORT_SIG);
++	tf.lbah		= (tmp >> 24)	& 0xff;
++	tf.lbam		= (tmp >> 16)	& 0xff;
++	tf.lbal		= (tmp >> 8)	& 0xff;
++	tf.nsect	= (tmp)		& 0xff;
++
++	return ata_dev_classify(&tf);
++}
++EXPORT_SYMBOL_GPL(ahci_dev_classify);
++
++void ahci_fill_cmd_slot(struct ahci_port_priv *pp, unsigned int tag,
++			u32 opts)
++{
++	dma_addr_t cmd_tbl_dma;
++
++	cmd_tbl_dma = pp->cmd_tbl_dma + tag * AHCI_CMD_TBL_SZ;
++
++	pp->cmd_slot[tag].opts = cpu_to_le32(opts);
++	pp->cmd_slot[tag].status = 0;
++	pp->cmd_slot[tag].tbl_addr = cpu_to_le32(cmd_tbl_dma & 0xffffffff);
++	pp->cmd_slot[tag].tbl_addr_hi = cpu_to_le32((cmd_tbl_dma >> 16) >> 16);
++}
++EXPORT_SYMBOL_GPL(ahci_fill_cmd_slot);
++
++int ahci_kick_engine(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	u8 status = readl(port_mmio + PORT_TFDATA) & 0xFF;
++	u32 tmp;
++	int busy, rc;
++
++	/* stop engine */
++	rc = ahci_stop_engine(ap);
++	if (rc)
++		goto out_restart;
++
++	/* need to do CLO?
++	 * always do CLO if PMP is attached (AHCI-1.3 9.2)
++	 */
++	busy = status & (ATA_BUSY | ATA_DRQ);
++	if (!busy && !sata_pmp_attached(ap)) {
++		rc = 0;
++		goto out_restart;
++	}
++
++	if (!(hpriv->cap & HOST_CAP_CLO)) {
++		rc = -EOPNOTSUPP;
++		goto out_restart;
++	}
++
++	/* perform CLO */
++	tmp = readl(port_mmio + PORT_CMD);
++	tmp |= PORT_CMD_CLO;
++	writel(tmp, port_mmio + PORT_CMD);
++
++	rc = 0;
++	tmp = ata_wait_register(ap, port_mmio + PORT_CMD,
++				PORT_CMD_CLO, PORT_CMD_CLO, 1, 500);
++	if (tmp & PORT_CMD_CLO)
++		rc = -EIO;
++
++	/* restart engine */
++ out_restart:
++	ahci_start_engine(ap);
++	return rc;
++}
++EXPORT_SYMBOL_GPL(ahci_kick_engine);
++
++static int ahci_exec_polled_cmd(struct ata_port *ap, int pmp,
++				struct ata_taskfile *tf, int is_cmd, u16 flags,
++				unsigned long timeout_msec)
++{
++	const u32 cmd_fis_len = 5; /* five dwords */
++	struct ahci_port_priv *pp = ap->private_data;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u8 *fis = pp->cmd_tbl;
++	u32 tmp;
++
++	/* prep the command */
++	ata_tf_to_fis(tf, pmp, is_cmd, fis);
++	ahci_fill_cmd_slot(pp, 0, cmd_fis_len | flags | (pmp << 12));
++
++	/* issue & wait */
++	writel(1, port_mmio + PORT_CMD_ISSUE);
++
++	if (timeout_msec) {
++		tmp = ata_wait_register(ap, port_mmio + PORT_CMD_ISSUE,
++					0x1, 0x1, 1, timeout_msec);
++		if (tmp & 0x1) {
++			ahci_kick_engine(ap);
++			return -EBUSY;
++		}
++	} else
++		readl(port_mmio + PORT_CMD_ISSUE);	/* flush */
++
++	return 0;
++}
++
++int ahci_do_softreset(struct ata_link *link, unsigned int *class,
++		      int pmp, unsigned long deadline,
++		      int (*check_ready)(struct ata_link *link))
++{
++	struct ata_port *ap = link->ap;
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	struct ahci_port_priv *pp = ap->private_data;
++	const char *reason = NULL;
++	unsigned long now, msecs;
++	struct ata_taskfile tf;
++	bool fbs_disabled = false;
++	int rc;
++
++	DPRINTK("ENTER\n");
++
++	/* prepare for SRST (AHCI-1.1 10.4.1) */
++	rc = ahci_kick_engine(ap);
++	if (rc && rc != -EOPNOTSUPP)
++		ata_link_warn(link, "failed to reset engine (errno=%d)\n", rc);
++
++	/*
++	 * According to AHCI-1.2 9.3.9: if FBS is enable, software shall
++	 * clear PxFBS.EN to '0' prior to issuing software reset to devices
++	 * that is attached to port multiplier.
++	 */
++	if (!ata_is_host_link(link) && pp->fbs_enabled) {
++		ahci_disable_fbs(ap);
++		fbs_disabled = true;
++	}
++
++	ata_tf_init(link->device, &tf);
++
++	/* issue the first D2H Register FIS */
++	msecs = 0;
++	now = jiffies;
++	if (time_after(deadline, now))
++		msecs = jiffies_to_msecs(deadline - now);
++
++	tf.ctl |= ATA_SRST;
++	if (ahci_exec_polled_cmd(ap, pmp, &tf, 0,
++				 AHCI_CMD_RESET | AHCI_CMD_CLR_BUSY, msecs)) {
++		rc = -EIO;
++		reason = "1st FIS failed";
++		goto fail;
++	}
++
++	/* spec says at least 5us, but be generous and sleep for 1ms */
++	ata_msleep(ap, 1);
++
++	/* issue the second D2H Register FIS */
++	tf.ctl &= ~ATA_SRST;
++	ahci_exec_polled_cmd(ap, pmp, &tf, 0, 0, 0);
++
++	/* wait for link to become ready */
++	rc = ata_wait_after_reset(link, deadline, check_ready);
++	if (rc == -EBUSY && hpriv->flags & AHCI_HFLAG_SRST_TOUT_IS_OFFLINE) {
++		/*
++		 * Workaround for cases where link online status can't
++		 * be trusted.  Treat device readiness timeout as link
++		 * offline.
++		 */
++		ata_link_info(link, "device not ready, treating as offline\n");
++		*class = ATA_DEV_NONE;
++	} else if (rc) {
++		/* link occupied, -ENODEV too is an error */
++		reason = "device not ready";
++		goto fail;
++	} else
++		*class = ahci_dev_classify(ap);
++
++	/* re-enable FBS if disabled before */
++	if (fbs_disabled)
++		ahci_enable_fbs(ap);
++
++	DPRINTK("EXIT, class=%u\n", *class);
++	return 0;
++
++ fail:
++	ata_link_err(link, "softreset failed (%s)\n", reason);
++	return rc;
++}
++
++int ahci_check_ready(struct ata_link *link)
++{
++	void __iomem *port_mmio = ahci_port_base(link->ap);
++	u8 status = readl(port_mmio + PORT_TFDATA) & 0xFF;
++
++	return ata_check_ready(status);
++}
++EXPORT_SYMBOL_GPL(ahci_check_ready);
++
++static int ahci_softreset(struct ata_link *link, unsigned int *class,
++			  unsigned long deadline)
++{
++	int pmp = sata_srst_pmp(link);
++
++	DPRINTK("ENTER\n");
++
++	return ahci_do_softreset(link, class, pmp, deadline, ahci_check_ready);
++}
++EXPORT_SYMBOL_GPL(ahci_do_softreset);
++
++static int ahci_bad_pmp_check_ready(struct ata_link *link)
++{
++	void __iomem *port_mmio = ahci_port_base(link->ap);
++	u8 status = readl(port_mmio + PORT_TFDATA) & 0xFF;
++	u32 irq_status = readl(port_mmio + PORT_IRQ_STAT);
++
++	/*
++	 * There is no need to check TFDATA if BAD PMP is found due to HW bug,
++	 * which can save timeout delay.
++	 */
++	if (irq_status & PORT_IRQ_BAD_PMP)
++		return -EIO;
++
++	return ata_check_ready(status);
++}
++
++int ahci_pmp_retry_softreset(struct ata_link *link, unsigned int *class,
++				unsigned long deadline)
++{
++	struct ata_port *ap = link->ap;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	int pmp = sata_srst_pmp(link);
++	int rc;
++	u32 irq_sts;
++
++	DPRINTK("ENTER\n");
++
++	rc = ahci_do_softreset(link, class, pmp, deadline,
++			       ahci_bad_pmp_check_ready);
++
++	/*
++	 * Soft reset fails with IPMS set when PMP is enabled but
++	 * SATA HDD/ODD is connected to SATA port, do soft reset
++	 * again to port 0.
++	 */
++	if (rc == -EIO) {
++		irq_sts = readl(port_mmio + PORT_IRQ_STAT);
++		if (irq_sts & PORT_IRQ_BAD_PMP) {
++			ata_link_warn(link,
++					"applying PMP SRST workaround "
++					"and retrying\n");
++			rc = ahci_do_softreset(link, class, 0, deadline,
++					       ahci_check_ready);
++		}
++	}
++
++	return rc;
++}
++
++static int ahci_hardreset(struct ata_link *link, unsigned int *class,
++			  unsigned long deadline)
++{
++	const unsigned long *timing = sata_ehc_deb_timing(&link->eh_context);
++	struct ata_port *ap = link->ap;
++	struct ahci_port_priv *pp = ap->private_data;
++	u8 *d2h_fis = pp->rx_fis + RX_FIS_D2H_REG;
++	struct ata_taskfile tf;
++	bool online;
++	int rc;
++
++	DPRINTK("ENTER\n");
++
++	ahci_stop_engine(ap);
++
++	/* clear D2H reception area to properly wait for D2H FIS */
++	ata_tf_init(link->device, &tf);
++	tf.command = 0x80;
++	ata_tf_to_fis(&tf, 0, 0, d2h_fis);
++
++	rc = sata_link_hardreset(link, timing, deadline, &online,
++				 ahci_check_ready);
++
++	ahci_start_engine(ap);
++
++	if (online)
++		*class = ahci_dev_classify(ap);
++
++	DPRINTK("EXIT, rc=%d, class=%u\n", rc, *class);
++	return rc;
++}
++
++static void ahci_postreset(struct ata_link *link, unsigned int *class)
++{
++	struct ata_port *ap = link->ap;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 new_tmp, tmp;
++
++	ata_std_postreset(link, class);
++
++	/* Make sure port's ATAPI bit is set appropriately */
++	new_tmp = tmp = readl(port_mmio + PORT_CMD);
++	if (*class == ATA_DEV_ATAPI)
++		new_tmp |= PORT_CMD_ATAPI;
++	else
++		new_tmp &= ~PORT_CMD_ATAPI;
++	if (new_tmp != tmp) {
++		writel(new_tmp, port_mmio + PORT_CMD);
++		readl(port_mmio + PORT_CMD); /* flush */
++	}
++}
++
++static unsigned int ahci_fill_sg(struct ata_queued_cmd *qc, void *cmd_tbl)
++{
++	struct scatterlist *sg;
++	struct ahci_sg *ahci_sg = cmd_tbl + AHCI_CMD_TBL_HDR_SZ;
++	unsigned int si;
++
++	VPRINTK("ENTER\n");
++
++	/*
++	 * Next, the S/G list.
++	 */
++	for_each_sg(qc->sg, sg, qc->n_elem, si) {
++		dma_addr_t addr = sg_dma_address(sg);
++		u32 sg_len = sg_dma_len(sg);
++
++		ahci_sg[si].addr = cpu_to_le32(addr & 0xffffffff);
++		ahci_sg[si].addr_hi = cpu_to_le32((addr >> 16) >> 16);
++		ahci_sg[si].flags_size = cpu_to_le32(sg_len - 1);
++	}
++
++	return si;
++}
++
++static int ahci_pmp_qc_defer(struct ata_queued_cmd *qc)
++{
++	struct ata_port *ap = qc->ap;
++	struct ahci_port_priv *pp = ap->private_data;
++
++	if (!sata_pmp_attached(ap) || pp->fbs_enabled)
++		return ata_std_qc_defer(qc);
++	else
++		return sata_pmp_qc_defer_cmd_switch(qc);
++}
++
++static void ahci_qc_prep(struct ata_queued_cmd *qc)
++{
++	struct ata_port *ap = qc->ap;
++	struct ahci_port_priv *pp = ap->private_data;
++	int is_atapi = ata_is_atapi(qc->tf.protocol);
++	void *cmd_tbl;
++	u32 opts;
++	const u32 cmd_fis_len = 5; /* five dwords */
++	unsigned int n_elem;
++
++	/*
++	 * Fill in command table information.  First, the header,
++	 * a SATA Register - Host to Device command FIS.
++	 */
++	cmd_tbl = pp->cmd_tbl + qc->tag * AHCI_CMD_TBL_SZ;
++
++	ata_tf_to_fis(&qc->tf, qc->dev->link->pmp, 1, cmd_tbl);
++	if (is_atapi) {
++		memset(cmd_tbl + AHCI_CMD_TBL_CDB, 0, 32);
++		memcpy(cmd_tbl + AHCI_CMD_TBL_CDB, qc->cdb, qc->dev->cdb_len);
++	}
++
++	n_elem = 0;
++	if (qc->flags & ATA_QCFLAG_DMAMAP)
++		n_elem = ahci_fill_sg(qc, cmd_tbl);
++
++	/*
++	 * Fill in command slot information.
++	 */
++	opts = cmd_fis_len | n_elem << 16 | (qc->dev->link->pmp << 12);
++	if (qc->tf.flags & ATA_TFLAG_WRITE)
++		opts |= AHCI_CMD_WRITE;
++	if (is_atapi)
++		opts |= AHCI_CMD_ATAPI | AHCI_CMD_PREFETCH;
++
++	ahci_fill_cmd_slot(pp, qc->tag, opts);
++}
++
++static void ahci_fbs_dec_intr(struct ata_port *ap)
++{
++	struct ahci_port_priv *pp = ap->private_data;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 fbs = readl(port_mmio + PORT_FBS);
++	int retries = 3;
++
++	DPRINTK("ENTER\n");
++	BUG_ON(!pp->fbs_enabled);
++
++	/* time to wait for DEC is not specified by AHCI spec,
++	 * add a retry loop for safety.
++	 */
++	writel(fbs | PORT_FBS_DEC, port_mmio + PORT_FBS);
++	fbs = readl(port_mmio + PORT_FBS);
++	while ((fbs & PORT_FBS_DEC) && retries--) {
++		udelay(1);
++		fbs = readl(port_mmio + PORT_FBS);
++	}
++
++	if (fbs & PORT_FBS_DEC)
++		dev_err(ap->host->dev, "failed to clear device error\n");
++}
++
++static void ahci_error_intr(struct ata_port *ap, u32 irq_stat)
++{
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ata_eh_info *host_ehi = &ap->link.eh_info;
++	struct ata_link *link = NULL;
++	struct ata_queued_cmd *active_qc;
++	struct ata_eh_info *active_ehi;
++	bool fbs_need_dec = false;
++	u32 serror;
++
++	/* determine active link with error */
++	if (pp->fbs_enabled) {
++		void __iomem *port_mmio = ahci_port_base(ap);
++		u32 fbs = readl(port_mmio + PORT_FBS);
++		int pmp = fbs >> PORT_FBS_DWE_OFFSET;
++
++		if ((fbs & PORT_FBS_SDE) && (pmp < ap->nr_pmp_links)) {
++			link = &ap->pmp_link[pmp];
++			fbs_need_dec = true;
++		}
++
++	} else
++		ata_for_each_link(link, ap, EDGE)
++			if (ata_link_active(link))
++				break;
++
++	if (!link)
++		link = &ap->link;
++
++	active_qc = ata_qc_from_tag(ap, link->active_tag);
++	active_ehi = &link->eh_info;
++
++	/* record irq stat */
++	ata_ehi_clear_desc(host_ehi);
++	ata_ehi_push_desc(host_ehi, "irq_stat 0x%08x", irq_stat);
++
++	/* AHCI needs SError cleared; otherwise, it might lock up */
++	ahci_scr_read(&ap->link, SCR_ERROR, &serror);
++	ahci_scr_write(&ap->link, SCR_ERROR, serror);
++	host_ehi->serror |= serror;
++
++	/* some controllers set IRQ_IF_ERR on device errors, ignore it */
++	if (hpriv->flags & AHCI_HFLAG_IGN_IRQ_IF_ERR)
++		irq_stat &= ~PORT_IRQ_IF_ERR;
++
++	if (irq_stat & PORT_IRQ_TF_ERR) {
++		/* If qc is active, charge it; otherwise, the active
++		 * link.  There's no active qc on NCQ errors.  It will
++		 * be determined by EH by reading log page 10h.
++		 */
++		if (active_qc)
++			active_qc->err_mask |= AC_ERR_DEV;
++		else
++			active_ehi->err_mask |= AC_ERR_DEV;
++
++		if (hpriv->flags & AHCI_HFLAG_IGN_SERR_INTERNAL)
++			host_ehi->serror &= ~SERR_INTERNAL;
++	}
++
++	if (irq_stat & PORT_IRQ_UNK_FIS) {
++		u32 *unk = (u32 *)(pp->rx_fis + RX_FIS_UNK);
++
++		active_ehi->err_mask |= AC_ERR_HSM;
++		active_ehi->action |= ATA_EH_RESET;
++		ata_ehi_push_desc(active_ehi,
++				  "unknown FIS %08x %08x %08x %08x" ,
++				  unk[0], unk[1], unk[2], unk[3]);
++	}
++
++	if (sata_pmp_attached(ap) && (irq_stat & PORT_IRQ_BAD_PMP)) {
++		active_ehi->err_mask |= AC_ERR_HSM;
++		active_ehi->action |= ATA_EH_RESET;
++		ata_ehi_push_desc(active_ehi, "incorrect PMP");
++	}
++
++	if (irq_stat & (PORT_IRQ_HBUS_ERR | PORT_IRQ_HBUS_DATA_ERR)) {
++		host_ehi->err_mask |= AC_ERR_HOST_BUS;
++		host_ehi->action |= ATA_EH_RESET;
++		ata_ehi_push_desc(host_ehi, "host bus error");
++	}
++
++	if (irq_stat & PORT_IRQ_IF_ERR) {
++		if (fbs_need_dec)
++			active_ehi->err_mask |= AC_ERR_DEV;
++		else {
++			host_ehi->err_mask |= AC_ERR_ATA_BUS;
++			host_ehi->action |= ATA_EH_RESET;
++		}
++
++		ata_ehi_push_desc(host_ehi, "interface fatal error");
++	}
++
++	if (irq_stat & (PORT_IRQ_CONNECT | PORT_IRQ_PHYRDY)) {
++		ata_ehi_hotplugged(host_ehi);
++		ata_ehi_push_desc(host_ehi, "%s",
++			irq_stat & PORT_IRQ_CONNECT ?
++			"connection status changed" : "PHY RDY changed");
++	}
++
++	/* okay, let's hand over to EH */
++
++	if (irq_stat & PORT_IRQ_FREEZE)
++		ata_port_freeze(ap);
++	else if (fbs_need_dec) {
++		ata_link_abort(link);
++		ahci_fbs_dec_intr(ap);
++	} else
++		ata_port_abort(ap);
++}
++
++static void ahci_handle_port_interrupt(struct ata_port *ap,
++				       void __iomem *port_mmio, u32 status)
++{
++	struct ata_eh_info *ehi = &ap->link.eh_info;
++	struct ahci_port_priv *pp = ap->private_data;
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	int resetting = !!(ap->pflags & ATA_PFLAG_RESETTING);
++	u32 qc_active = 0;
++	int rc;
++
++	/* ignore BAD_PMP while resetting */
++	if (unlikely(resetting))
++		status &= ~PORT_IRQ_BAD_PMP;
++
++	/* if LPM is enabled, PHYRDY doesn't mean anything */
++	if (ap->link.lpm_policy > ATA_LPM_MAX_POWER) {
++		status &= ~PORT_IRQ_PHYRDY;
++		ahci_scr_write(&ap->link, SCR_ERROR, SERR_PHYRDY_CHG);
++	}
++
++	if (unlikely(status & PORT_IRQ_ERROR)) {
++		ahci_error_intr(ap, status);
++		return;
++	}
++
++	if (status & PORT_IRQ_SDB_FIS) {
++		/* If SNotification is available, leave notification
++		 * handling to sata_async_notification().  If not,
++		 * emulate it by snooping SDB FIS RX area.
++		 *
++		 * Snooping FIS RX area is probably cheaper than
++		 * poking SNotification but some constrollers which
++		 * implement SNotification, ICH9 for example, don't
++		 * store AN SDB FIS into receive area.
++		 */
++		if (hpriv->cap & HOST_CAP_SNTF)
++			sata_async_notification(ap);
++		else {
++			/* If the 'N' bit in word 0 of the FIS is set,
++			 * we just received asynchronous notification.
++			 * Tell libata about it.
++			 *
++			 * Lack of SNotification should not appear in
++			 * ahci 1.2, so the workaround is unnecessary
++			 * when FBS is enabled.
++			 */
++			if (pp->fbs_enabled)
++				WARN_ON_ONCE(1);
++			else {
++				const __le32 *f = pp->rx_fis + RX_FIS_SDB;
++				u32 f0 = le32_to_cpu(f[0]);
++				if (f0 & (1 << 15))
++					sata_async_notification(ap);
++			}
++		}
++	}
++
++	/* pp->active_link is not reliable once FBS is enabled, both
++	 * PORT_SCR_ACT and PORT_CMD_ISSUE should be checked because
++	 * NCQ and non-NCQ commands may be in flight at the same time.
++	 */
++	if (pp->fbs_enabled) {
++		if (ap->qc_active) {
++			qc_active = readl(port_mmio + PORT_SCR_ACT);
++			qc_active |= readl(port_mmio + PORT_CMD_ISSUE);
++		}
++	} else {
++		/* pp->active_link is valid iff any command is in flight */
++		if (ap->qc_active && pp->active_link->sactive)
++			qc_active = readl(port_mmio + PORT_SCR_ACT);
++		else
++			qc_active = readl(port_mmio + PORT_CMD_ISSUE);
++	}
++
++
++	rc = ata_qc_complete_multiple(ap, qc_active);
++
++	/* while resetting, invalid completions are expected */
++	if (unlikely(rc < 0 && !resetting)) {
++		ehi->err_mask |= AC_ERR_HSM;
++		ehi->action |= ATA_EH_RESET;
++		ata_port_freeze(ap);
++	}
++}
++
++void ahci_port_intr(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 status;
++
++	status = readl(port_mmio + PORT_IRQ_STAT);
++	writel(status, port_mmio + PORT_IRQ_STAT);
++
++	ahci_handle_port_interrupt(ap, port_mmio, status);
++}
++
++irqreturn_t ahci_thread_fn(int irq, void *dev_instance)
++{
++	struct ata_port *ap = dev_instance;
++	struct ahci_port_priv *pp = ap->private_data;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	unsigned long flags;
++	u32 status;
++
++	spin_lock_irqsave(&ap->host->lock, flags);
++	status = pp->intr_status;
++	if (status)
++		pp->intr_status = 0;
++	spin_unlock_irqrestore(&ap->host->lock, flags);
++
++	spin_lock_bh(ap->lock);
++	ahci_handle_port_interrupt(ap, port_mmio, status);
++	spin_unlock_bh(ap->lock);
++
++	return IRQ_HANDLED;
++}
++EXPORT_SYMBOL_GPL(ahci_thread_fn);
++
++void ahci_hw_port_interrupt(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	struct ahci_port_priv *pp = ap->private_data;
++	u32 status;
++
++	status = readl(port_mmio + PORT_IRQ_STAT);
++	writel(status, port_mmio + PORT_IRQ_STAT);
++
++	pp->intr_status |= status;
++}
++
++irqreturn_t ahci_hw_interrupt(int irq, void *dev_instance)
++{
++	struct ata_port *ap_this = dev_instance;
++	struct ahci_port_priv *pp = ap_this->private_data;
++	struct ata_host *host = ap_this->host;
++	struct ahci_host_priv *hpriv = host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	unsigned int i;
++	u32 irq_stat, irq_masked;
++
++	VPRINTK("ENTER\n");
++
++	spin_lock(&host->lock);
++
++	irq_stat = readl(mmio + HOST_IRQ_STAT);
++
++	if (!irq_stat) {
++		u32 status = pp->intr_status;
++
++		spin_unlock(&host->lock);
++
++		VPRINTK("EXIT\n");
++
++		return status ? IRQ_WAKE_THREAD : IRQ_NONE;
++	}
++
++	irq_masked = irq_stat & hpriv->port_map;
++
++	for (i = 0; i < host->n_ports; i++) {
++		struct ata_port *ap;
++
++		if (!(irq_masked & (1 << i)))
++			continue;
++
++		ap = host->ports[i];
++		if (ap) {
++			ahci_hw_port_interrupt(ap);
++			VPRINTK("port %u\n", i);
++		} else {
++			VPRINTK("port %u (no irq)\n", i);
++			if (ata_ratelimit())
++				dev_warn(host->dev,
++					 "interrupt on disabled port %u\n", i);
++		}
++	}
++
++	writel(irq_stat, mmio + HOST_IRQ_STAT);
++
++	spin_unlock(&host->lock);
++
++	VPRINTK("EXIT\n");
++
++	return IRQ_WAKE_THREAD;
++}
++EXPORT_SYMBOL_GPL(ahci_hw_interrupt);
++
++irqreturn_t ahci_interrupt(int irq, void *dev_instance)
++{
++	struct ata_host *host = dev_instance;
++	struct ahci_host_priv *hpriv;
++	unsigned int i, handled = 0;
++	void __iomem *mmio;
++	u32 irq_stat, irq_masked;
++
++	VPRINTK("ENTER\n");
++
++	hpriv = host->private_data;
++	mmio = hpriv->mmio;
++
++	/* sigh.  0xffffffff is a valid return from h/w */
++	irq_stat = readl(mmio + HOST_IRQ_STAT);
++	if (!irq_stat)
++		return IRQ_NONE;
++
++	irq_masked = irq_stat & hpriv->port_map;
++
++	spin_lock(&host->lock);
++
++	for (i = 0; i < host->n_ports; i++) {
++		struct ata_port *ap;
++
++		if (!(irq_masked & (1 << i)))
++			continue;
++
++		ap = host->ports[i];
++		if (ap) {
++			ahci_port_intr(ap);
++			VPRINTK("port %u\n", i);
++		} else {
++			VPRINTK("port %u (no irq)\n", i);
++			if (ata_ratelimit())
++				dev_warn(host->dev,
++					 "interrupt on disabled port %u\n", i);
++		}
++
++		handled = 1;
++	}
++
++	/* HOST_IRQ_STAT behaves as level triggered latch meaning that
++	 * it should be cleared after all the port events are cleared;
++	 * otherwise, it will raise a spurious interrupt after each
++	 * valid one.  Please read section 10.6.2 of ahci 1.1 for more
++	 * information.
++	 *
++	 * Also, use the unmasked value to clear interrupt as spurious
++	 * pending event on a dummy port might cause screaming IRQ.
++	 */
++	writel(irq_stat, mmio + HOST_IRQ_STAT);
++
++	spin_unlock(&host->lock);
++
++	VPRINTK("EXIT\n");
++
++	return IRQ_RETVAL(handled);
++}
++EXPORT_SYMBOL_GPL(ahci_interrupt);
++
++static unsigned int ahci_qc_issue(struct ata_queued_cmd *qc)
++{
++	struct ata_port *ap = qc->ap;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	struct ahci_port_priv *pp = ap->private_data;
++
++	/* Keep track of the currently active link.  It will be used
++	 * in completion path to determine whether NCQ phase is in
++	 * progress.
++	 */
++	pp->active_link = qc->dev->link;
++
++	if (qc->tf.protocol == ATA_PROT_NCQ)
++		writel(1 << qc->tag, port_mmio + PORT_SCR_ACT);
++
++	if (pp->fbs_enabled && pp->fbs_last_dev != qc->dev->link->pmp) {
++		u32 fbs = readl(port_mmio + PORT_FBS);
++		fbs &= ~(PORT_FBS_DEV_MASK | PORT_FBS_DEC);
++		fbs |= qc->dev->link->pmp << PORT_FBS_DEV_OFFSET;
++		writel(fbs, port_mmio + PORT_FBS);
++		pp->fbs_last_dev = qc->dev->link->pmp;
++	}
++
++	writel(1 << qc->tag, port_mmio + PORT_CMD_ISSUE);
++
++	ahci_sw_activity(qc->dev->link);
++
++	return 0;
++}
++
++static bool ahci_qc_fill_rtf(struct ata_queued_cmd *qc)
++{
++	struct ahci_port_priv *pp = qc->ap->private_data;
++	u8 *rx_fis = pp->rx_fis;
++
++	if (pp->fbs_enabled)
++		rx_fis += qc->dev->link->pmp * AHCI_RX_FIS_SZ;
++
++	/*
++	 * After a successful execution of an ATA PIO data-in command,
++	 * the device doesn't send D2H Reg FIS to update the TF and
++	 * the host should take TF and E_Status from the preceding PIO
++	 * Setup FIS.
++	 */
++	if (qc->tf.protocol == ATA_PROT_PIO && qc->dma_dir == DMA_FROM_DEVICE &&
++	    !(qc->flags & ATA_QCFLAG_FAILED)) {
++		ata_tf_from_fis(rx_fis + RX_FIS_PIO_SETUP, &qc->result_tf);
++		qc->result_tf.command = (rx_fis + RX_FIS_PIO_SETUP)[15];
++	} else
++		ata_tf_from_fis(rx_fis + RX_FIS_D2H_REG, &qc->result_tf);
++
++	return true;
++}
++
++static void ahci_freeze(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++
++	/* turn IRQ off */
++	writel(0, port_mmio + PORT_IRQ_MASK);
++}
++
++static void ahci_thaw(struct ata_port *ap)
++{
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 tmp;
++	struct ahci_port_priv *pp = ap->private_data;
++
++	/* clear IRQ */
++	tmp = readl(port_mmio + PORT_IRQ_STAT);
++	writel(tmp, port_mmio + PORT_IRQ_STAT);
++	writel(1 << ap->port_no, mmio + HOST_IRQ_STAT);
++
++	/* turn IRQ back on */
++	writel(pp->intr_mask, port_mmio + PORT_IRQ_MASK);
++}
++
++static void ahci_error_handler(struct ata_port *ap)
++{
++	if (!(ap->pflags & ATA_PFLAG_FROZEN)) {
++		/* restart engine */
++		ahci_stop_engine(ap);
++		ahci_start_engine(ap);
++	}
++
++	sata_pmp_error_handler(ap);
++
++	if (!ata_dev_enabled(ap->link.device))
++		ahci_stop_engine(ap);
++}
++
++static void ahci_post_internal_cmd(struct ata_queued_cmd *qc)
++{
++	struct ata_port *ap = qc->ap;
++
++	/* make DMA engine forget about the failed command */
++	if (qc->flags & ATA_QCFLAG_FAILED)
++		ahci_kick_engine(ap);
++}
++
++static void ahci_set_aggressive_devslp(struct ata_port *ap, bool sleep)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	struct ata_device *dev = ap->link.device;
++	u32 devslp, dm, dito, mdat, deto;
++	int rc;
++	unsigned int err_mask;
++
++	devslp = readl(port_mmio + PORT_DEVSLP);
++	if (!(devslp & PORT_DEVSLP_DSP)) {
++		dev_err(ap->host->dev, "port does not support device sleep\n");
++		return;
++	}
++
++	/* disable device sleep */
++	if (!sleep) {
++		if (devslp & PORT_DEVSLP_ADSE) {
++			writel(devslp & ~PORT_DEVSLP_ADSE,
++			       port_mmio + PORT_DEVSLP);
++			err_mask = ata_dev_set_feature(dev,
++						       SETFEATURES_SATA_DISABLE,
++						       SATA_DEVSLP);
++			if (err_mask && err_mask != AC_ERR_DEV)
++				ata_dev_warn(dev, "failed to disable DEVSLP\n");
++		}
++		return;
++	}
++
++	/* device sleep was already enabled */
++	if (devslp & PORT_DEVSLP_ADSE)
++		return;
++
++	/* set DITO, MDAT, DETO and enable DevSlp, need to stop engine first */
++	rc = ahci_stop_engine(ap);
++	if (rc)
++		return;
++
++	dm = (devslp & PORT_DEVSLP_DM_MASK) >> PORT_DEVSLP_DM_OFFSET;
++	dito = devslp_idle_timeout / (dm + 1);
++	if (dito > 0x3ff)
++		dito = 0x3ff;
++
++	/* Use the nominal value 10 ms if the read MDAT is zero,
++	 * the nominal value of DETO is 20 ms.
++	 */
++	if (dev->devslp_timing[ATA_LOG_DEVSLP_VALID] &
++	    ATA_LOG_DEVSLP_VALID_MASK) {
++		mdat = dev->devslp_timing[ATA_LOG_DEVSLP_MDAT] &
++		       ATA_LOG_DEVSLP_MDAT_MASK;
++		if (!mdat)
++			mdat = 10;
++		deto = dev->devslp_timing[ATA_LOG_DEVSLP_DETO];
++		if (!deto)
++			deto = 20;
++	} else {
++		mdat = 10;
++		deto = 20;
++	}
++
++	devslp |= ((dito << PORT_DEVSLP_DITO_OFFSET) |
++		   (mdat << PORT_DEVSLP_MDAT_OFFSET) |
++		   (deto << PORT_DEVSLP_DETO_OFFSET) |
++		   PORT_DEVSLP_ADSE);
++	writel(devslp, port_mmio + PORT_DEVSLP);
++
++	ahci_start_engine(ap);
++
++	/* enable device sleep feature for the drive */
++	err_mask = ata_dev_set_feature(dev,
++				       SETFEATURES_SATA_ENABLE,
++				       SATA_DEVSLP);
++	if (err_mask && err_mask != AC_ERR_DEV)
++		ata_dev_warn(dev, "failed to enable DEVSLP\n");
++}
++
++static void ahci_enable_fbs(struct ata_port *ap)
++{
++	struct ahci_port_priv *pp = ap->private_data;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 fbs;
++	int rc;
++
++	if (!pp->fbs_supported)
++		return;
++
++	fbs = readl(port_mmio + PORT_FBS);
++	if (fbs & PORT_FBS_EN) {
++		pp->fbs_enabled = true;
++		pp->fbs_last_dev = -1; /* initialization */
++		return;
++	}
++
++	rc = ahci_stop_engine(ap);
++	if (rc)
++		return;
++
++	writel(fbs | PORT_FBS_EN, port_mmio + PORT_FBS);
++	fbs = readl(port_mmio + PORT_FBS);
++	if (fbs & PORT_FBS_EN) {
++		dev_info(ap->host->dev, "FBS is enabled\n");
++		pp->fbs_enabled = true;
++		pp->fbs_last_dev = -1; /* initialization */
++	} else
++		dev_err(ap->host->dev, "Failed to enable FBS\n");
++
++	ahci_start_engine(ap);
++}
++
++static void ahci_disable_fbs(struct ata_port *ap)
++{
++	struct ahci_port_priv *pp = ap->private_data;
++	void __iomem *port_mmio = ahci_port_base(ap);
++	u32 fbs;
++	int rc;
++
++	if (!pp->fbs_supported)
++		return;
++
++	fbs = readl(port_mmio + PORT_FBS);
++	if ((fbs & PORT_FBS_EN) == 0) {
++		pp->fbs_enabled = false;
++		return;
++	}
++
++	rc = ahci_stop_engine(ap);
++	if (rc)
++		return;
++
++	writel(fbs & ~PORT_FBS_EN, port_mmio + PORT_FBS);
++	fbs = readl(port_mmio + PORT_FBS);
++	if (fbs & PORT_FBS_EN)
++		dev_err(ap->host->dev, "Failed to disable FBS\n");
++	else {
++		dev_info(ap->host->dev, "FBS is disabled\n");
++		pp->fbs_enabled = false;
++	}
++
++	ahci_start_engine(ap);
++}
++
++static void ahci_pmp_attach(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	struct ahci_port_priv *pp = ap->private_data;
++	u32 cmd;
++
++	cmd = readl(port_mmio + PORT_CMD);
++	cmd |= PORT_CMD_PMP;
++	writel(cmd, port_mmio + PORT_CMD);
++
++	ahci_enable_fbs(ap);
++
++	pp->intr_mask |= PORT_IRQ_BAD_PMP;
++
++	/*
++	 * We must not change the port interrupt mask register if the
++	 * port is marked frozen, the value in pp->intr_mask will be
++	 * restored later when the port is thawed.
++	 *
++	 * Note that during initialization, the port is marked as
++	 * frozen since the irq handler is not yet registered.
++	 */
++	if (!(ap->pflags & ATA_PFLAG_FROZEN))
++		writel(pp->intr_mask, port_mmio + PORT_IRQ_MASK);
++}
++
++static void ahci_pmp_detach(struct ata_port *ap)
++{
++	void __iomem *port_mmio = ahci_port_base(ap);
++	struct ahci_port_priv *pp = ap->private_data;
++	u32 cmd;
++
++	ahci_disable_fbs(ap);
++
++	cmd = readl(port_mmio + PORT_CMD);
++	cmd &= ~PORT_CMD_PMP;
++	writel(cmd, port_mmio + PORT_CMD);
++
++	pp->intr_mask &= ~PORT_IRQ_BAD_PMP;
++
++	/* see comment above in ahci_pmp_attach() */
++	if (!(ap->pflags & ATA_PFLAG_FROZEN))
++		writel(pp->intr_mask, port_mmio + PORT_IRQ_MASK);
++}
++
++int ahci_port_resume(struct ata_port *ap)
++{
++	ahci_power_up(ap);
++	ahci_start_port(ap);
++
++	if (sata_pmp_attached(ap))
++		ahci_pmp_attach(ap);
++	else
++		ahci_pmp_detach(ap);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(ahci_port_resume);
++
++#ifdef CONFIG_PM
++static int ahci_port_suspend(struct ata_port *ap, pm_message_t mesg)
++{
++	const char *emsg = NULL;
++	int rc;
++
++	rc = ahci_deinit_port(ap, &emsg);
++	if (rc == 0)
++		ahci_power_down(ap);
++	else {
++		ata_port_err(ap, "%s (%d)\n", emsg, rc);
++		ata_port_freeze(ap);
++	}
++
++	return rc;
++}
++#endif
++
++static int ahci_port_start(struct ata_port *ap)
++{
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	struct device *dev = ap->host->dev;
++	struct ahci_port_priv *pp;
++	void *mem;
++	dma_addr_t mem_dma;
++	size_t dma_sz, rx_fis_sz;
++
++	pp = devm_kzalloc(dev, sizeof(*pp), GFP_KERNEL);
++	if (!pp)
++		return -ENOMEM;
++
++	/* check FBS capability */
++	if ((hpriv->cap & HOST_CAP_FBS) && sata_pmp_supported(ap)) {
++		void __iomem *port_mmio = ahci_port_base(ap);
++		u32 cmd = readl(port_mmio + PORT_CMD);
++		if (cmd & PORT_CMD_FBSCP)
++			pp->fbs_supported = true;
++		else if (hpriv->flags & AHCI_HFLAG_YES_FBS) {
++			dev_info(dev, "port %d can do FBS, forcing FBSCP\n",
++				 ap->port_no);
++			pp->fbs_supported = true;
++		} else
++			dev_warn(dev, "port %d is not capable of FBS\n",
++				 ap->port_no);
++	}
++
++	if (pp->fbs_supported) {
++		dma_sz = AHCI_PORT_PRIV_FBS_DMA_SZ;
++		rx_fis_sz = AHCI_RX_FIS_SZ * 16;
++	} else {
++		dma_sz = AHCI_PORT_PRIV_DMA_SZ;
++		rx_fis_sz = AHCI_RX_FIS_SZ;
++	}
++
++	mem = dmam_alloc_coherent(dev, dma_sz, &mem_dma, GFP_KERNEL);
++	if (!mem)
++		return -ENOMEM;
++	memset(mem, 0, dma_sz);
++
++	/*
++	 * First item in chunk of DMA memory: 32-slot command table,
++	 * 32 bytes each in size
++	 */
++	pp->cmd_slot = mem;
++	pp->cmd_slot_dma = mem_dma;
++
++	mem += AHCI_CMD_SLOT_SZ;
++	mem_dma += AHCI_CMD_SLOT_SZ;
++
++	/*
++	 * Second item: Received-FIS area
++	 */
++	pp->rx_fis = mem;
++	pp->rx_fis_dma = mem_dma;
++
++	mem += rx_fis_sz;
++	mem_dma += rx_fis_sz;
++
++	/*
++	 * Third item: data area for storing a single command
++	 * and its scatter-gather table
++	 */
++	pp->cmd_tbl = mem;
++	pp->cmd_tbl_dma = mem_dma;
++
++	/*
++	 * Save off initial list of interrupts to be enabled.
++	 * This could be changed later
++	 */
++	pp->intr_mask = DEF_PORT_IRQ;
++
++	/*
++	 * Switch to per-port locking in case each port has its own MSI vector.
++	 */
++	if ((hpriv->flags & AHCI_HFLAG_MULTI_MSI)) {
++		spin_lock_init(&pp->lock);
++		ap->lock = &pp->lock;
++	}
++
++	ap->private_data = pp;
++
++	/* engage engines, captain */
++	return ahci_port_resume(ap);
++}
++
++static void ahci_port_stop(struct ata_port *ap)
++{
++	const char *emsg = NULL;
++	int rc;
++
++	/* de-initialize port */
++	rc = ahci_deinit_port(ap, &emsg);
++	if (rc)
++		ata_port_warn(ap, "%s (%d)\n", emsg, rc);
++}
++
++void ahci_print_info(struct ata_host *host, const char *scc_s)
++{
++	struct ahci_host_priv *hpriv = host->private_data;
++	void __iomem *mmio = hpriv->mmio;
++	u32 vers, cap, cap2, impl, speed;
++	const char *speed_s;
++
++	vers = readl(mmio + HOST_VERSION);
++	cap = hpriv->cap;
++	cap2 = hpriv->cap2;
++	impl = hpriv->port_map;
++
++	speed = (cap >> 20) & 0xf;
++	if (speed == 1)
++		speed_s = "1.5";
++	else if (speed == 2)
++		speed_s = "3";
++	else if (speed == 3)
++		speed_s = "6";
++	else
++		speed_s = "?";
++
++	dev_info(host->dev,
++		"AHCI %02x%02x.%02x%02x "
++		"%u slots %u ports %s Gbps 0x%x impl %s mode\n"
++		,
++
++		(vers >> 24) & 0xff,
++		(vers >> 16) & 0xff,
++		(vers >> 8) & 0xff,
++		vers & 0xff,
++
++		((cap >> 8) & 0x1f) + 1,
++		(cap & 0x1f) + 1,
++		speed_s,
++		impl,
++		scc_s);
++
++	dev_info(host->dev,
++		"flags: "
++		"%s%s%s%s%s%s%s"
++		"%s%s%s%s%s%s%s"
++		"%s%s%s%s%s%s%s"
++		"%s%s\n"
++		,
++
++		cap & HOST_CAP_64 ? "64bit " : "",
++		cap & HOST_CAP_NCQ ? "ncq " : "",
++		cap & HOST_CAP_SNTF ? "sntf " : "",
++		cap & HOST_CAP_MPS ? "ilck " : "",
++		cap & HOST_CAP_SSS ? "stag " : "",
++		cap & HOST_CAP_ALPM ? "pm " : "",
++		cap & HOST_CAP_LED ? "led " : "",
++		cap & HOST_CAP_CLO ? "clo " : "",
++		cap & HOST_CAP_ONLY ? "only " : "",
++		cap & HOST_CAP_PMP ? "pmp " : "",
++		cap & HOST_CAP_FBS ? "fbs " : "",
++		cap & HOST_CAP_PIO_MULTI ? "pio " : "",
++		cap & HOST_CAP_SSC ? "slum " : "",
++		cap & HOST_CAP_PART ? "part " : "",
++		cap & HOST_CAP_CCC ? "ccc " : "",
++		cap & HOST_CAP_EMS ? "ems " : "",
++		cap & HOST_CAP_SXS ? "sxs " : "",
++		cap2 & HOST_CAP2_DESO ? "deso " : "",
++		cap2 & HOST_CAP2_SADM ? "sadm " : "",
++		cap2 & HOST_CAP2_SDS ? "sds " : "",
++		cap2 & HOST_CAP2_APST ? "apst " : "",
++		cap2 & HOST_CAP2_NVMHCI ? "nvmp " : "",
++		cap2 & HOST_CAP2_BOH ? "boh " : ""
++		);
++}
++EXPORT_SYMBOL_GPL(ahci_print_info);
++
++void ahci_set_em_messages(struct ahci_host_priv *hpriv,
++			  struct ata_port_info *pi)
++{
++	u8 messages;
++	void __iomem *mmio = hpriv->mmio;
++	u32 em_loc = readl(mmio + HOST_EM_LOC);
++	u32 em_ctl = readl(mmio + HOST_EM_CTL);
++
++	if (!ahci_em_messages || !(hpriv->cap & HOST_CAP_EMS))
++		return;
++
++	messages = (em_ctl & EM_CTRL_MSG_TYPE) >> 16;
++
++	if (messages) {
++		/* store em_loc */
++		hpriv->em_loc = ((em_loc >> 16) * 4);
++		hpriv->em_buf_sz = ((em_loc & 0xff) * 4);
++		hpriv->em_msg_type = messages;
++		pi->flags |= ATA_FLAG_EM;
++		if (!(em_ctl & EM_CTL_ALHD))
++			pi->flags |= ATA_FLAG_SW_ACTIVITY;
++	}
++}
++EXPORT_SYMBOL_GPL(ahci_set_em_messages);
++
++MODULE_AUTHOR("Jeff Garzik");
++MODULE_DESCRIPTION("Common AHCI SATA low-level routines");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/tty/serial/8250/8250_core.c b/drivers/tty/serial/8250/8250_core.c
+index d9266c4..a89bdae 100644
+--- a/drivers/tty/serial/8250/8250_core.c
++++ b/drivers/tty/serial/8250/8250_core.c
+@@ -47,7 +47,7 @@
+ #include <asm/irq.h>
+ 
+ #include "8250.h"
+-
++extern	void	lm2_printk(unsigned long ptr, const char *str);
+ /*
+  * Configuration:
+  *   share_irqs - whether we pass IRQF_SHARED to request_irq().  This option
+diff --git a/drivers/tty/serial/8250/8250_core.c.orig b/drivers/tty/serial/8250/8250_core.c.orig
+new file mode 100644
+index 0000000..0510f8b
+--- /dev/null
++++ b/drivers/tty/serial/8250/8250_core.c.orig
+@@ -0,0 +1,3467 @@
++/*
++ *  Driver for 8250/16550-type serial ports
++ *
++ *  Based on drivers/char/serial.c, by Linus Torvalds, Theodore Ts'o.
++ *
++ *  Copyright (C) 2001 Russell King.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * A note about mapbase / membase
++ *
++ *  mapbase is the physical address of the IO port.
++ *  membase is an 'ioremapped' cookie.
++ */
++
++#if defined(CONFIG_SERIAL_8250_CONSOLE) && defined(CONFIG_MAGIC_SYSRQ)
++#define SUPPORT_SYSRQ
++#endif
++
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/ioport.h>
++#include <linux/init.h>
++#include <linux/console.h>
++#include <linux/sysrq.h>
++#include <linux/delay.h>
++#include <linux/platform_device.h>
++#include <linux/tty.h>
++#include <linux/ratelimit.h>
++#include <linux/tty_flip.h>
++#include <linux/serial_reg.h>
++#include <linux/serial_core.h>
++#include <linux/serial.h>
++#include <linux/serial_8250.h>
++#include <linux/nmi.h>
++#include <linux/mutex.h>
++#include <linux/slab.h>
++#include <linux/kdb.h>
++#ifdef CONFIG_SPARC
++#include <linux/sunserialcore.h>
++#endif
++
++#include <asm/io.h>
++#include <asm/irq.h>
++
++#include "8250.h"
++
++/*
++ * Configuration:
++ *   share_irqs - whether we pass IRQF_SHARED to request_irq().  This option
++ *                is unsafe when used on edge-triggered interrupts.
++ */
++static unsigned int share_irqs = SERIAL8250_SHARE_IRQS;
++
++static unsigned int nr_uarts = CONFIG_SERIAL_8250_RUNTIME_UARTS;
++
++static struct uart_driver serial8250_reg;
++
++static int serial_index(struct uart_port *port)
++{
++	return (serial8250_reg.minor - 64) + port->line;
++}
++
++static unsigned int skip_txen_test; /* force skip of txen test at init time */
++
++/*
++ * Debugging.
++ */
++#if 0
++#define DEBUG_AUTOCONF(fmt...)	printk(fmt)
++#else
++#define DEBUG_AUTOCONF(fmt...)	do { } while (0)
++#endif
++
++#if 0
++#define DEBUG_INTR(fmt...)	printk(fmt)
++#else
++#define DEBUG_INTR(fmt...)	do { } while (0)
++#endif
++
++/*
++ * On -rt we can have a more delays, and legitimately
++ * so - so don't drop work spuriously and spam the
++ * syslog:
++ */
++#ifdef CONFIG_PREEMPT_RT_FULL
++# define PASS_LIMIT	1000000
++#else
++# define PASS_LIMIT	512
++#endif
++
++#define BOTH_EMPTY 	(UART_LSR_TEMT | UART_LSR_THRE)
++
++
++#ifdef CONFIG_SERIAL_8250_DETECT_IRQ
++#define CONFIG_SERIAL_DETECT_IRQ 1
++#endif
++#ifdef CONFIG_SERIAL_8250_MANY_PORTS
++#define CONFIG_SERIAL_MANY_PORTS 1
++#endif
++
++/*
++ * HUB6 is always on.  This will be removed once the header
++ * files have been cleaned.
++ */
++#define CONFIG_HUB6 1
++
++#include <asm/serial.h>
++/*
++ * SERIAL_PORT_DFNS tells us about built-in ports that have no
++ * standard enumeration mechanism.   Platforms that can find all
++ * serial ports via mechanisms like ACPI or PCI need not supply it.
++ */
++#ifndef SERIAL_PORT_DFNS
++#define SERIAL_PORT_DFNS
++#endif
++
++static const struct old_serial_port old_serial_port[] = {
++	SERIAL_PORT_DFNS /* defined in asm/serial.h */
++};
++
++#define UART_NR	CONFIG_SERIAL_8250_NR_UARTS
++
++#ifdef CONFIG_SERIAL_8250_RSA
++
++#define PORT_RSA_MAX 4
++static unsigned long probe_rsa[PORT_RSA_MAX];
++static unsigned int probe_rsa_count;
++#endif /* CONFIG_SERIAL_8250_RSA  */
++
++struct irq_info {
++	struct			hlist_node node;
++	int			irq;
++	spinlock_t		lock;	/* Protects list not the hash */
++	struct list_head	*head;
++};
++
++#define NR_IRQ_HASH		32	/* Can be adjusted later */
++static struct hlist_head irq_lists[NR_IRQ_HASH];
++static DEFINE_MUTEX(hash_mutex);	/* Used to walk the hash */
++
++/*
++ * Here we define the default xmit fifo size used for each type of UART.
++ */
++static const struct serial8250_config uart_config[] = {
++	[PORT_UNKNOWN] = {
++		.name		= "unknown",
++		.fifo_size	= 1,
++		.tx_loadsz	= 1,
++	},
++	[PORT_8250] = {
++		.name		= "8250",
++		.fifo_size	= 1,
++		.tx_loadsz	= 1,
++	},
++	[PORT_16450] = {
++		.name		= "16450",
++		.fifo_size	= 1,
++		.tx_loadsz	= 1,
++	},
++	[PORT_16550] = {
++		.name		= "16550",
++		.fifo_size	= 1,
++		.tx_loadsz	= 1,
++	},
++	[PORT_16550A] = {
++		.name		= "16550A",
++		.fifo_size	= 16,
++		.tx_loadsz	= 16,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO,
++	},
++	[PORT_CIRRUS] = {
++		.name		= "Cirrus",
++		.fifo_size	= 1,
++		.tx_loadsz	= 1,
++	},
++	[PORT_16650] = {
++		.name		= "ST16650",
++		.fifo_size	= 1,
++		.tx_loadsz	= 1,
++		.flags		= UART_CAP_FIFO | UART_CAP_EFR | UART_CAP_SLEEP,
++	},
++	[PORT_16650V2] = {
++		.name		= "ST16650V2",
++		.fifo_size	= 32,
++		.tx_loadsz	= 16,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_01 |
++				  UART_FCR_T_TRIG_00,
++		.flags		= UART_CAP_FIFO | UART_CAP_EFR | UART_CAP_SLEEP,
++	},
++	[PORT_16750] = {
++		.name		= "TI16750",
++		.fifo_size	= 64,
++		.tx_loadsz	= 64,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10 |
++				  UART_FCR7_64BYTE,
++		.flags		= UART_CAP_FIFO | UART_CAP_SLEEP | UART_CAP_AFE,
++	},
++	[PORT_STARTECH] = {
++		.name		= "Startech",
++		.fifo_size	= 1,
++		.tx_loadsz	= 1,
++	},
++	[PORT_16C950] = {
++		.name		= "16C950/954",
++		.fifo_size	= 128,
++		.tx_loadsz	= 128,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		/* UART_CAP_EFR breaks billionon CF bluetooth card. */
++		.flags		= UART_CAP_FIFO | UART_CAP_SLEEP,
++	},
++	[PORT_16654] = {
++		.name		= "ST16654",
++		.fifo_size	= 64,
++		.tx_loadsz	= 32,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_01 |
++				  UART_FCR_T_TRIG_10,
++		.flags		= UART_CAP_FIFO | UART_CAP_EFR | UART_CAP_SLEEP,
++	},
++	[PORT_16850] = {
++		.name		= "XR16850",
++		.fifo_size	= 128,
++		.tx_loadsz	= 128,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO | UART_CAP_EFR | UART_CAP_SLEEP,
++	},
++	[PORT_RSA] = {
++		.name		= "RSA",
++		.fifo_size	= 2048,
++		.tx_loadsz	= 2048,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_11,
++		.flags		= UART_CAP_FIFO,
++	},
++	[PORT_NS16550A] = {
++		.name		= "NS16550A",
++		.fifo_size	= 16,
++		.tx_loadsz	= 16,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO | UART_NATSEMI,
++	},
++	[PORT_XSCALE] = {
++		.name		= "XScale",
++		.fifo_size	= 32,
++		.tx_loadsz	= 32,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO | UART_CAP_UUE | UART_CAP_RTOIE,
++	},
++	[PORT_OCTEON] = {
++		.name		= "OCTEON",
++		.fifo_size	= 64,
++		.tx_loadsz	= 64,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO,
++	},
++	[PORT_AR7] = {
++		.name		= "AR7",
++		.fifo_size	= 16,
++		.tx_loadsz	= 16,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_00,
++		.flags		= UART_CAP_FIFO | UART_CAP_AFE,
++	},
++	[PORT_U6_16550A] = {
++		.name		= "U6_16550A",
++		.fifo_size	= 64,
++		.tx_loadsz	= 64,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO | UART_CAP_AFE,
++	},
++	[PORT_TEGRA] = {
++		.name		= "Tegra",
++		.fifo_size	= 32,
++		.tx_loadsz	= 8,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_01 |
++				  UART_FCR_T_TRIG_01,
++		.flags		= UART_CAP_FIFO | UART_CAP_RTOIE,
++	},
++	[PORT_XR17D15X] = {
++		.name		= "XR17D15X",
++		.fifo_size	= 64,
++		.tx_loadsz	= 64,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO | UART_CAP_AFE | UART_CAP_EFR |
++				  UART_CAP_SLEEP,
++	},
++	[PORT_XR17V35X] = {
++		.name		= "XR17V35X",
++		.fifo_size	= 256,
++		.tx_loadsz	= 256,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_11 |
++				  UART_FCR_T_TRIG_11,
++		.flags		= UART_CAP_FIFO | UART_CAP_AFE | UART_CAP_EFR |
++				  UART_CAP_SLEEP,
++	},
++	[PORT_LPC3220] = {
++		.name		= "LPC3220",
++		.fifo_size	= 64,
++		.tx_loadsz	= 32,
++		.fcr		= UART_FCR_DMA_SELECT | UART_FCR_ENABLE_FIFO |
++				  UART_FCR_R_TRIG_00 | UART_FCR_T_TRIG_00,
++		.flags		= UART_CAP_FIFO,
++	},
++	[PORT_BRCM_TRUMANAGE] = {
++		.name		= "TruManage",
++		.fifo_size	= 1,
++		.tx_loadsz	= 1024,
++		.flags		= UART_CAP_HFIFO,
++	},
++	[PORT_8250_CIR] = {
++		.name		= "CIR port"
++	},
++	[PORT_ALTR_16550_F32] = {
++		.name		= "Altera 16550 FIFO32",
++		.fifo_size	= 32,
++		.tx_loadsz	= 32,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO | UART_CAP_AFE,
++	},
++	[PORT_ALTR_16550_F64] = {
++		.name		= "Altera 16550 FIFO64",
++		.fifo_size	= 64,
++		.tx_loadsz	= 64,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO | UART_CAP_AFE,
++	},
++	[PORT_ALTR_16550_F128] = {
++		.name		= "Altera 16550 FIFO128",
++		.fifo_size	= 128,
++		.tx_loadsz	= 128,
++		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
++		.flags		= UART_CAP_FIFO | UART_CAP_AFE,
++	},
++};
++
++/* Uart divisor latch read */
++static int default_serial_dl_read(struct uart_8250_port *up)
++{
++	return serial_in(up, UART_DLL) | serial_in(up, UART_DLM) << 8;
++}
++
++/* Uart divisor latch write */
++static void default_serial_dl_write(struct uart_8250_port *up, int value)
++{
++	serial_out(up, UART_DLL, value & 0xff);
++	serial_out(up, UART_DLM, value >> 8 & 0xff);
++}
++
++#if defined(CONFIG_MIPS_ALCHEMY) || defined(CONFIG_SERIAL_8250_RT288X)
++
++/* Au1x00/RT288x UART hardware has a weird register layout */
++static const u8 au_io_in_map[] = {
++	[UART_RX]  = 0,
++	[UART_IER] = 2,
++	[UART_IIR] = 3,
++	[UART_LCR] = 5,
++	[UART_MCR] = 6,
++	[UART_LSR] = 7,
++	[UART_MSR] = 8,
++};
++
++static const u8 au_io_out_map[] = {
++	[UART_TX]  = 1,
++	[UART_IER] = 2,
++	[UART_FCR] = 4,
++	[UART_LCR] = 5,
++	[UART_MCR] = 6,
++};
++
++static unsigned int au_serial_in(struct uart_port *p, int offset)
++{
++	offset = au_io_in_map[offset] << p->regshift;
++	return __raw_readl(p->membase + offset);
++}
++
++static void au_serial_out(struct uart_port *p, int offset, int value)
++{
++	offset = au_io_out_map[offset] << p->regshift;
++	__raw_writel(value, p->membase + offset);
++}
++
++/* Au1x00 haven't got a standard divisor latch */
++static int au_serial_dl_read(struct uart_8250_port *up)
++{
++	return __raw_readl(up->port.membase + 0x28);
++}
++
++static void au_serial_dl_write(struct uart_8250_port *up, int value)
++{
++	__raw_writel(value, up->port.membase + 0x28);
++}
++
++#endif
++
++static unsigned int hub6_serial_in(struct uart_port *p, int offset)
++{
++	offset = offset << p->regshift;
++	outb(p->hub6 - 1 + offset, p->iobase);
++	return inb(p->iobase + 1);
++}
++
++static void hub6_serial_out(struct uart_port *p, int offset, int value)
++{
++	offset = offset << p->regshift;
++	outb(p->hub6 - 1 + offset, p->iobase);
++	outb(value, p->iobase + 1);
++}
++
++static unsigned int mem_serial_in(struct uart_port *p, int offset)
++{
++	offset = offset << p->regshift;
++	return readb(p->membase + offset);
++}
++
++static void mem_serial_out(struct uart_port *p, int offset, int value)
++{
++	offset = offset << p->regshift;
++	writeb(value, p->membase + offset);
++}
++
++static void mem32_serial_out(struct uart_port *p, int offset, int value)
++{
++	offset = offset << p->regshift;
++	writel(value, p->membase + offset);
++}
++
++static unsigned int mem32_serial_in(struct uart_port *p, int offset)
++{
++	offset = offset << p->regshift;
++	return readl(p->membase + offset);
++}
++
++static unsigned int io_serial_in(struct uart_port *p, int offset)
++{
++	offset = offset << p->regshift;
++	return inb(p->iobase + offset);
++}
++
++static void io_serial_out(struct uart_port *p, int offset, int value)
++{
++	offset = offset << p->regshift;
++	outb(value, p->iobase + offset);
++}
++
++static int serial8250_default_handle_irq(struct uart_port *port);
++static int exar_handle_irq(struct uart_port *port);
++
++static void set_io_from_upio(struct uart_port *p)
++{
++	struct uart_8250_port *up =
++		container_of(p, struct uart_8250_port, port);
++
++	up->dl_read = default_serial_dl_read;
++	up->dl_write = default_serial_dl_write;
++
++	switch (p->iotype) {
++	case UPIO_HUB6:
++		p->serial_in = hub6_serial_in;
++		p->serial_out = hub6_serial_out;
++		break;
++
++	case UPIO_MEM:
++		p->serial_in = mem_serial_in;
++		p->serial_out = mem_serial_out;
++		break;
++
++	case UPIO_MEM32:
++		p->serial_in = mem32_serial_in;
++		p->serial_out = mem32_serial_out;
++		break;
++
++#if defined(CONFIG_MIPS_ALCHEMY) || defined(CONFIG_SERIAL_8250_RT288X)
++	case UPIO_AU:
++		p->serial_in = au_serial_in;
++		p->serial_out = au_serial_out;
++		up->dl_read = au_serial_dl_read;
++		up->dl_write = au_serial_dl_write;
++		break;
++#endif
++
++	default:
++		p->serial_in = io_serial_in;
++		p->serial_out = io_serial_out;
++		break;
++	}
++	/* Remember loaded iotype */
++	up->cur_iotype = p->iotype;
++	p->handle_irq = serial8250_default_handle_irq;
++}
++
++static void
++serial_port_out_sync(struct uart_port *p, int offset, int value)
++{
++	switch (p->iotype) {
++	case UPIO_MEM:
++	case UPIO_MEM32:
++	case UPIO_AU:
++		p->serial_out(p, offset, value);
++		p->serial_in(p, UART_LCR);	/* safe, no side-effects */
++		break;
++	default:
++		p->serial_out(p, offset, value);
++	}
++}
++
++/*
++ * For the 16C950
++ */
++static void serial_icr_write(struct uart_8250_port *up, int offset, int value)
++{
++	serial_out(up, UART_SCR, offset);
++	serial_out(up, UART_ICR, value);
++}
++
++static unsigned int serial_icr_read(struct uart_8250_port *up, int offset)
++{
++	unsigned int value;
++
++	serial_icr_write(up, UART_ACR, up->acr | UART_ACR_ICRRD);
++	serial_out(up, UART_SCR, offset);
++	value = serial_in(up, UART_ICR);
++	serial_icr_write(up, UART_ACR, up->acr);
++
++	return value;
++}
++
++/*
++ * FIFO support.
++ */
++static void serial8250_clear_fifos(struct uart_8250_port *p)
++{
++	if (p->capabilities & UART_CAP_FIFO) {
++		serial_out(p, UART_FCR, UART_FCR_ENABLE_FIFO);
++		serial_out(p, UART_FCR, UART_FCR_ENABLE_FIFO |
++			       UART_FCR_CLEAR_RCVR | UART_FCR_CLEAR_XMIT);
++		serial_out(p, UART_FCR, 0);
++	}
++}
++
++void serial8250_clear_and_reinit_fifos(struct uart_8250_port *p)
++{
++	unsigned char fcr;
++
++	serial8250_clear_fifos(p);
++	fcr = uart_config[p->port.type].fcr;
++	serial_out(p, UART_FCR, fcr);
++}
++EXPORT_SYMBOL_GPL(serial8250_clear_and_reinit_fifos);
++
++/*
++ * IER sleep support.  UARTs which have EFRs need the "extended
++ * capability" bit enabled.  Note that on XR16C850s, we need to
++ * reset LCR to write to IER.
++ */
++static void serial8250_set_sleep(struct uart_8250_port *p, int sleep)
++{
++	/*
++	 * Exar UARTs have a SLEEP register that enables or disables
++	 * each UART to enter sleep mode separately.  On the XR17V35x the
++	 * register is accessible to each UART at the UART_EXAR_SLEEP
++	 * offset but the UART channel may only write to the corresponding
++	 * bit.
++	 */
++	if ((p->port.type == PORT_XR17V35X) ||
++	   (p->port.type == PORT_XR17D15X)) {
++		serial_out(p, UART_EXAR_SLEEP, 0xff);
++		return;
++	}
++
++	if (p->capabilities & UART_CAP_SLEEP) {
++		if (p->capabilities & UART_CAP_EFR) {
++			serial_out(p, UART_LCR, UART_LCR_CONF_MODE_B);
++			serial_out(p, UART_EFR, UART_EFR_ECB);
++			serial_out(p, UART_LCR, 0);
++		}
++		serial_out(p, UART_IER, sleep ? UART_IERX_SLEEP : 0);
++		if (p->capabilities & UART_CAP_EFR) {
++			serial_out(p, UART_LCR, UART_LCR_CONF_MODE_B);
++			serial_out(p, UART_EFR, 0);
++			serial_out(p, UART_LCR, 0);
++		}
++	}
++}
++
++#ifdef CONFIG_SERIAL_8250_RSA
++/*
++ * Attempts to turn on the RSA FIFO.  Returns zero on failure.
++ * We set the port uart clock rate if we succeed.
++ */
++static int __enable_rsa(struct uart_8250_port *up)
++{
++	unsigned char mode;
++	int result;
++
++	mode = serial_in(up, UART_RSA_MSR);
++	result = mode & UART_RSA_MSR_FIFO;
++
++	if (!result) {
++		serial_out(up, UART_RSA_MSR, mode | UART_RSA_MSR_FIFO);
++		mode = serial_in(up, UART_RSA_MSR);
++		result = mode & UART_RSA_MSR_FIFO;
++	}
++
++	if (result)
++		up->port.uartclk = SERIAL_RSA_BAUD_BASE * 16;
++
++	return result;
++}
++
++static void enable_rsa(struct uart_8250_port *up)
++{
++	if (up->port.type == PORT_RSA) {
++		if (up->port.uartclk != SERIAL_RSA_BAUD_BASE * 16) {
++			spin_lock_irq(&up->port.lock);
++			__enable_rsa(up);
++			spin_unlock_irq(&up->port.lock);
++		}
++		if (up->port.uartclk == SERIAL_RSA_BAUD_BASE * 16)
++			serial_out(up, UART_RSA_FRR, 0);
++	}
++}
++
++/*
++ * Attempts to turn off the RSA FIFO.  Returns zero on failure.
++ * It is unknown why interrupts were disabled in here.  However,
++ * the caller is expected to preserve this behaviour by grabbing
++ * the spinlock before calling this function.
++ */
++static void disable_rsa(struct uart_8250_port *up)
++{
++	unsigned char mode;
++	int result;
++
++	if (up->port.type == PORT_RSA &&
++	    up->port.uartclk == SERIAL_RSA_BAUD_BASE * 16) {
++		spin_lock_irq(&up->port.lock);
++
++		mode = serial_in(up, UART_RSA_MSR);
++		result = !(mode & UART_RSA_MSR_FIFO);
++
++		if (!result) {
++			serial_out(up, UART_RSA_MSR, mode & ~UART_RSA_MSR_FIFO);
++			mode = serial_in(up, UART_RSA_MSR);
++			result = !(mode & UART_RSA_MSR_FIFO);
++		}
++
++		if (result)
++			up->port.uartclk = SERIAL_RSA_BAUD_BASE_LO * 16;
++		spin_unlock_irq(&up->port.lock);
++	}
++}
++#endif /* CONFIG_SERIAL_8250_RSA */
++
++/*
++ * This is a quickie test to see how big the FIFO is.
++ * It doesn't work at all the time, more's the pity.
++ */
++static int size_fifo(struct uart_8250_port *up)
++{
++	unsigned char old_fcr, old_mcr, old_lcr;
++	unsigned short old_dl;
++	int count;
++
++	old_lcr = serial_in(up, UART_LCR);
++	serial_out(up, UART_LCR, 0);
++	old_fcr = serial_in(up, UART_FCR);
++	old_mcr = serial_in(up, UART_MCR);
++	serial_out(up, UART_FCR, UART_FCR_ENABLE_FIFO |
++		    UART_FCR_CLEAR_RCVR | UART_FCR_CLEAR_XMIT);
++	serial_out(up, UART_MCR, UART_MCR_LOOP);
++	serial_out(up, UART_LCR, UART_LCR_CONF_MODE_A);
++	old_dl = serial_dl_read(up);
++	serial_dl_write(up, 0x0001);
++	serial_out(up, UART_LCR, 0x03);
++	for (count = 0; count < 256; count++)
++		serial_out(up, UART_TX, count);
++	mdelay(20);/* FIXME - schedule_timeout */
++	for (count = 0; (serial_in(up, UART_LSR) & UART_LSR_DR) &&
++	     (count < 256); count++)
++		serial_in(up, UART_RX);
++	serial_out(up, UART_FCR, old_fcr);
++	serial_out(up, UART_MCR, old_mcr);
++	serial_out(up, UART_LCR, UART_LCR_CONF_MODE_A);
++	serial_dl_write(up, old_dl);
++	serial_out(up, UART_LCR, old_lcr);
++
++	return count;
++}
++
++/*
++ * Read UART ID using the divisor method - set DLL and DLM to zero
++ * and the revision will be in DLL and device type in DLM.  We
++ * preserve the device state across this.
++ */
++static unsigned int autoconfig_read_divisor_id(struct uart_8250_port *p)
++{
++	unsigned char old_dll, old_dlm, old_lcr;
++	unsigned int id;
++
++	old_lcr = serial_in(p, UART_LCR);
++	serial_out(p, UART_LCR, UART_LCR_CONF_MODE_A);
++
++	old_dll = serial_in(p, UART_DLL);
++	old_dlm = serial_in(p, UART_DLM);
++
++	serial_out(p, UART_DLL, 0);
++	serial_out(p, UART_DLM, 0);
++
++	id = serial_in(p, UART_DLL) | serial_in(p, UART_DLM) << 8;
++
++	serial_out(p, UART_DLL, old_dll);
++	serial_out(p, UART_DLM, old_dlm);
++	serial_out(p, UART_LCR, old_lcr);
++
++	return id;
++}
++
++/*
++ * This is a helper routine to autodetect StarTech/Exar/Oxsemi UART's.
++ * When this function is called we know it is at least a StarTech
++ * 16650 V2, but it might be one of several StarTech UARTs, or one of
++ * its clones.  (We treat the broken original StarTech 16650 V1 as a
++ * 16550, and why not?  Startech doesn't seem to even acknowledge its
++ * existence.)
++ *
++ * What evil have men's minds wrought...
++ */
++static void autoconfig_has_efr(struct uart_8250_port *up)
++{
++	unsigned int id1, id2, id3, rev;
++
++	/*
++	 * Everything with an EFR has SLEEP
++	 */
++	up->capabilities |= UART_CAP_EFR | UART_CAP_SLEEP;
++
++	/*
++	 * First we check to see if it's an Oxford Semiconductor UART.
++	 *
++	 * If we have to do this here because some non-National
++	 * Semiconductor clone chips lock up if you try writing to the
++	 * LSR register (which serial_icr_read does)
++	 */
++
++	/*
++	 * Check for Oxford Semiconductor 16C950.
++	 *
++	 * EFR [4] must be set else this test fails.
++	 *
++	 * This shouldn't be necessary, but Mike Hudson (Exoray@isys.ca)
++	 * claims that it's needed for 952 dual UART's (which are not
++	 * recommended for new designs).
++	 */
++	up->acr = 0;
++	serial_out(up, UART_LCR, UART_LCR_CONF_MODE_B);
++	serial_out(up, UART_EFR, UART_EFR_ECB);
++	serial_out(up, UART_LCR, 0x00);
++	id1 = serial_icr_read(up, UART_ID1);
++	id2 = serial_icr_read(up, UART_ID2);
++	id3 = serial_icr_read(up, UART_ID3);
++	rev = serial_icr_read(up, UART_REV);
++
++	DEBUG_AUTOCONF("950id=%02x:%02x:%02x:%02x ", id1, id2, id3, rev);
++
++	if (id1 == 0x16 && id2 == 0xC9 &&
++	    (id3 == 0x50 || id3 == 0x52 || id3 == 0x54)) {
++		up->port.type = PORT_16C950;
++
++		/*
++		 * Enable work around for the Oxford Semiconductor 952 rev B
++		 * chip which causes it to seriously miscalculate baud rates
++		 * when DLL is 0.
++		 */
++		if (id3 == 0x52 && rev == 0x01)
++			up->bugs |= UART_BUG_QUOT;
++		return;
++	}
++
++	/*
++	 * We check for a XR16C850 by setting DLL and DLM to 0, and then
++	 * reading back DLL and DLM.  The chip type depends on the DLM
++	 * value read back:
++	 *  0x10 - XR16C850 and the DLL contains the chip revision.
++	 *  0x12 - XR16C2850.
++	 *  0x14 - XR16C854.
++	 */
++	id1 = autoconfig_read_divisor_id(up);
++	DEBUG_AUTOCONF("850id=%04x ", id1);
++
++	id2 = id1 >> 8;
++	if (id2 == 0x10 || id2 == 0x12 || id2 == 0x14) {
++		up->port.type = PORT_16850;
++		return;
++	}
++
++	/*
++	 * It wasn't an XR16C850.
++	 *
++	 * We distinguish between the '654 and the '650 by counting
++	 * how many bytes are in the FIFO.  I'm using this for now,
++	 * since that's the technique that was sent to me in the
++	 * serial driver update, but I'm not convinced this works.
++	 * I've had problems doing this in the past.  -TYT
++	 */
++	if (size_fifo(up) == 64)
++		up->port.type = PORT_16654;
++	else
++		up->port.type = PORT_16650V2;
++}
++
++/*
++ * We detected a chip without a FIFO.  Only two fall into
++ * this category - the original 8250 and the 16450.  The
++ * 16450 has a scratch register (accessible with LCR=0)
++ */
++static void autoconfig_8250(struct uart_8250_port *up)
++{
++	unsigned char scratch, status1, status2;
++
++	up->port.type = PORT_8250;
++
++	scratch = serial_in(up, UART_SCR);
++	serial_out(up, UART_SCR, 0xa5);
++	status1 = serial_in(up, UART_SCR);
++	serial_out(up, UART_SCR, 0x5a);
++	status2 = serial_in(up, UART_SCR);
++	serial_out(up, UART_SCR, scratch);
++
++	if (status1 == 0xa5 && status2 == 0x5a)
++		up->port.type = PORT_16450;
++}
++
++static int broken_efr(struct uart_8250_port *up)
++{
++	/*
++	 * Exar ST16C2550 "A2" devices incorrectly detect as
++	 * having an EFR, and report an ID of 0x0201.  See
++	 * http://linux.derkeiler.com/Mailing-Lists/Kernel/2004-11/4812.html 
++	 */
++	if (autoconfig_read_divisor_id(up) == 0x0201 && size_fifo(up) == 16)
++		return 1;
++
++	return 0;
++}
++
++static inline int ns16550a_goto_highspeed(struct uart_8250_port *up)
++{
++	unsigned char status;
++
++	status = serial_in(up, 0x04); /* EXCR2 */
++#define PRESL(x) ((x) & 0x30)
++	if (PRESL(status) == 0x10) {
++		/* already in high speed mode */
++		return 0;
++	} else {
++		status &= ~0xB0; /* Disable LOCK, mask out PRESL[01] */
++		status |= 0x10;  /* 1.625 divisor for baud_base --> 921600 */
++		serial_out(up, 0x04, status);
++	}
++	return 1;
++}
++
++/*
++ * We know that the chip has FIFOs.  Does it have an EFR?  The
++ * EFR is located in the same register position as the IIR and
++ * we know the top two bits of the IIR are currently set.  The
++ * EFR should contain zero.  Try to read the EFR.
++ */
++static void autoconfig_16550a(struct uart_8250_port *up)
++{
++	unsigned char status1, status2;
++	unsigned int iersave;
++
++	up->port.type = PORT_16550A;
++	up->capabilities |= UART_CAP_FIFO;
++
++	/*
++	 * XR17V35x UARTs have an extra divisor register, DLD
++	 * that gets enabled with when DLAB is set which will
++	 * cause the device to incorrectly match and assign
++	 * port type to PORT_16650.  The EFR for this UART is
++	 * found at offset 0x09. Instead check the Deice ID (DVID)
++	 * register for a 2, 4 or 8 port UART.
++	 */
++	if (up->port.flags & UPF_EXAR_EFR) {
++		status1 = serial_in(up, UART_EXAR_DVID);
++		if (status1 == 0x82 || status1 == 0x84 || status1 == 0x88) {
++			DEBUG_AUTOCONF("Exar XR17V35x ");
++			up->port.type = PORT_XR17V35X;
++			up->capabilities |= UART_CAP_AFE | UART_CAP_EFR |
++						UART_CAP_SLEEP;
++
++			return;
++		}
++
++	}
++
++	/*
++	 * Check for presence of the EFR when DLAB is set.
++	 * Only ST16C650V1 UARTs pass this test.
++	 */
++	serial_out(up, UART_LCR, UART_LCR_CONF_MODE_A);
++	if (serial_in(up, UART_EFR) == 0) {
++		serial_out(up, UART_EFR, 0xA8);
++		if (serial_in(up, UART_EFR) != 0) {
++			DEBUG_AUTOCONF("EFRv1 ");
++			up->port.type = PORT_16650;
++			up->capabilities |= UART_CAP_EFR | UART_CAP_SLEEP;
++		} else {
++			DEBUG_AUTOCONF("Motorola 8xxx DUART ");
++		}
++		serial_out(up, UART_EFR, 0);
++		return;
++	}
++
++	/*
++	 * Maybe it requires 0xbf to be written to the LCR.
++	 * (other ST16C650V2 UARTs, TI16C752A, etc)
++	 */
++	serial_out(up, UART_LCR, UART_LCR_CONF_MODE_B);
++	if (serial_in(up, UART_EFR) == 0 && !broken_efr(up)) {
++		DEBUG_AUTOCONF("EFRv2 ");
++		autoconfig_has_efr(up);
++		return;
++	}
++
++	/*
++	 * Check for a National Semiconductor SuperIO chip.
++	 * Attempt to switch to bank 2, read the value of the LOOP bit
++	 * from EXCR1. Switch back to bank 0, change it in MCR. Then
++	 * switch back to bank 2, read it from EXCR1 again and check
++	 * it's changed. If so, set baud_base in EXCR2 to 921600. -- dwmw2
++	 */
++	serial_out(up, UART_LCR, 0);
++	status1 = serial_in(up, UART_MCR);
++	serial_out(up, UART_LCR, 0xE0);
++	status2 = serial_in(up, 0x02); /* EXCR1 */
++
++	if (!((status2 ^ status1) & UART_MCR_LOOP)) {
++		serial_out(up, UART_LCR, 0);
++		serial_out(up, UART_MCR, status1 ^ UART_MCR_LOOP);
++		serial_out(up, UART_LCR, 0xE0);
++		status2 = serial_in(up, 0x02); /* EXCR1 */
++		serial_out(up, UART_LCR, 0);
++		serial_out(up, UART_MCR, status1);
++
++		if ((status2 ^ status1) & UART_MCR_LOOP) {
++			unsigned short quot;
++
++			serial_out(up, UART_LCR, 0xE0);
++
++			quot = serial_dl_read(up);
++			quot <<= 3;
++
++			if (ns16550a_goto_highspeed(up))
++				serial_dl_write(up, quot);
++
++			serial_out(up, UART_LCR, 0);
++
++			up->port.uartclk = 921600*16;
++			up->port.type = PORT_NS16550A;
++			up->capabilities |= UART_NATSEMI;
++			return;
++		}
++	}
++
++	/*
++	 * No EFR.  Try to detect a TI16750, which only sets bit 5 of
++	 * the IIR when 64 byte FIFO mode is enabled when DLAB is set.
++	 * Try setting it with and without DLAB set.  Cheap clones
++	 * set bit 5 without DLAB set.
++	 */
++	serial_out(up, UART_LCR, 0);
++	serial_out(up, UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR7_64BYTE);
++	status1 = serial_in(up, UART_IIR) >> 5;
++	serial_out(up, UART_FCR, UART_FCR_ENABLE_FIFO);
++	serial_out(up, UART_LCR, UART_LCR_CONF_MODE_A);
++	serial_out(up, UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR7_64BYTE);
++	status2 = serial_in(up, UART_IIR) >> 5;
++	serial_out(up, UART_FCR, UART_FCR_ENABLE_FIFO);
++	serial_out(up, UART_LCR, 0);
++
++	DEBUG_AUTOCONF("iir1=%d iir2=%d ", status1, status2);
++
++	if (status1 == 6 && status2 == 7) {
++		up->port.type = PORT_16750;
++		up->capabilities |= UART_CAP_AFE | UART_CAP_SLEEP;
++		return;
++	}
++
++	/*
++	 * Try writing and reading the UART_IER_UUE bit (b6).
++	 * If it works, this is probably one of the Xscale platform's
++	 * internal UARTs.
++	 * We're going to explicitly set the UUE bit to 0 before
++	 * trying to write and read a 1 just to make sure it's not
++	 * already a 1 and maybe locked there before we even start start.
++	 */
++	iersave = serial_in(up, UART_IER);
++	serial_out(up, UART_IER, iersave & ~UART_IER_UUE);
++	if (!(serial_in(up, UART_IER) & UART_IER_UUE)) {
++		/*
++		 * OK it's in a known zero state, try writing and reading
++		 * without disturbing the current state of the other bits.
++		 */
++		serial_out(up, UART_IER, iersave | UART_IER_UUE);
++		if (serial_in(up, UART_IER) & UART_IER_UUE) {
++			/*
++			 * It's an Xscale.
++			 * We'll leave the UART_IER_UUE bit set to 1 (enabled).
++			 */
++			DEBUG_AUTOCONF("Xscale ");
++			up->port.type = PORT_XSCALE;
++			up->capabilities |= UART_CAP_UUE | UART_CAP_RTOIE;
++			return;
++		}
++	} else {
++		/*
++		 * If we got here we couldn't force the IER_UUE bit to 0.
++		 * Log it and continue.
++		 */
++		DEBUG_AUTOCONF("Couldn't force IER_UUE to 0 ");
++	}
++	serial_out(up, UART_IER, iersave);
++
++	/*
++	 * Exar uarts have EFR in a weird location
++	 */
++	if (up->port.flags & UPF_EXAR_EFR) {
++		DEBUG_AUTOCONF("Exar XR17D15x ");
++		up->port.type = PORT_XR17D15X;
++		up->capabilities |= UART_CAP_AFE | UART_CAP_EFR |
++				    UART_CAP_SLEEP;
++
++		return;
++	}
++
++	/*
++	 * We distinguish between 16550A and U6 16550A by counting
++	 * how many bytes are in the FIFO.
++	 */
++	if (up->port.type == PORT_16550A && size_fifo(up) == 64) {
++		up->port.type = PORT_U6_16550A;
++		up->capabilities |= UART_CAP_AFE;
++	}
++}
++
++/*
++ * This routine is called by rs_init() to initialize a specific serial
++ * port.  It determines what type of UART chip this serial port is
++ * using: 8250, 16450, 16550, 16550A.  The important question is
++ * whether or not this UART is a 16550A or not, since this will
++ * determine whether or not we can use its FIFO features or not.
++ */
++static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
++{
++	unsigned char status1, scratch, scratch2, scratch3;
++	unsigned char save_lcr, save_mcr;
++	struct uart_port *port = &up->port;
++	unsigned long flags;
++	unsigned int old_capabilities;
++
++	if (!port->iobase && !port->mapbase && !port->membase)
++		return;
++
++	DEBUG_AUTOCONF("ttyS%d: autoconf (0x%04lx, 0x%p): ",
++		       serial_index(port), port->iobase, port->membase);
++
++	/*
++	 * We really do need global IRQs disabled here - we're going to
++	 * be frobbing the chips IRQ enable register to see if it exists.
++	 */
++	spin_lock_irqsave(&port->lock, flags);
++
++	up->capabilities = 0;
++	up->bugs = 0;
++
++	if (!(port->flags & UPF_BUGGY_UART)) {
++		/*
++		 * Do a simple existence test first; if we fail this,
++		 * there's no point trying anything else.
++		 *
++		 * 0x80 is used as a nonsense port to prevent against
++		 * false positives due to ISA bus float.  The
++		 * assumption is that 0x80 is a non-existent port;
++		 * which should be safe since include/asm/io.h also
++		 * makes this assumption.
++		 *
++		 * Note: this is safe as long as MCR bit 4 is clear
++		 * and the device is in "PC" mode.
++		 */
++		scratch = serial_in(up, UART_IER);
++		serial_out(up, UART_IER, 0);
++#ifdef __i386__
++		outb(0xff, 0x080);
++#endif
++		/*
++		 * Mask out IER[7:4] bits for test as some UARTs (e.g. TL
++		 * 16C754B) allow only to modify them if an EFR bit is set.
++		 */
++		scratch2 = serial_in(up, UART_IER) & 0x0f;
++		serial_out(up, UART_IER, 0x0F);
++#ifdef __i386__
++		outb(0, 0x080);
++#endif
++		scratch3 = serial_in(up, UART_IER) & 0x0f;
++		serial_out(up, UART_IER, scratch);
++		if (scratch2 != 0 || scratch3 != 0x0F) {
++			/*
++			 * We failed; there's nothing here
++			 */
++			spin_unlock_irqrestore(&port->lock, flags);
++			DEBUG_AUTOCONF("IER test failed (%02x, %02x) ",
++				       scratch2, scratch3);
++			goto out;
++		}
++	}
++
++	save_mcr = serial_in(up, UART_MCR);
++	save_lcr = serial_in(up, UART_LCR);
++
++	/*
++	 * Check to see if a UART is really there.  Certain broken
++	 * internal modems based on the Rockwell chipset fail this
++	 * test, because they apparently don't implement the loopback
++	 * test mode.  So this test is skipped on the COM 1 through
++	 * COM 4 ports.  This *should* be safe, since no board
++	 * manufacturer would be stupid enough to design a board
++	 * that conflicts with COM 1-4 --- we hope!
++	 */
++	if (!(port->flags & UPF_SKIP_TEST)) {
++		serial_out(up, UART_MCR, UART_MCR_LOOP | 0x0A);
++		status1 = serial_in(up, UART_MSR) & 0xF0;
++		serial_out(up, UART_MCR, save_mcr);
++		if (status1 != 0x90) {
++			spin_unlock_irqrestore(&port->lock, flags);
++			DEBUG_AUTOCONF("LOOP test failed (%02x) ",
++				       status1);
++			goto out;
++		}
++	}
++
++	/*
++	 * We're pretty sure there's a port here.  Lets find out what
++	 * type of port it is.  The IIR top two bits allows us to find
++	 * out if it's 8250 or 16450, 16550, 16550A or later.  This
++	 * determines what we test for next.
++	 *
++	 * We also initialise the EFR (if any) to zero for later.  The
++	 * EFR occupies the same register location as the FCR and IIR.
++	 */
++	serial_out(up, UART_LCR, UART_LCR_CONF_MODE_B);
++	serial_out(up, UART_EFR, 0);
++	serial_out(up, UART_LCR, 0);
++
++	serial_out(up, UART_FCR, UART_FCR_ENABLE_FIFO);
++	scratch = serial_in(up, UART_IIR) >> 6;
++
++	switch (scratch) {
++	case 0:
++		autoconfig_8250(up);
++		break;
++	case 1:
++		port->type = PORT_UNKNOWN;
++		break;
++	case 2:
++		port->type = PORT_16550;
++		break;
++	case 3:
++		autoconfig_16550a(up);
++		break;
++	}
++
++#ifdef CONFIG_SERIAL_8250_RSA
++	/*
++	 * Only probe for RSA ports if we got the region.
++	 */
++	if (port->type == PORT_16550A && probeflags & PROBE_RSA) {
++		int i;
++
++		for (i = 0 ; i < probe_rsa_count; ++i) {
++			if (probe_rsa[i] == port->iobase && __enable_rsa(up)) {
++				port->type = PORT_RSA;
++				break;
++			}
++		}
++	}
++#endif
++
++	serial_out(up, UART_LCR, save_lcr);
++
++	port->fifosize = uart_config[up->port.type].fifo_size;
++	old_capabilities = up->capabilities; 
++	up->capabilities = uart_config[port->type].flags;
++	up->tx_loadsz = uart_config[port->type].tx_loadsz;
++
++	if (port->type == PORT_UNKNOWN)
++		goto out_lock;
++
++	/*
++	 * Reset the UART.
++	 */
++#ifdef CONFIG_SERIAL_8250_RSA
++	if (port->type == PORT_RSA)
++		serial_out(up, UART_RSA_FRR, 0);
++#endif
++	serial_out(up, UART_MCR, save_mcr);
++	serial8250_clear_fifos(up);
++	serial_in(up, UART_RX);
++	if (up->capabilities & UART_CAP_UUE)
++		serial_out(up, UART_IER, UART_IER_UUE);
++	else
++		serial_out(up, UART_IER, 0);
++
++out_lock:
++	spin_unlock_irqrestore(&port->lock, flags);
++	if (up->capabilities != old_capabilities) {
++		printk(KERN_WARNING
++		       "ttyS%d: detected caps %08x should be %08x\n",
++		       serial_index(port), old_capabilities,
++		       up->capabilities);
++	}
++out:
++	DEBUG_AUTOCONF("iir=%d ", scratch);
++	DEBUG_AUTOCONF("type=%s\n", uart_config[port->type].name);
++}
++
++static void autoconfig_irq(struct uart_8250_port *up)
++{
++	struct uart_port *port = &up->port;
++	unsigned char save_mcr, save_ier;
++	unsigned char save_ICP = 0;
++	unsigned int ICP = 0;
++	unsigned long irqs;
++	int irq;
++
++	if (port->flags & UPF_FOURPORT) {
++		ICP = (port->iobase & 0xfe0) | 0x1f;
++		save_ICP = inb_p(ICP);
++		outb_p(0x80, ICP);
++		inb_p(ICP);
++	}
++
++	/* forget possible initially masked and pending IRQ */
++	probe_irq_off(probe_irq_on());
++	save_mcr = serial_in(up, UART_MCR);
++	save_ier = serial_in(up, UART_IER);
++	serial_out(up, UART_MCR, UART_MCR_OUT1 | UART_MCR_OUT2);
++
++	irqs = probe_irq_on();
++	serial_out(up, UART_MCR, 0);
++	udelay(10);
++	if (port->flags & UPF_FOURPORT) {
++		serial_out(up, UART_MCR,
++			    UART_MCR_DTR | UART_MCR_RTS);
++	} else {
++		serial_out(up, UART_MCR,
++			    UART_MCR_DTR | UART_MCR_RTS | UART_MCR_OUT2);
++	}
++	serial_out(up, UART_IER, 0x0f);	/* enable all intrs */
++	serial_in(up, UART_LSR);
++	serial_in(up, UART_RX);
++	serial_in(up, UART_IIR);
++	serial_in(up, UART_MSR);
++	serial_out(up, UART_TX, 0xFF);
++	udelay(20);
++	irq = probe_irq_off(irqs);
++
++	serial_out(up, UART_MCR, save_mcr);
++	serial_out(up, UART_IER, save_ier);
++
++	if (port->flags & UPF_FOURPORT)
++		outb_p(save_ICP, ICP);
++
++	port->irq = (irq > 0) ? irq : 0;
++}
++
++static inline void __stop_tx(struct uart_8250_port *p)
++{
++	if (p->ier & UART_IER_THRI) {
++		p->ier &= ~UART_IER_THRI;
++		serial_out(p, UART_IER, p->ier);
++	}
++}
++
++static void serial8250_stop_tx(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++
++	__stop_tx(up);
++
++	/*
++	 * We really want to stop the transmitter from sending.
++	 */
++	if (port->type == PORT_16C950) {
++		up->acr |= UART_ACR_TXDIS;
++		serial_icr_write(up, UART_ACR, up->acr);
++	}
++}
++
++static void serial8250_start_tx(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++
++	if (up->dma && !serial8250_tx_dma(up)) {
++		return;
++	} else if (!(up->ier & UART_IER_THRI)) {
++		up->ier |= UART_IER_THRI;
++		serial_port_out(port, UART_IER, up->ier);
++
++		if (up->bugs & UART_BUG_TXEN) {
++			unsigned char lsr;
++			lsr = serial_in(up, UART_LSR);
++			up->lsr_saved_flags |= lsr & LSR_SAVE_FLAGS;
++			if (lsr & UART_LSR_TEMT)
++				serial8250_tx_chars(up);
++		}
++	}
++
++	/*
++	 * Re-enable the transmitter if we disabled it.
++	 */
++	if (port->type == PORT_16C950 && up->acr & UART_ACR_TXDIS) {
++		up->acr &= ~UART_ACR_TXDIS;
++		serial_icr_write(up, UART_ACR, up->acr);
++	}
++}
++
++static void serial8250_stop_rx(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++
++	up->ier &= ~UART_IER_RLSI;
++	up->port.read_status_mask &= ~UART_LSR_DR;
++	serial_port_out(port, UART_IER, up->ier);
++}
++
++static void serial8250_enable_ms(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++
++	/* no MSR capabilities */
++	if (up->bugs & UART_BUG_NOMSR)
++		return;
++
++	up->ier |= UART_IER_MSI;
++	serial_port_out(port, UART_IER, up->ier);
++}
++
++/*
++ * serial8250_rx_chars: processes according to the passed in LSR
++ * value, and returns the remaining LSR bits not handled
++ * by this Rx routine.
++ */
++unsigned char
++serial8250_rx_chars(struct uart_8250_port *up, unsigned char lsr)
++{
++	struct uart_port *port = &up->port;
++	unsigned char ch;
++	int max_count = 256;
++	char flag;
++
++	do {
++		if (likely(lsr & UART_LSR_DR))
++			ch = serial_in(up, UART_RX);
++		else
++			/*
++			 * Intel 82571 has a Serial Over Lan device that will
++			 * set UART_LSR_BI without setting UART_LSR_DR when
++			 * it receives a break. To avoid reading from the
++			 * receive buffer without UART_LSR_DR bit set, we
++			 * just force the read character to be 0
++			 */
++			ch = 0;
++
++		flag = TTY_NORMAL;
++		port->icount.rx++;
++
++		lsr |= up->lsr_saved_flags;
++		up->lsr_saved_flags = 0;
++
++		if (unlikely(lsr & UART_LSR_BRK_ERROR_BITS)) {
++			if (lsr & UART_LSR_BI) {
++				lsr &= ~(UART_LSR_FE | UART_LSR_PE);
++				port->icount.brk++;
++				/*
++				 * We do the SysRQ and SAK checking
++				 * here because otherwise the break
++				 * may get masked by ignore_status_mask
++				 * or read_status_mask.
++				 */
++				if (uart_handle_break(port))
++					goto ignore_char;
++			} else if (lsr & UART_LSR_PE)
++				port->icount.parity++;
++			else if (lsr & UART_LSR_FE)
++				port->icount.frame++;
++			if (lsr & UART_LSR_OE)
++				port->icount.overrun++;
++
++			/*
++			 * Mask off conditions which should be ignored.
++			 */
++			lsr &= port->read_status_mask;
++
++			if (lsr & UART_LSR_BI) {
++				DEBUG_INTR("handling break....");
++				flag = TTY_BREAK;
++			} else if (lsr & UART_LSR_PE)
++				flag = TTY_PARITY;
++			else if (lsr & UART_LSR_FE)
++				flag = TTY_FRAME;
++		}
++#ifdef CONFIG_CONSOLE_POLL
++		if (up->port.poll_rx_cb && up->port.poll_rx_cb(ch))
++			goto ignore_char;
++#endif
++		if (uart_handle_sysrq_char(port, ch))
++			goto ignore_char;
++
++		uart_insert_char(port, lsr, UART_LSR_OE, ch, flag);
++
++ignore_char:
++		lsr = serial_in(up, UART_LSR);
++	} while ((lsr & (UART_LSR_DR | UART_LSR_BI)) && (max_count-- > 0));
++	spin_unlock(&port->lock);
++	tty_flip_buffer_push(&port->state->port);
++	spin_lock(&port->lock);
++	return lsr;
++}
++EXPORT_SYMBOL_GPL(serial8250_rx_chars);
++
++void serial8250_tx_chars(struct uart_8250_port *up)
++{
++	struct uart_port *port = &up->port;
++	struct circ_buf *xmit = &port->state->xmit;
++	int count;
++
++	if (port->x_char) {
++		serial_out(up, UART_TX, port->x_char);
++		port->icount.tx++;
++		port->x_char = 0;
++		return;
++	}
++	if (uart_tx_stopped(port)) {
++		serial8250_stop_tx(port);
++		return;
++	}
++	if (uart_circ_empty(xmit)) {
++		__stop_tx(up);
++		return;
++	}
++
++	count = up->tx_loadsz;
++	do {
++		serial_out(up, UART_TX, xmit->buf[xmit->tail]);
++		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
++		port->icount.tx++;
++		if (uart_circ_empty(xmit))
++			break;
++		if (up->capabilities & UART_CAP_HFIFO) {
++			if ((serial_port_in(port, UART_LSR) & BOTH_EMPTY) !=
++			    BOTH_EMPTY)
++				break;
++		}
++	} while (--count > 0);
++
++	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
++		uart_write_wakeup(port);
++
++	DEBUG_INTR("THRE...");
++
++	if (uart_circ_empty(xmit))
++		__stop_tx(up);
++}
++EXPORT_SYMBOL_GPL(serial8250_tx_chars);
++
++unsigned int serial8250_modem_status(struct uart_8250_port *up)
++{
++	struct uart_port *port = &up->port;
++	unsigned int status = serial_in(up, UART_MSR);
++
++	status |= up->msr_saved_flags;
++	up->msr_saved_flags = 0;
++	if (status & UART_MSR_ANY_DELTA && up->ier & UART_IER_MSI &&
++	    port->state != NULL) {
++		if (status & UART_MSR_TERI)
++			port->icount.rng++;
++		if (status & UART_MSR_DDSR)
++			port->icount.dsr++;
++		if (status & UART_MSR_DDCD)
++			uart_handle_dcd_change(port, status & UART_MSR_DCD);
++		if (status & UART_MSR_DCTS)
++			uart_handle_cts_change(port, status & UART_MSR_CTS);
++
++		wake_up_interruptible(&port->state->port.delta_msr_wait);
++	}
++
++	return status;
++}
++EXPORT_SYMBOL_GPL(serial8250_modem_status);
++
++/*
++ * This handles the interrupt from one port.
++ */
++int serial8250_handle_irq(struct uart_port *port, unsigned int iir)
++{
++	unsigned char status;
++	unsigned long flags;
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	int dma_err = 0;
++
++	if (iir & UART_IIR_NO_INT)
++		return 0;
++
++	spin_lock_irqsave(&port->lock, flags);
++
++	status = serial_port_in(port, UART_LSR);
++
++	DEBUG_INTR("status = %x...", status);
++
++	if (status & (UART_LSR_DR | UART_LSR_BI)) {
++		if (up->dma)
++			dma_err = serial8250_rx_dma(up, iir);
++
++		if (!up->dma || dma_err)
++			status = serial8250_rx_chars(up, status);
++	}
++	serial8250_modem_status(up);
++	if (status & UART_LSR_THRE)
++		serial8250_tx_chars(up);
++
++	spin_unlock_irqrestore(&port->lock, flags);
++	return 1;
++}
++EXPORT_SYMBOL_GPL(serial8250_handle_irq);
++
++static int serial8250_default_handle_irq(struct uart_port *port)
++{
++	unsigned int iir = serial_port_in(port, UART_IIR);
++
++	return serial8250_handle_irq(port, iir);
++}
++
++/*
++ * These Exar UARTs have an extra interrupt indicator that could
++ * fire for a few unimplemented interrupts.  One of which is a
++ * wakeup event when coming out of sleep.  Put this here just
++ * to be on the safe side that these interrupts don't go unhandled.
++ */
++static int exar_handle_irq(struct uart_port *port)
++{
++	unsigned char int0, int1, int2, int3;
++	unsigned int iir = serial_port_in(port, UART_IIR);
++	int ret;
++
++	ret = serial8250_handle_irq(port, iir);
++
++	if ((port->type == PORT_XR17V35X) ||
++	   (port->type == PORT_XR17D15X)) {
++		int0 = serial_port_in(port, 0x80);
++		int1 = serial_port_in(port, 0x81);
++		int2 = serial_port_in(port, 0x82);
++		int3 = serial_port_in(port, 0x83);
++	}
++
++	return ret;
++}
++
++/*
++ * This is the serial driver's interrupt routine.
++ *
++ * Arjan thinks the old way was overly complex, so it got simplified.
++ * Alan disagrees, saying that need the complexity to handle the weird
++ * nature of ISA shared interrupts.  (This is a special exception.)
++ *
++ * In order to handle ISA shared interrupts properly, we need to check
++ * that all ports have been serviced, and therefore the ISA interrupt
++ * line has been de-asserted.
++ *
++ * This means we need to loop through all ports. checking that they
++ * don't have an interrupt pending.
++ */
++static irqreturn_t serial8250_interrupt(int irq, void *dev_id)
++{
++	struct irq_info *i = dev_id;
++	struct list_head *l, *end = NULL;
++	int pass_counter = 0, handled = 0;
++
++	DEBUG_INTR("serial8250_interrupt(%d)...", irq);
++
++	spin_lock(&i->lock);
++
++	l = i->head;
++	do {
++		struct uart_8250_port *up;
++		struct uart_port *port;
++
++		up = list_entry(l, struct uart_8250_port, list);
++		port = &up->port;
++
++		if (port->handle_irq(port)) {
++			handled = 1;
++			end = NULL;
++		} else if (end == NULL)
++			end = l;
++
++		l = l->next;
++
++		if (l == i->head && pass_counter++ > PASS_LIMIT) {
++			/* If we hit this, we're dead. */
++			printk_ratelimited(KERN_ERR
++				"serial8250: too much work for irq%d\n", irq);
++			break;
++		}
++	} while (l != end);
++
++	spin_unlock(&i->lock);
++
++	DEBUG_INTR("end.\n");
++
++	return IRQ_RETVAL(handled);
++}
++
++/*
++ * To support ISA shared interrupts, we need to have one interrupt
++ * handler that ensures that the IRQ line has been deasserted
++ * before returning.  Failing to do this will result in the IRQ
++ * line being stuck active, and, since ISA irqs are edge triggered,
++ * no more IRQs will be seen.
++ */
++static void serial_do_unlink(struct irq_info *i, struct uart_8250_port *up)
++{
++	spin_lock_irq(&i->lock);
++
++	if (!list_empty(i->head)) {
++		if (i->head == &up->list)
++			i->head = i->head->next;
++		list_del(&up->list);
++	} else {
++		BUG_ON(i->head != &up->list);
++		i->head = NULL;
++	}
++	spin_unlock_irq(&i->lock);
++	/* List empty so throw away the hash node */
++	if (i->head == NULL) {
++		hlist_del(&i->node);
++		kfree(i);
++	}
++}
++
++static int serial_link_irq_chain(struct uart_8250_port *up)
++{
++	struct hlist_head *h;
++	struct hlist_node *n;
++	struct irq_info *i;
++	int ret, irq_flags = up->port.flags & UPF_SHARE_IRQ ? IRQF_SHARED : 0;
++
++	mutex_lock(&hash_mutex);
++
++	h = &irq_lists[up->port.irq % NR_IRQ_HASH];
++
++	hlist_for_each(n, h) {
++		i = hlist_entry(n, struct irq_info, node);
++		if (i->irq == up->port.irq)
++			break;
++	}
++
++	if (n == NULL) {
++		i = kzalloc(sizeof(struct irq_info), GFP_KERNEL);
++		if (i == NULL) {
++			mutex_unlock(&hash_mutex);
++			return -ENOMEM;
++		}
++		spin_lock_init(&i->lock);
++		i->irq = up->port.irq;
++		hlist_add_head(&i->node, h);
++	}
++	mutex_unlock(&hash_mutex);
++
++	spin_lock_irq(&i->lock);
++
++	if (i->head) {
++		list_add(&up->list, i->head);
++		spin_unlock_irq(&i->lock);
++
++		ret = 0;
++	} else {
++		INIT_LIST_HEAD(&up->list);
++		i->head = &up->list;
++		spin_unlock_irq(&i->lock);
++		irq_flags |= up->port.irqflags;
++		ret = request_irq(up->port.irq, serial8250_interrupt,
++				  irq_flags, "serial", i);
++		if (ret < 0)
++			serial_do_unlink(i, up);
++	}
++
++	return ret;
++}
++
++static void serial_unlink_irq_chain(struct uart_8250_port *up)
++{
++	struct irq_info *i;
++	struct hlist_node *n;
++	struct hlist_head *h;
++
++	mutex_lock(&hash_mutex);
++
++	h = &irq_lists[up->port.irq % NR_IRQ_HASH];
++
++	hlist_for_each(n, h) {
++		i = hlist_entry(n, struct irq_info, node);
++		if (i->irq == up->port.irq)
++			break;
++	}
++
++	BUG_ON(n == NULL);
++	BUG_ON(i->head == NULL);
++
++	if (list_empty(i->head))
++		free_irq(up->port.irq, i);
++
++	serial_do_unlink(i, up);
++	mutex_unlock(&hash_mutex);
++}
++
++/*
++ * This function is used to handle ports that do not have an
++ * interrupt.  This doesn't work very well for 16450's, but gives
++ * barely passable results for a 16550A.  (Although at the expense
++ * of much CPU overhead).
++ */
++static void serial8250_timeout(unsigned long data)
++{
++	struct uart_8250_port *up = (struct uart_8250_port *)data;
++
++	up->port.handle_irq(&up->port);
++	mod_timer(&up->timer, jiffies + uart_poll_timeout(&up->port));
++}
++
++static void serial8250_backup_timeout(unsigned long data)
++{
++	struct uart_8250_port *up = (struct uart_8250_port *)data;
++	unsigned int iir, ier = 0, lsr;
++	unsigned long flags;
++
++	spin_lock_irqsave(&up->port.lock, flags);
++
++	/*
++	 * Must disable interrupts or else we risk racing with the interrupt
++	 * based handler.
++	 */
++	if (up->port.irq) {
++		ier = serial_in(up, UART_IER);
++		serial_out(up, UART_IER, 0);
++	}
++
++	iir = serial_in(up, UART_IIR);
++
++	/*
++	 * This should be a safe test for anyone who doesn't trust the
++	 * IIR bits on their UART, but it's specifically designed for
++	 * the "Diva" UART used on the management processor on many HP
++	 * ia64 and parisc boxes.
++	 */
++	lsr = serial_in(up, UART_LSR);
++	up->lsr_saved_flags |= lsr & LSR_SAVE_FLAGS;
++	if ((iir & UART_IIR_NO_INT) && (up->ier & UART_IER_THRI) &&
++	    (!uart_circ_empty(&up->port.state->xmit) || up->port.x_char) &&
++	    (lsr & UART_LSR_THRE)) {
++		iir &= ~(UART_IIR_ID | UART_IIR_NO_INT);
++		iir |= UART_IIR_THRI;
++	}
++
++	if (!(iir & UART_IIR_NO_INT))
++		serial8250_tx_chars(up);
++
++	if (up->port.irq)
++		serial_out(up, UART_IER, ier);
++
++	spin_unlock_irqrestore(&up->port.lock, flags);
++
++	/* Standard timer interval plus 0.2s to keep the port running */
++	mod_timer(&up->timer,
++		jiffies + uart_poll_timeout(&up->port) + HZ / 5);
++}
++
++static unsigned int serial8250_tx_empty(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	unsigned long flags;
++	unsigned int lsr;
++
++	spin_lock_irqsave(&port->lock, flags);
++	lsr = serial_port_in(port, UART_LSR);
++	up->lsr_saved_flags |= lsr & LSR_SAVE_FLAGS;
++	spin_unlock_irqrestore(&port->lock, flags);
++
++	return (lsr & BOTH_EMPTY) == BOTH_EMPTY ? TIOCSER_TEMT : 0;
++}
++
++static unsigned int serial8250_get_mctrl(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	unsigned int status;
++	unsigned int ret;
++
++	status = serial8250_modem_status(up);
++
++	ret = 0;
++	if (status & UART_MSR_DCD)
++		ret |= TIOCM_CAR;
++	if (status & UART_MSR_RI)
++		ret |= TIOCM_RNG;
++	if (status & UART_MSR_DSR)
++		ret |= TIOCM_DSR;
++	if (status & UART_MSR_CTS)
++		ret |= TIOCM_CTS;
++	return ret;
++}
++
++static void serial8250_set_mctrl(struct uart_port *port, unsigned int mctrl)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	unsigned char mcr = 0;
++
++	if (mctrl & TIOCM_RTS)
++		mcr |= UART_MCR_RTS;
++	if (mctrl & TIOCM_DTR)
++		mcr |= UART_MCR_DTR;
++	if (mctrl & TIOCM_OUT1)
++		mcr |= UART_MCR_OUT1;
++	if (mctrl & TIOCM_OUT2)
++		mcr |= UART_MCR_OUT2;
++	if (mctrl & TIOCM_LOOP)
++		mcr |= UART_MCR_LOOP;
++
++	mcr = (mcr & up->mcr_mask) | up->mcr_force | up->mcr;
++
++	serial_port_out(port, UART_MCR, mcr);
++}
++
++static void serial8250_break_ctl(struct uart_port *port, int break_state)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	unsigned long flags;
++
++	spin_lock_irqsave(&port->lock, flags);
++	if (break_state == -1)
++		up->lcr |= UART_LCR_SBC;
++	else
++		up->lcr &= ~UART_LCR_SBC;
++	serial_port_out(port, UART_LCR, up->lcr);
++	spin_unlock_irqrestore(&port->lock, flags);
++}
++
++/*
++ *	Wait for transmitter & holding register to empty
++ */
++static void wait_for_xmitr(struct uart_8250_port *up, int bits)
++{
++	unsigned int status, tmout = 10000;
++
++	/* Wait up to 10ms for the character(s) to be sent. */
++	for (;;) {
++		status = serial_in(up, UART_LSR);
++
++		up->lsr_saved_flags |= status & LSR_SAVE_FLAGS;
++
++		if ((status & bits) == bits)
++			break;
++		if (--tmout == 0)
++			break;
++		udelay(1);
++	}
++
++	/* Wait up to 1s for flow control if necessary */
++	if (up->port.flags & UPF_CONS_FLOW) {
++		unsigned int tmout;
++		for (tmout = 1000000; tmout; tmout--) {
++			unsigned int msr = serial_in(up, UART_MSR);
++			up->msr_saved_flags |= msr & MSR_SAVE_FLAGS;
++			if (msr & UART_MSR_CTS)
++				break;
++			udelay(1);
++			touch_nmi_watchdog();
++		}
++	}
++}
++
++#ifdef CONFIG_CONSOLE_POLL
++/*
++ * Console polling routines for writing and reading from the uart while
++ * in an interrupt or debug context.
++ */
++
++static int serial8250_get_poll_char(struct uart_port *port)
++{
++	unsigned char lsr = serial_port_in(port, UART_LSR);
++
++	if (!(lsr & UART_LSR_DR))
++		return NO_POLL_CHAR;
++
++	return serial_port_in(port, UART_RX);
++}
++
++
++static void serial8250_put_poll_char(struct uart_port *port,
++			 unsigned char c)
++{
++	unsigned int ier;
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++
++	/*
++	 *	First save the IER then disable the interrupts
++	 */
++	ier = serial_port_in(port, UART_IER);
++	if (up->capabilities & UART_CAP_UUE)
++		serial_port_out(port, UART_IER, UART_IER_UUE);
++	else
++		serial_port_out(port, UART_IER, 0);
++
++	wait_for_xmitr(up, BOTH_EMPTY);
++	/*
++	 *	Send the character out.
++	 *	If a LF, also do CR...
++	 */
++	serial_port_out(port, UART_TX, c);
++	if (c == 10) {
++		wait_for_xmitr(up, BOTH_EMPTY);
++		serial_port_out(port, UART_TX, 13);
++	}
++
++	/*
++	 *	Finally, wait for transmitter to become empty
++	 *	and restore the IER
++	 */
++	wait_for_xmitr(up, BOTH_EMPTY);
++	serial_port_out(port, UART_IER, ier);
++}
++
++#endif /* CONFIG_CONSOLE_POLL */
++
++static int serial8250_startup(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	unsigned long flags;
++	unsigned char lsr, iir;
++	int retval;
++
++	if (port->type == PORT_8250_CIR)
++		return -ENODEV;
++
++	if (!port->fifosize)
++		port->fifosize = uart_config[port->type].fifo_size;
++	if (!up->tx_loadsz)
++		up->tx_loadsz = uart_config[port->type].tx_loadsz;
++	if (!up->capabilities)
++		up->capabilities = uart_config[port->type].flags;
++	up->mcr = 0;
++
++	if (port->iotype != up->cur_iotype)
++		set_io_from_upio(port);
++
++	if (port->type == PORT_16C950) {
++		/* Wake up and initialize UART */
++		up->acr = 0;
++		serial_port_out(port, UART_LCR, UART_LCR_CONF_MODE_B);
++		serial_port_out(port, UART_EFR, UART_EFR_ECB);
++		serial_port_out(port, UART_IER, 0);
++		serial_port_out(port, UART_LCR, 0);
++		serial_icr_write(up, UART_CSR, 0); /* Reset the UART */
++		serial_port_out(port, UART_LCR, UART_LCR_CONF_MODE_B);
++		serial_port_out(port, UART_EFR, UART_EFR_ECB);
++		serial_port_out(port, UART_LCR, 0);
++	}
++
++#ifdef CONFIG_SERIAL_8250_RSA
++	/*
++	 * If this is an RSA port, see if we can kick it up to the
++	 * higher speed clock.
++	 */
++	enable_rsa(up);
++#endif
++
++	/*
++	 * Clear the FIFO buffers and disable them.
++	 * (they will be reenabled in set_termios())
++	 */
++	serial8250_clear_fifos(up);
++
++	/*
++	 * Clear the interrupt registers.
++	 */
++	serial_port_in(port, UART_LSR);
++	serial_port_in(port, UART_RX);
++	serial_port_in(port, UART_IIR);
++	serial_port_in(port, UART_MSR);
++
++	/*
++	 * At this point, there's no way the LSR could still be 0xff;
++	 * if it is, then bail out, because there's likely no UART
++	 * here.
++	 */
++	if (!(port->flags & UPF_BUGGY_UART) &&
++	    (serial_port_in(port, UART_LSR) == 0xff)) {
++		printk_ratelimited(KERN_INFO "ttyS%d: LSR safety check engaged!\n",
++				   serial_index(port));
++		return -ENODEV;
++	}
++
++	/*
++	 * For a XR16C850, we need to set the trigger levels
++	 */
++	if (port->type == PORT_16850) {
++		unsigned char fctr;
++
++		serial_out(up, UART_LCR, UART_LCR_CONF_MODE_B);
++
++		fctr = serial_in(up, UART_FCTR) & ~(UART_FCTR_RX|UART_FCTR_TX);
++		serial_port_out(port, UART_FCTR,
++				fctr | UART_FCTR_TRGD | UART_FCTR_RX);
++		serial_port_out(port, UART_TRG, UART_TRG_96);
++		serial_port_out(port, UART_FCTR,
++				fctr | UART_FCTR_TRGD | UART_FCTR_TX);
++		serial_port_out(port, UART_TRG, UART_TRG_96);
++
++		serial_port_out(port, UART_LCR, 0);
++	}
++
++	if (port->irq) {
++		unsigned char iir1;
++		/*
++		 * Test for UARTs that do not reassert THRE when the
++		 * transmitter is idle and the interrupt has already
++		 * been cleared.  Real 16550s should always reassert
++		 * this interrupt whenever the transmitter is idle and
++		 * the interrupt is enabled.  Delays are necessary to
++		 * allow register changes to become visible.
++		 */
++		spin_lock_irqsave(&port->lock, flags);
++		if (up->port.irqflags & IRQF_SHARED)
++			disable_irq_nosync(port->irq);
++
++		wait_for_xmitr(up, UART_LSR_THRE);
++		serial_port_out_sync(port, UART_IER, UART_IER_THRI);
++		udelay(1); /* allow THRE to set */
++		iir1 = serial_port_in(port, UART_IIR);
++		serial_port_out(port, UART_IER, 0);
++		serial_port_out_sync(port, UART_IER, UART_IER_THRI);
++		udelay(1); /* allow a working UART time to re-assert THRE */
++		iir = serial_port_in(port, UART_IIR);
++		serial_port_out(port, UART_IER, 0);
++
++		if (port->irqflags & IRQF_SHARED)
++			enable_irq(port->irq);
++		spin_unlock_irqrestore(&port->lock, flags);
++
++		/*
++		 * If the interrupt is not reasserted, or we otherwise
++		 * don't trust the iir, setup a timer to kick the UART
++		 * on a regular basis.
++		 */
++		if ((!(iir1 & UART_IIR_NO_INT) && (iir & UART_IIR_NO_INT)) ||
++		    up->port.flags & UPF_BUG_THRE) {
++			up->bugs |= UART_BUG_THRE;
++			pr_debug("ttyS%d - using backup timer\n",
++				 serial_index(port));
++		}
++	}
++
++	/*
++	 * The above check will only give an accurate result the first time
++	 * the port is opened so this value needs to be preserved.
++	 */
++	if (up->bugs & UART_BUG_THRE) {
++		up->timer.function = serial8250_backup_timeout;
++		up->timer.data = (unsigned long)up;
++		mod_timer(&up->timer, jiffies +
++			uart_poll_timeout(port) + HZ / 5);
++	}
++
++	/*
++	 * If the "interrupt" for this port doesn't correspond with any
++	 * hardware interrupt, we use a timer-based system.  The original
++	 * driver used to do this with IRQ0.
++	 */
++	if (!port->irq) {
++		up->timer.data = (unsigned long)up;
++		mod_timer(&up->timer, jiffies + uart_poll_timeout(port));
++	} else {
++		retval = serial_link_irq_chain(up);
++		if (retval)
++			return retval;
++	}
++
++	/*
++	 * Now, initialize the UART
++	 */
++	serial_port_out(port, UART_LCR, UART_LCR_WLEN8);
++
++	spin_lock_irqsave(&port->lock, flags);
++	if (up->port.flags & UPF_FOURPORT) {
++		if (!up->port.irq)
++			up->port.mctrl |= TIOCM_OUT1;
++	} else
++		/*
++		 * Most PC uarts need OUT2 raised to enable interrupts.
++		 */
++		if (port->irq)
++			up->port.mctrl |= TIOCM_OUT2;
++
++	serial8250_set_mctrl(port, port->mctrl);
++
++	/* Serial over Lan (SoL) hack:
++	   Intel 8257x Gigabit ethernet chips have a
++	   16550 emulation, to be used for Serial Over Lan.
++	   Those chips take a longer time than a normal
++	   serial device to signalize that a transmission
++	   data was queued. Due to that, the above test generally
++	   fails. One solution would be to delay the reading of
++	   iir. However, this is not reliable, since the timeout
++	   is variable. So, let's just don't test if we receive
++	   TX irq. This way, we'll never enable UART_BUG_TXEN.
++	 */
++	if (skip_txen_test || up->port.flags & UPF_NO_TXEN_TEST)
++		goto dont_test_tx_en;
++
++	/*
++	 * Do a quick test to see if we receive an
++	 * interrupt when we enable the TX irq.
++	 */
++	serial_port_out(port, UART_IER, UART_IER_THRI);
++	lsr = serial_port_in(port, UART_LSR);
++	iir = serial_port_in(port, UART_IIR);
++	serial_port_out(port, UART_IER, 0);
++
++	if (lsr & UART_LSR_TEMT && iir & UART_IIR_NO_INT) {
++		if (!(up->bugs & UART_BUG_TXEN)) {
++			up->bugs |= UART_BUG_TXEN;
++			pr_debug("ttyS%d - enabling bad tx status workarounds\n",
++				 serial_index(port));
++		}
++	} else {
++		up->bugs &= ~UART_BUG_TXEN;
++	}
++
++dont_test_tx_en:
++	spin_unlock_irqrestore(&port->lock, flags);
++
++	/*
++	 * Clear the interrupt registers again for luck, and clear the
++	 * saved flags to avoid getting false values from polling
++	 * routines or the previous session.
++	 */
++	serial_port_in(port, UART_LSR);
++	serial_port_in(port, UART_RX);
++	serial_port_in(port, UART_IIR);
++	serial_port_in(port, UART_MSR);
++	up->lsr_saved_flags = 0;
++	up->msr_saved_flags = 0;
++
++	/*
++	 * Request DMA channels for both RX and TX.
++	 */
++	if (up->dma) {
++		retval = serial8250_request_dma(up);
++		if (retval) {
++			pr_warn_ratelimited("ttyS%d - failed to request DMA\n",
++					    serial_index(port));
++			up->dma = NULL;
++		}
++	}
++
++	/*
++	 * Finally, enable interrupts.  Note: Modem status interrupts
++	 * are set via set_termios(), which will be occurring imminently
++	 * anyway, so we don't enable them here.
++	 */
++	up->ier = UART_IER_RLSI | UART_IER_RDI;
++	serial_port_out(port, UART_IER, up->ier);
++
++	if (port->flags & UPF_FOURPORT) {
++		unsigned int icp;
++		/*
++		 * Enable interrupts on the AST Fourport board
++		 */
++		icp = (port->iobase & 0xfe0) | 0x01f;
++		outb_p(0x80, icp);
++		inb_p(icp);
++	}
++
++	return 0;
++}
++
++static void serial8250_shutdown(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	unsigned long flags;
++
++	/*
++	 * Disable interrupts from this port
++	 */
++	up->ier = 0;
++	serial_port_out(port, UART_IER, 0);
++
++	if (up->dma)
++		serial8250_release_dma(up);
++
++	spin_lock_irqsave(&port->lock, flags);
++	if (port->flags & UPF_FOURPORT) {
++		/* reset interrupts on the AST Fourport board */
++		inb((port->iobase & 0xfe0) | 0x1f);
++		port->mctrl |= TIOCM_OUT1;
++	} else
++		port->mctrl &= ~TIOCM_OUT2;
++
++	serial8250_set_mctrl(port, port->mctrl);
++	spin_unlock_irqrestore(&port->lock, flags);
++
++	/*
++	 * Disable break condition and FIFOs
++	 */
++	serial_port_out(port, UART_LCR,
++			serial_port_in(port, UART_LCR) & ~UART_LCR_SBC);
++	serial8250_clear_fifos(up);
++
++#ifdef CONFIG_SERIAL_8250_RSA
++	/*
++	 * Reset the RSA board back to 115kbps compat mode.
++	 */
++	disable_rsa(up);
++#endif
++
++	/*
++	 * Read data port to reset things, and then unlink from
++	 * the IRQ chain.
++	 */
++	serial_port_in(port, UART_RX);
++
++	del_timer_sync(&up->timer);
++	up->timer.function = serial8250_timeout;
++	if (port->irq)
++		serial_unlink_irq_chain(up);
++}
++
++static unsigned int serial8250_get_divisor(struct uart_port *port, unsigned int baud)
++{
++	unsigned int quot;
++
++	/*
++	 * Handle magic divisors for baud rates above baud_base on
++	 * SMSC SuperIO chips.
++	 */
++	if ((port->flags & UPF_MAGIC_MULTIPLIER) &&
++	    baud == (port->uartclk/4))
++		quot = 0x8001;
++	else if ((port->flags & UPF_MAGIC_MULTIPLIER) &&
++		 baud == (port->uartclk/8))
++		quot = 0x8002;
++	else
++		quot = uart_get_divisor(port, baud);
++
++	return quot;
++}
++
++void
++serial8250_do_set_termios(struct uart_port *port, struct ktermios *termios,
++		          struct ktermios *old)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	unsigned char cval, fcr = 0;
++	unsigned long flags;
++	unsigned int baud, quot;
++	int fifo_bug = 0;
++
++	switch (termios->c_cflag & CSIZE) {
++	case CS5:
++		cval = UART_LCR_WLEN5;
++		break;
++	case CS6:
++		cval = UART_LCR_WLEN6;
++		break;
++	case CS7:
++		cval = UART_LCR_WLEN7;
++		break;
++	default:
++	case CS8:
++		cval = UART_LCR_WLEN8;
++		break;
++	}
++
++	if (termios->c_cflag & CSTOPB)
++		cval |= UART_LCR_STOP;
++	if (termios->c_cflag & PARENB) {
++		cval |= UART_LCR_PARITY;
++		if (up->bugs & UART_BUG_PARITY)
++			fifo_bug = 1;
++	}
++	if (!(termios->c_cflag & PARODD))
++		cval |= UART_LCR_EPAR;
++#ifdef CMSPAR
++	if (termios->c_cflag & CMSPAR)
++		cval |= UART_LCR_SPAR;
++#endif
++
++	/*
++	 * Ask the core to calculate the divisor for us.
++	 */
++	baud = uart_get_baud_rate(port, termios, old,
++				  port->uartclk / 16 / 0xffff,
++				  port->uartclk / 16);
++	quot = serial8250_get_divisor(port, baud);
++
++	/*
++	 * Oxford Semi 952 rev B workaround
++	 */
++	if (up->bugs & UART_BUG_QUOT && (quot & 0xff) == 0)
++		quot++;
++
++	if (up->capabilities & UART_CAP_FIFO && port->fifosize > 1) {
++		fcr = uart_config[port->type].fcr;
++		if ((baud < 2400 && !up->dma) || fifo_bug) {
++			fcr &= ~UART_FCR_TRIGGER_MASK;
++			fcr |= UART_FCR_TRIGGER_1;
++		}
++	}
++
++	/*
++	 * MCR-based auto flow control.  When AFE is enabled, RTS will be
++	 * deasserted when the receive FIFO contains more characters than
++	 * the trigger, or the MCR RTS bit is cleared.  In the case where
++	 * the remote UART is not using CTS auto flow control, we must
++	 * have sufficient FIFO entries for the latency of the remote
++	 * UART to respond.  IOW, at least 32 bytes of FIFO.
++	 */
++	if (up->capabilities & UART_CAP_AFE && port->fifosize >= 32) {
++		up->mcr &= ~UART_MCR_AFE;
++		if (termios->c_cflag & CRTSCTS)
++			up->mcr |= UART_MCR_AFE;
++	}
++
++	/*
++	 * Ok, we're now changing the port state.  Do it with
++	 * interrupts disabled.
++	 */
++	spin_lock_irqsave(&port->lock, flags);
++
++	/*
++	 * Update the per-port timeout.
++	 */
++	uart_update_timeout(port, termios->c_cflag, baud);
++
++	port->read_status_mask = UART_LSR_OE | UART_LSR_THRE | UART_LSR_DR;
++	if (termios->c_iflag & INPCK)
++		port->read_status_mask |= UART_LSR_FE | UART_LSR_PE;
++	if (termios->c_iflag & (BRKINT | PARMRK))
++		port->read_status_mask |= UART_LSR_BI;
++
++	/*
++	 * Characteres to ignore
++	 */
++	port->ignore_status_mask = 0;
++	if (termios->c_iflag & IGNPAR)
++		port->ignore_status_mask |= UART_LSR_PE | UART_LSR_FE;
++	if (termios->c_iflag & IGNBRK) {
++		port->ignore_status_mask |= UART_LSR_BI;
++		/*
++		 * If we're ignoring parity and break indicators,
++		 * ignore overruns too (for real raw support).
++		 */
++		if (termios->c_iflag & IGNPAR)
++			port->ignore_status_mask |= UART_LSR_OE;
++	}
++
++	/*
++	 * ignore all characters if CREAD is not set
++	 */
++	if ((termios->c_cflag & CREAD) == 0)
++		port->ignore_status_mask |= UART_LSR_DR;
++
++	/*
++	 * CTS flow control flag and modem status interrupts
++	 */
++	up->ier &= ~UART_IER_MSI;
++	if (!(up->bugs & UART_BUG_NOMSR) &&
++			UART_ENABLE_MS(&up->port, termios->c_cflag))
++		up->ier |= UART_IER_MSI;
++	if (up->capabilities & UART_CAP_UUE)
++		up->ier |= UART_IER_UUE;
++	if (up->capabilities & UART_CAP_RTOIE)
++		up->ier |= UART_IER_RTOIE;
++
++	serial_port_out(port, UART_IER, up->ier);
++
++	if (up->capabilities & UART_CAP_EFR) {
++		unsigned char efr = 0;
++		/*
++		 * TI16C752/Startech hardware flow control.  FIXME:
++		 * - TI16C752 requires control thresholds to be set.
++		 * - UART_MCR_RTS is ineffective if auto-RTS mode is enabled.
++		 */
++		if (termios->c_cflag & CRTSCTS)
++			efr |= UART_EFR_CTS;
++
++		serial_port_out(port, UART_LCR, UART_LCR_CONF_MODE_B);
++		if (port->flags & UPF_EXAR_EFR)
++			serial_port_out(port, UART_XR_EFR, efr);
++		else
++			serial_port_out(port, UART_EFR, efr);
++	}
++
++	/* Workaround to enable 115200 baud on OMAP1510 internal ports */
++	if (is_omap1510_8250(up)) {
++		if (baud == 115200) {
++			quot = 1;
++			serial_port_out(port, UART_OMAP_OSC_12M_SEL, 1);
++		} else
++			serial_port_out(port, UART_OMAP_OSC_12M_SEL, 0);
++	}
++
++	/*
++	 * For NatSemi, switch to bank 2 not bank 1, to avoid resetting EXCR2,
++	 * otherwise just set DLAB
++	 */
++	if (up->capabilities & UART_NATSEMI)
++		serial_port_out(port, UART_LCR, 0xe0);
++	else
++		serial_port_out(port, UART_LCR, cval | UART_LCR_DLAB);
++
++	serial_dl_write(up, quot);
++
++	/*
++	 * LCR DLAB must be set to enable 64-byte FIFO mode. If the FCR
++	 * is written without DLAB set, this mode will be disabled.
++	 */
++	if (port->type == PORT_16750)
++		serial_port_out(port, UART_FCR, fcr);
++
++	serial_port_out(port, UART_LCR, cval);		/* reset DLAB */
++	up->lcr = cval;					/* Save LCR */
++	if (port->type != PORT_16750) {
++		/* emulated UARTs (Lucent Venus 167x) need two steps */
++		if (fcr & UART_FCR_ENABLE_FIFO)
++			serial_port_out(port, UART_FCR, UART_FCR_ENABLE_FIFO);
++		serial_port_out(port, UART_FCR, fcr);		/* set fcr */
++	}
++	serial8250_set_mctrl(port, port->mctrl);
++	spin_unlock_irqrestore(&port->lock, flags);
++	/* Don't rewrite B0 */
++	if (tty_termios_baud_rate(termios))
++		tty_termios_encode_baud_rate(termios, baud, baud);
++}
++EXPORT_SYMBOL(serial8250_do_set_termios);
++
++static void
++serial8250_set_termios(struct uart_port *port, struct ktermios *termios,
++		       struct ktermios *old)
++{
++	if (port->set_termios)
++		port->set_termios(port, termios, old);
++	else
++		serial8250_do_set_termios(port, termios, old);
++}
++
++static void
++serial8250_set_ldisc(struct uart_port *port, int new)
++{
++	if (new == N_PPS) {
++		port->flags |= UPF_HARDPPS_CD;
++		serial8250_enable_ms(port);
++	} else
++		port->flags &= ~UPF_HARDPPS_CD;
++}
++
++
++void serial8250_do_pm(struct uart_port *port, unsigned int state,
++		      unsigned int oldstate)
++{
++	struct uart_8250_port *p =
++		container_of(port, struct uart_8250_port, port);
++
++	serial8250_set_sleep(p, state != 0);
++}
++EXPORT_SYMBOL(serial8250_do_pm);
++
++static void
++serial8250_pm(struct uart_port *port, unsigned int state,
++	      unsigned int oldstate)
++{
++	if (port->pm)
++		port->pm(port, state, oldstate);
++	else
++		serial8250_do_pm(port, state, oldstate);
++}
++
++static unsigned int serial8250_port_size(struct uart_8250_port *pt)
++{
++	if (pt->port.iotype == UPIO_AU)
++		return 0x1000;
++	if (is_omap1_8250(pt))
++		return 0x16 << pt->port.regshift;
++
++	return 8 << pt->port.regshift;
++}
++
++/*
++ * Resource handling.
++ */
++static int serial8250_request_std_resource(struct uart_8250_port *up)
++{
++	unsigned int size = serial8250_port_size(up);
++	struct uart_port *port = &up->port;
++	int ret = 0;
++
++	switch (port->iotype) {
++	case UPIO_AU:
++	case UPIO_TSI:
++	case UPIO_MEM32:
++	case UPIO_MEM:
++		if (!port->mapbase)
++			break;
++
++		if (!request_mem_region(port->mapbase, size, "serial")) {
++			ret = -EBUSY;
++			break;
++		}
++
++		if (port->flags & UPF_IOREMAP) {
++			port->membase = ioremap_nocache(port->mapbase, size);
++			if (!port->membase) {
++				release_mem_region(port->mapbase, size);
++				ret = -ENOMEM;
++			}
++		}
++		break;
++
++	case UPIO_HUB6:
++	case UPIO_PORT:
++		if (!request_region(port->iobase, size, "serial"))
++			ret = -EBUSY;
++		break;
++	}
++	return ret;
++}
++
++static void serial8250_release_std_resource(struct uart_8250_port *up)
++{
++	unsigned int size = serial8250_port_size(up);
++	struct uart_port *port = &up->port;
++
++	switch (port->iotype) {
++	case UPIO_AU:
++	case UPIO_TSI:
++	case UPIO_MEM32:
++	case UPIO_MEM:
++		if (!port->mapbase)
++			break;
++
++		if (port->flags & UPF_IOREMAP) {
++			iounmap(port->membase);
++			port->membase = NULL;
++		}
++
++		release_mem_region(port->mapbase, size);
++		break;
++
++	case UPIO_HUB6:
++	case UPIO_PORT:
++		release_region(port->iobase, size);
++		break;
++	}
++}
++
++static int serial8250_request_rsa_resource(struct uart_8250_port *up)
++{
++	unsigned long start = UART_RSA_BASE << up->port.regshift;
++	unsigned int size = 8 << up->port.regshift;
++	struct uart_port *port = &up->port;
++	int ret = -EINVAL;
++
++	switch (port->iotype) {
++	case UPIO_HUB6:
++	case UPIO_PORT:
++		start += port->iobase;
++		if (request_region(start, size, "serial-rsa"))
++			ret = 0;
++		else
++			ret = -EBUSY;
++		break;
++	}
++
++	return ret;
++}
++
++static void serial8250_release_rsa_resource(struct uart_8250_port *up)
++{
++	unsigned long offset = UART_RSA_BASE << up->port.regshift;
++	unsigned int size = 8 << up->port.regshift;
++	struct uart_port *port = &up->port;
++
++	switch (port->iotype) {
++	case UPIO_HUB6:
++	case UPIO_PORT:
++		release_region(port->iobase + offset, size);
++		break;
++	}
++}
++
++static void serial8250_release_port(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++
++	serial8250_release_std_resource(up);
++	if (port->type == PORT_RSA)
++		serial8250_release_rsa_resource(up);
++}
++
++static int serial8250_request_port(struct uart_port *port)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	int ret;
++
++	if (port->type == PORT_8250_CIR)
++		return -ENODEV;
++
++	ret = serial8250_request_std_resource(up);
++	if (ret == 0 && port->type == PORT_RSA) {
++		ret = serial8250_request_rsa_resource(up);
++		if (ret < 0)
++			serial8250_release_std_resource(up);
++	}
++
++	return ret;
++}
++
++static void serial8250_config_port(struct uart_port *port, int flags)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++	int probeflags = PROBE_ANY;
++	int ret;
++
++	if (port->type == PORT_8250_CIR)
++		return;
++
++	/*
++	 * Find the region that we can probe for.  This in turn
++	 * tells us whether we can probe for the type of port.
++	 */
++	ret = serial8250_request_std_resource(up);
++	if (ret < 0)
++		return;
++
++	ret = serial8250_request_rsa_resource(up);
++	if (ret < 0)
++		probeflags &= ~PROBE_RSA;
++
++	if (port->iotype != up->cur_iotype)
++		set_io_from_upio(port);
++
++	if (flags & UART_CONFIG_TYPE)
++		autoconfig(up, probeflags);
++
++	/* if access method is AU, it is a 16550 with a quirk */
++	if (port->type == PORT_16550A && port->iotype == UPIO_AU)
++		up->bugs |= UART_BUG_NOMSR;
++
++	/* HW bugs may trigger IRQ while IIR == NO_INT */
++	if (port->type == PORT_TEGRA)
++		up->bugs |= UART_BUG_NOMSR;
++
++	if (port->type != PORT_UNKNOWN && flags & UART_CONFIG_IRQ)
++		autoconfig_irq(up);
++
++	if (port->type != PORT_RSA && probeflags & PROBE_RSA)
++		serial8250_release_rsa_resource(up);
++	if (port->type == PORT_UNKNOWN)
++		serial8250_release_std_resource(up);
++
++	/* Fixme: probably not the best place for this */
++	if ((port->type == PORT_XR17V35X) ||
++	   (port->type == PORT_XR17D15X))
++		port->handle_irq = exar_handle_irq;
++}
++
++static int
++serial8250_verify_port(struct uart_port *port, struct serial_struct *ser)
++{
++	if (ser->irq >= nr_irqs || ser->irq < 0 ||
++	    ser->baud_base < 9600 || ser->type < PORT_UNKNOWN ||
++	    ser->type >= ARRAY_SIZE(uart_config) || ser->type == PORT_CIRRUS ||
++	    ser->type == PORT_STARTECH)
++		return -EINVAL;
++	return 0;
++}
++
++static const char *
++serial8250_type(struct uart_port *port)
++{
++	int type = port->type;
++
++	if (type >= ARRAY_SIZE(uart_config))
++		type = 0;
++	return uart_config[type].name;
++}
++
++static struct uart_ops serial8250_pops = {
++	.tx_empty	= serial8250_tx_empty,
++	.set_mctrl	= serial8250_set_mctrl,
++	.get_mctrl	= serial8250_get_mctrl,
++	.stop_tx	= serial8250_stop_tx,
++	.start_tx	= serial8250_start_tx,
++	.stop_rx	= serial8250_stop_rx,
++	.enable_ms	= serial8250_enable_ms,
++	.break_ctl	= serial8250_break_ctl,
++	.startup	= serial8250_startup,
++	.shutdown	= serial8250_shutdown,
++	.set_termios	= serial8250_set_termios,
++	.set_ldisc	= serial8250_set_ldisc,
++	.pm		= serial8250_pm,
++	.type		= serial8250_type,
++	.release_port	= serial8250_release_port,
++	.request_port	= serial8250_request_port,
++	.config_port	= serial8250_config_port,
++	.verify_port	= serial8250_verify_port,
++#ifdef CONFIG_CONSOLE_POLL
++	.poll_get_char = serial8250_get_poll_char,
++	.poll_put_char = serial8250_put_poll_char,
++#endif
++};
++
++static struct uart_8250_port serial8250_ports[UART_NR];
++
++static void (*serial8250_isa_config)(int port, struct uart_port *up,
++	unsigned short *capabilities);
++
++void serial8250_set_isa_configurator(
++	void (*v)(int port, struct uart_port *up, unsigned short *capabilities))
++{
++	serial8250_isa_config = v;
++}
++EXPORT_SYMBOL(serial8250_set_isa_configurator);
++
++static void __init serial8250_isa_init_ports(void)
++{
++	struct uart_8250_port *up;
++	static int first = 1;
++	int i, irqflag = 0;
++
++	if (!first)
++		return;
++	first = 0;
++
++	if (nr_uarts > UART_NR)
++		nr_uarts = UART_NR;
++
++	for (i = 0; i < nr_uarts; i++) {
++		struct uart_8250_port *up = &serial8250_ports[i];
++		struct uart_port *port = &up->port;
++
++		port->line = i;
++		spin_lock_init(&port->lock);
++
++		init_timer(&up->timer);
++		up->timer.function = serial8250_timeout;
++		up->cur_iotype = 0xFF;
++
++		/*
++		 * ALPHA_KLUDGE_MCR needs to be killed.
++		 */
++		up->mcr_mask = ~ALPHA_KLUDGE_MCR;
++		up->mcr_force = ALPHA_KLUDGE_MCR;
++
++		port->ops = &serial8250_pops;
++	}
++
++	if (share_irqs)
++		irqflag = IRQF_SHARED;
++
++	for (i = 0, up = serial8250_ports;
++	     i < ARRAY_SIZE(old_serial_port) && i < nr_uarts;
++	     i++, up++) {
++		struct uart_port *port = &up->port;
++
++		port->iobase   = old_serial_port[i].port;
++		port->irq      = irq_canonicalize(old_serial_port[i].irq);
++		port->irqflags = old_serial_port[i].irqflags;
++		port->uartclk  = old_serial_port[i].baud_base * 16;
++		port->flags    = old_serial_port[i].flags;
++		port->hub6     = old_serial_port[i].hub6;
++		port->membase  = old_serial_port[i].iomem_base;
++		port->iotype   = old_serial_port[i].io_type;
++		port->regshift = old_serial_port[i].iomem_reg_shift;
++		set_io_from_upio(port);
++		port->irqflags |= irqflag;
++		if (serial8250_isa_config != NULL)
++			serial8250_isa_config(i, &up->port, &up->capabilities);
++
++	}
++}
++
++static void
++serial8250_init_fixed_type_port(struct uart_8250_port *up, unsigned int type)
++{
++	up->port.type = type;
++	if (!up->port.fifosize)
++		up->port.fifosize = uart_config[type].fifo_size;
++	if (!up->tx_loadsz)
++		up->tx_loadsz = uart_config[type].tx_loadsz;
++	if (!up->capabilities)
++		up->capabilities = uart_config[type].flags;
++}
++
++static void __init
++serial8250_register_ports(struct uart_driver *drv, struct device *dev)
++{
++	int i;
++
++	for (i = 0; i < nr_uarts; i++) {
++		struct uart_8250_port *up = &serial8250_ports[i];
++
++		if (up->port.dev)
++			continue;
++
++		up->port.dev = dev;
++
++		if (up->port.flags & UPF_FIXED_TYPE)
++			serial8250_init_fixed_type_port(up, up->port.type);
++
++		uart_add_one_port(drv, &up->port);
++	}
++}
++
++#ifdef CONFIG_SERIAL_8250_CONSOLE
++
++static void serial8250_console_putchar(struct uart_port *port, int ch)
++{
++	struct uart_8250_port *up =
++		container_of(port, struct uart_8250_port, port);
++
++	wait_for_xmitr(up, UART_LSR_THRE);
++	serial_port_out(port, UART_TX, ch);
++}
++
++/*
++ *	Print a string to the serial port trying not to disturb
++ *	any possible real use of the port...
++ *
++ *	The console_lock must be held when we get here.
++ */
++static void
++serial8250_console_write(struct console *co, const char *s, unsigned int count)
++{
++	struct uart_8250_port *up = &serial8250_ports[co->index];
++	struct uart_port *port = &up->port;
++	unsigned long flags;
++	unsigned int ier;
++	int locked = 1;
++
++	touch_nmi_watchdog();
++
++	if (port->sysrq || oops_in_progress || in_kdb_printk())
++		locked = spin_trylock_irqsave(&port->lock, flags);
++	else
++		spin_lock_irqsave(&port->lock, flags);
++
++	/*
++	 *	First save the IER then disable the interrupts
++	 */
++	ier = serial_port_in(port, UART_IER);
++
++	if (up->capabilities & UART_CAP_UUE)
++		serial_port_out(port, UART_IER, UART_IER_UUE);
++	else
++		serial_port_out(port, UART_IER, 0);
++
++	uart_console_write(port, s, count, serial8250_console_putchar);
++
++	/*
++	 *	Finally, wait for transmitter to become empty
++	 *	and restore the IER
++	 */
++	wait_for_xmitr(up, BOTH_EMPTY);
++	serial_port_out(port, UART_IER, ier);
++
++	/*
++	 *	The receive handling will happen properly because the
++	 *	receive ready bit will still be set; it is not cleared
++	 *	on read.  However, modem control will not, we must
++	 *	call it if we have saved something in the saved flags
++	 *	while processing with interrupts off.
++	 */
++	if (up->msr_saved_flags)
++		serial8250_modem_status(up);
++
++	if (locked)
++		spin_unlock_irqrestore(&port->lock, flags);
++}
++
++static int __init serial8250_console_setup(struct console *co, char *options)
++{
++	struct uart_port *port;
++	int baud = 9600;
++	int bits = 8;
++	int parity = 'n';
++	int flow = 'n';
++
++	/*
++	 * Check whether an invalid uart number has been specified, and
++	 * if so, search for the first available port that does have
++	 * console support.
++	 */
++	if (co->index >= nr_uarts)
++		co->index = 0;
++	port = &serial8250_ports[co->index].port;
++	if (!port->iobase && !port->membase)
++		return -ENODEV;
++
++	if (options)
++		uart_parse_options(options, &baud, &parity, &bits, &flow);
++
++	return uart_set_options(port, co, baud, parity, bits, flow);
++}
++
++static int serial8250_console_early_setup(void)
++{
++	return serial8250_find_port_for_earlycon();
++}
++
++static struct console serial8250_console = {
++	.name		= "ttyS",
++	.write		= serial8250_console_write,
++	.device		= uart_console_device,
++	.setup		= serial8250_console_setup,
++	.early_setup	= serial8250_console_early_setup,
++	.flags		= CON_PRINTBUFFER | CON_ANYTIME,
++	.index		= -1,
++	.data		= &serial8250_reg,
++};
++
++static int __init serial8250_console_init(void)
++{
++	serial8250_isa_init_ports();
++	register_console(&serial8250_console);
++	return 0;
++}
++console_initcall(serial8250_console_init);
++
++int serial8250_find_port(struct uart_port *p)
++{
++	int line;
++	struct uart_port *port;
++
++	for (line = 0; line < nr_uarts; line++) {
++		port = &serial8250_ports[line].port;
++		if (uart_match_port(p, port))
++			return line;
++	}
++	return -ENODEV;
++}
++
++#define SERIAL8250_CONSOLE	&serial8250_console
++#else
++#define SERIAL8250_CONSOLE	NULL
++#endif
++
++static struct uart_driver serial8250_reg = {
++	.owner			= THIS_MODULE,
++	.driver_name		= "serial",
++	.dev_name		= "ttyS",
++	.major			= TTY_MAJOR,
++	.minor			= 64,
++	.cons			= SERIAL8250_CONSOLE,
++};
++
++/*
++ * early_serial_setup - early registration for 8250 ports
++ *
++ * Setup an 8250 port structure prior to console initialisation.  Use
++ * after console initialisation will cause undefined behaviour.
++ */
++int __init early_serial_setup(struct uart_port *port)
++{
++	struct uart_port *p;
++
++	if (port->line >= ARRAY_SIZE(serial8250_ports))
++		return -ENODEV;
++
++	serial8250_isa_init_ports();
++	p = &serial8250_ports[port->line].port;
++	p->iobase       = port->iobase;
++	p->membase      = port->membase;
++	p->irq          = port->irq;
++	p->irqflags     = port->irqflags;
++	p->uartclk      = port->uartclk;
++	p->fifosize     = port->fifosize;
++	p->regshift     = port->regshift;
++	p->iotype       = port->iotype;
++	p->flags        = port->flags;
++	p->mapbase      = port->mapbase;
++	p->private_data = port->private_data;
++	p->type		= port->type;
++	p->line		= port->line;
++
++	set_io_from_upio(p);
++	if (port->serial_in)
++		p->serial_in = port->serial_in;
++	if (port->serial_out)
++		p->serial_out = port->serial_out;
++	if (port->handle_irq)
++		p->handle_irq = port->handle_irq;
++	else
++		p->handle_irq = serial8250_default_handle_irq;
++
++	return 0;
++}
++
++/**
++ *	serial8250_suspend_port - suspend one serial port
++ *	@line:  serial line number
++ *
++ *	Suspend one serial port.
++ */
++void serial8250_suspend_port(int line)
++{
++	uart_suspend_port(&serial8250_reg, &serial8250_ports[line].port);
++}
++
++/**
++ *	serial8250_resume_port - resume one serial port
++ *	@line:  serial line number
++ *
++ *	Resume one serial port.
++ */
++void serial8250_resume_port(int line)
++{
++	struct uart_8250_port *up = &serial8250_ports[line];
++	struct uart_port *port = &up->port;
++
++	if (up->capabilities & UART_NATSEMI) {
++		/* Ensure it's still in high speed mode */
++		serial_port_out(port, UART_LCR, 0xE0);
++
++		ns16550a_goto_highspeed(up);
++
++		serial_port_out(port, UART_LCR, 0);
++		port->uartclk = 921600*16;
++	}
++	uart_resume_port(&serial8250_reg, port);
++}
++
++/*
++ * Register a set of serial devices attached to a platform device.  The
++ * list is terminated with a zero flags entry, which means we expect
++ * all entries to have at least UPF_BOOT_AUTOCONF set.
++ */
++static int serial8250_probe(struct platform_device *dev)
++{
++	struct plat_serial8250_port *p = dev->dev.platform_data;
++	struct uart_8250_port uart;
++	int ret, i, irqflag = 0;
++
++	memset(&uart, 0, sizeof(uart));
++
++	if (share_irqs)
++		irqflag = IRQF_SHARED;
++
++	for (i = 0; p && p->flags != 0; p++, i++) {
++		uart.port.iobase	= p->iobase;
++		uart.port.membase	= p->membase;
++		uart.port.irq		= p->irq;
++		uart.port.irqflags	= p->irqflags;
++		uart.port.uartclk	= p->uartclk;
++		uart.port.regshift	= p->regshift;
++		uart.port.iotype	= p->iotype;
++		uart.port.flags		= p->flags;
++		uart.port.mapbase	= p->mapbase;
++		uart.port.hub6		= p->hub6;
++		uart.port.private_data	= p->private_data;
++		uart.port.type		= p->type;
++		uart.port.serial_in	= p->serial_in;
++		uart.port.serial_out	= p->serial_out;
++		uart.port.handle_irq	= p->handle_irq;
++		uart.port.handle_break	= p->handle_break;
++		uart.port.set_termios	= p->set_termios;
++		uart.port.pm		= p->pm;
++		uart.port.dev		= &dev->dev;
++		uart.port.irqflags	|= irqflag;
++		ret = serial8250_register_8250_port(&uart);
++		if (ret < 0) {
++			dev_err(&dev->dev, "unable to register port at index %d "
++				"(IO%lx MEM%llx IRQ%d): %d\n", i,
++				p->iobase, (unsigned long long)p->mapbase,
++				p->irq, ret);
++		}
++	}
++	return 0;
++}
++
++/*
++ * Remove serial ports registered against a platform device.
++ */
++static int serial8250_remove(struct platform_device *dev)
++{
++	int i;
++
++	for (i = 0; i < nr_uarts; i++) {
++		struct uart_8250_port *up = &serial8250_ports[i];
++
++		if (up->port.dev == &dev->dev)
++			serial8250_unregister_port(i);
++	}
++	return 0;
++}
++
++static int serial8250_suspend(struct platform_device *dev, pm_message_t state)
++{
++	int i;
++
++	for (i = 0; i < UART_NR; i++) {
++		struct uart_8250_port *up = &serial8250_ports[i];
++
++		if (up->port.type != PORT_UNKNOWN && up->port.dev == &dev->dev)
++			uart_suspend_port(&serial8250_reg, &up->port);
++	}
++
++	return 0;
++}
++
++static int serial8250_resume(struct platform_device *dev)
++{
++	int i;
++
++	for (i = 0; i < UART_NR; i++) {
++		struct uart_8250_port *up = &serial8250_ports[i];
++
++		if (up->port.type != PORT_UNKNOWN && up->port.dev == &dev->dev)
++			serial8250_resume_port(i);
++	}
++
++	return 0;
++}
++
++static struct platform_driver serial8250_isa_driver = {
++	.probe		= serial8250_probe,
++	.remove		= serial8250_remove,
++	.suspend	= serial8250_suspend,
++	.resume		= serial8250_resume,
++	.driver		= {
++		.name	= "serial8250",
++		.owner	= THIS_MODULE,
++	},
++};
++
++/*
++ * This "device" covers _all_ ISA 8250-compatible serial devices listed
++ * in the table in include/asm/serial.h
++ */
++static struct platform_device *serial8250_isa_devs;
++
++/*
++ * serial8250_register_8250_port and serial8250_unregister_port allows for
++ * 16x50 serial ports to be configured at run-time, to support PCMCIA
++ * modems and PCI multiport cards.
++ */
++static DEFINE_MUTEX(serial_mutex);
++
++static struct uart_8250_port *serial8250_find_match_or_unused(struct uart_port *port)
++{
++	int i;
++
++	/*
++	 * First, find a port entry which matches.
++	 */
++	for (i = 0; i < nr_uarts; i++)
++		if (uart_match_port(&serial8250_ports[i].port, port))
++			return &serial8250_ports[i];
++
++	/*
++	 * We didn't find a matching entry, so look for the first
++	 * free entry.  We look for one which hasn't been previously
++	 * used (indicated by zero iobase).
++	 */
++	for (i = 0; i < nr_uarts; i++)
++		if (serial8250_ports[i].port.type == PORT_UNKNOWN &&
++		    serial8250_ports[i].port.iobase == 0)
++			return &serial8250_ports[i];
++
++	/*
++	 * That also failed.  Last resort is to find any entry which
++	 * doesn't have a real port associated with it.
++	 */
++	for (i = 0; i < nr_uarts; i++)
++		if (serial8250_ports[i].port.type == PORT_UNKNOWN)
++			return &serial8250_ports[i];
++
++	return NULL;
++}
++
++/**
++ *	serial8250_register_8250_port - register a serial port
++ *	@up: serial port template
++ *
++ *	Configure the serial port specified by the request. If the
++ *	port exists and is in use, it is hung up and unregistered
++ *	first.
++ *
++ *	The port is then probed and if necessary the IRQ is autodetected
++ *	If this fails an error is returned.
++ *
++ *	On success the port is ready to use and the line number is returned.
++ */
++int serial8250_register_8250_port(struct uart_8250_port *up)
++{
++	struct uart_8250_port *uart;
++	int ret = -ENOSPC;
++
++	if (up->port.uartclk == 0)
++		return -EINVAL;
++
++	mutex_lock(&serial_mutex);
++
++	uart = serial8250_find_match_or_unused(&up->port);
++	if (uart && uart->port.type != PORT_8250_CIR) {
++		if (uart->port.dev)
++			uart_remove_one_port(&serial8250_reg, &uart->port);
++
++		uart->port.iobase       = up->port.iobase;
++		uart->port.membase      = up->port.membase;
++		uart->port.irq          = up->port.irq;
++		uart->port.irqflags     = up->port.irqflags;
++		uart->port.uartclk      = up->port.uartclk;
++		uart->port.fifosize     = up->port.fifosize;
++		uart->port.regshift     = up->port.regshift;
++		uart->port.iotype       = up->port.iotype;
++		uart->port.flags        = up->port.flags | UPF_BOOT_AUTOCONF;
++		uart->bugs		= up->bugs;
++		uart->port.mapbase      = up->port.mapbase;
++		uart->port.private_data = up->port.private_data;
++		uart->port.fifosize	= up->port.fifosize;
++		uart->tx_loadsz		= up->tx_loadsz;
++		uart->capabilities	= up->capabilities;
++
++		/* Take tx_loadsz from fifosize if it wasn't set separately */
++		if (uart->port.fifosize && !uart->tx_loadsz)
++			uart->tx_loadsz = uart->port.fifosize;
++
++		if (up->port.dev)
++			uart->port.dev = up->port.dev;
++
++		if (up->port.flags & UPF_FIXED_TYPE)
++			serial8250_init_fixed_type_port(uart, up->port.type);
++
++		set_io_from_upio(&uart->port);
++		/* Possibly override default I/O functions.  */
++		if (up->port.serial_in)
++			uart->port.serial_in = up->port.serial_in;
++		if (up->port.serial_out)
++			uart->port.serial_out = up->port.serial_out;
++		if (up->port.handle_irq)
++			uart->port.handle_irq = up->port.handle_irq;
++		/*  Possibly override set_termios call */
++		if (up->port.set_termios)
++			uart->port.set_termios = up->port.set_termios;
++		if (up->port.pm)
++			uart->port.pm = up->port.pm;
++		if (up->port.handle_break)
++			uart->port.handle_break = up->port.handle_break;
++		if (up->dl_read)
++			uart->dl_read = up->dl_read;
++		if (up->dl_write)
++			uart->dl_write = up->dl_write;
++		if (up->dma)
++			uart->dma = up->dma;
++
++		if (serial8250_isa_config != NULL)
++			serial8250_isa_config(0, &uart->port,
++					&uart->capabilities);
++
++		ret = uart_add_one_port(&serial8250_reg, &uart->port);
++		if (ret == 0)
++			ret = uart->port.line;
++	}
++	mutex_unlock(&serial_mutex);
++
++	return ret;
++}
++EXPORT_SYMBOL(serial8250_register_8250_port);
++
++/**
++ *	serial8250_unregister_port - remove a 16x50 serial port at runtime
++ *	@line: serial line number
++ *
++ *	Remove one serial port.  This may not be called from interrupt
++ *	context.  We hand the port back to the our control.
++ */
++void serial8250_unregister_port(int line)
++{
++	struct uart_8250_port *uart = &serial8250_ports[line];
++
++	mutex_lock(&serial_mutex);
++	uart_remove_one_port(&serial8250_reg, &uart->port);
++	if (serial8250_isa_devs) {
++		uart->port.flags &= ~UPF_BOOT_AUTOCONF;
++		uart->port.type = PORT_UNKNOWN;
++		uart->port.dev = &serial8250_isa_devs->dev;
++		uart->capabilities = uart_config[uart->port.type].flags;
++		uart_add_one_port(&serial8250_reg, &uart->port);
++	} else {
++		uart->port.dev = NULL;
++	}
++	mutex_unlock(&serial_mutex);
++}
++EXPORT_SYMBOL(serial8250_unregister_port);
++
++static int __init serial8250_init(void)
++{
++	int ret;
++
++	serial8250_isa_init_ports();
++
++	printk(KERN_INFO "Serial: 8250/16550 driver, "
++		"%d ports, IRQ sharing %sabled\n", nr_uarts,
++		share_irqs ? "en" : "dis");
++
++#ifdef CONFIG_SPARC
++	ret = sunserial_register_minors(&serial8250_reg, UART_NR);
++#else
++	serial8250_reg.nr = UART_NR;
++	ret = uart_register_driver(&serial8250_reg);
++#endif
++	if (ret)
++		goto out;
++
++	ret = serial8250_pnp_init();
++	if (ret)
++		goto unreg_uart_drv;
++
++	serial8250_isa_devs = platform_device_alloc("serial8250",
++						    PLAT8250_DEV_LEGACY);
++	if (!serial8250_isa_devs) {
++		ret = -ENOMEM;
++		goto unreg_pnp;
++	}
++
++	ret = platform_device_add(serial8250_isa_devs);
++	if (ret)
++		goto put_dev;
++
++	serial8250_register_ports(&serial8250_reg, &serial8250_isa_devs->dev);
++
++	ret = platform_driver_register(&serial8250_isa_driver);
++	if (ret == 0)
++		goto out;
++
++	platform_device_del(serial8250_isa_devs);
++put_dev:
++	platform_device_put(serial8250_isa_devs);
++unreg_pnp:
++	serial8250_pnp_exit();
++unreg_uart_drv:
++#ifdef CONFIG_SPARC
++	sunserial_unregister_minors(&serial8250_reg, UART_NR);
++#else
++	uart_unregister_driver(&serial8250_reg);
++#endif
++out:
++	return ret;
++}
++
++static void __exit serial8250_exit(void)
++{
++	struct platform_device *isa_dev = serial8250_isa_devs;
++
++	/*
++	 * This tells serial8250_unregister_port() not to re-register
++	 * the ports (thereby making serial8250_isa_driver permanently
++	 * in use.)
++	 */
++	serial8250_isa_devs = NULL;
++
++	platform_driver_unregister(&serial8250_isa_driver);
++	platform_device_unregister(isa_dev);
++
++	serial8250_pnp_exit();
++
++#ifdef CONFIG_SPARC
++	sunserial_unregister_minors(&serial8250_reg, UART_NR);
++#else
++	uart_unregister_driver(&serial8250_reg);
++#endif
++}
++
++module_init(serial8250_init);
++module_exit(serial8250_exit);
++
++EXPORT_SYMBOL(serial8250_suspend_port);
++EXPORT_SYMBOL(serial8250_resume_port);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("Generic 8250/16x50 serial driver");
++
++module_param(share_irqs, uint, 0644);
++MODULE_PARM_DESC(share_irqs, "Share IRQs with other non-8250/16x50 devices"
++	" (unsafe)");
++
++module_param(nr_uarts, uint, 0644);
++MODULE_PARM_DESC(nr_uarts, "Maximum number of UARTs supported. (1-" __MODULE_STRING(CONFIG_SERIAL_8250_NR_UARTS) ")");
++
++module_param(skip_txen_test, uint, 0644);
++MODULE_PARM_DESC(skip_txen_test, "Skip checking for the TXEN bug at init time");
++
++#ifdef CONFIG_SERIAL_8250_RSA
++module_param_array(probe_rsa, ulong, &probe_rsa_count, 0444);
++MODULE_PARM_DESC(probe_rsa, "Probe I/O ports for RSA");
++#endif
++MODULE_ALIAS_CHARDEV_MAJOR(TTY_MAJOR);
++
++#ifdef CONFIG_SERIAL_8250_DEPRECATED_OPTIONS
++#ifndef MODULE
++/* This module was renamed to 8250_core in 3.7.  Keep the old "8250" name
++ * working as well for the module options so we don't break people.  We
++ * need to keep the names identical and the convenient macros will happily
++ * refuse to let us do that by failing the build with redefinition errors
++ * of global variables.  So we stick them inside a dummy function to avoid
++ * those conflicts.  The options still get parsed, and the redefined
++ * MODULE_PARAM_PREFIX lets us keep the "8250." syntax alive.
++ *
++ * This is hacky.  I'm sorry.
++ */
++static void __used s8250_options(void)
++{
++#undef MODULE_PARAM_PREFIX
++#define MODULE_PARAM_PREFIX "8250_core."
++
++	module_param_cb(share_irqs, &param_ops_uint, &share_irqs, 0644);
++	module_param_cb(nr_uarts, &param_ops_uint, &nr_uarts, 0644);
++	module_param_cb(skip_txen_test, &param_ops_uint, &skip_txen_test, 0644);
++#ifdef CONFIG_SERIAL_8250_RSA
++	__module_param_call(MODULE_PARAM_PREFIX, probe_rsa,
++		&param_array_ops, .arr = &__param_arr_probe_rsa,
++		0444, -1);
++#endif
++}
++#else
++MODULE_ALIAS("8250_core");
++#endif
++#endif
+-- 
+1.7.1
+

@@ -1,0 +1,275 @@
+From 128bef1310f62700c57b6bb2898d792c478a9df4 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Wed, 18 Mar 2015 10:31:03 +0900
+Subject: [PATCH 1/1] added usb gadget stack merge
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/usb/gadget/f_fs.c           |    3 +-
+ include/linux/usb/functionfs.h      |   30 ----------------
+ include/linux/usb/gadget.h          |   66 +++++++++++++++++++++++-----------
+ include/uapi/linux/usb/functionfs.h |   41 +++++++++++++++++-----
+ 4 files changed, 78 insertions(+), 62 deletions(-)
+
+diff --git a/drivers/usb/gadget/f_fs.c b/drivers/usb/gadget/f_fs.c
+index 8598c27..3491f60 100644
+--- a/drivers/usb/gadget/f_fs.c
++++ b/drivers/usb/gadget/f_fs.c
+@@ -213,7 +213,8 @@ static int __ffs_ep0_queue_wait(struct ffs_data *ffs, char *data, size_t len)
+ 	if (req->buf == NULL)
+ 		req->buf = (void *)0xDEADBABE;
+ 
+-	reinit_completion(&ffs->ep0req_completion);
++//	reinit_completion(&ffs->ep0req_completion);
++	init_completion(&ffs->ep0req_completion);
+ 
+ 	ret = usb_ep_queue(ffs->gadget->ep0, req, GFP_ATOMIC);
+ 	if (unlikely(ret < 0))
+diff --git a/include/linux/usb/functionfs.h b/include/linux/usb/functionfs.h
+index 65d0a88..7119066 100644
+--- a/include/linux/usb/functionfs.h
++++ b/include/linux/usb/functionfs.h
+@@ -3,34 +3,4 @@
+ 
+ #include <uapi/linux/usb/functionfs.h>
+ 
+-
+-struct ffs_data;
+-struct usb_composite_dev;
+-struct usb_configuration;
+-
+-
+-static int  functionfs_init(void) __attribute__((warn_unused_result));
+-static void functionfs_cleanup(void);
+-
+-static int functionfs_bind(struct ffs_data *ffs, struct usb_composite_dev *cdev)
+-	__attribute__((warn_unused_result, nonnull));
+-static void functionfs_unbind(struct ffs_data *ffs)
+-	__attribute__((nonnull));
+-
+-static int functionfs_bind_config(struct usb_composite_dev *cdev,
+-				  struct usb_configuration *c,
+-				  struct ffs_data *ffs)
+-	__attribute__((warn_unused_result, nonnull));
+-
+-
+-static int functionfs_ready_callback(struct ffs_data *ffs)
+-	__attribute__((warn_unused_result, nonnull));
+-static void functionfs_closed_callback(struct ffs_data *ffs)
+-	__attribute__((nonnull));
+-static void *functionfs_acquire_dev_callback(const char *dev_name)
+-	__attribute__((warn_unused_result, nonnull));
+-static void functionfs_release_dev_callback(struct ffs_data *ffs_data)
+-	__attribute__((nonnull));
+-
+-
+ #endif
+diff --git a/include/linux/usb/gadget.h b/include/linux/usb/gadget.h
+index c69fceb..c3a6185 100644
+--- a/include/linux/usb/gadget.h
++++ b/include/linux/usb/gadget.h
+@@ -148,6 +148,9 @@ struct usb_ep_ops {
+  * @maxpacket:The maximum packet size used on this endpoint.  The initial
+  *	value can sometimes be reduced (hardware allowing), according to
+  *      the endpoint descriptor used to configure the endpoint.
++ * @maxpacket_limit:The maximum packet size value which can be handled by this
++ *	endpoint. It's set once by UDC driver when endpoint is initialized, and
++ *	should not be changed. Should not be confused with maxpacket.
+  * @max_streams: The maximum number of streams supported
+  *	by this EP (0 - 16, actual number is 2^n)
+  * @mult: multiplier, 'mult' value for SS Isoc EPs
+@@ -171,7 +174,7 @@ struct usb_ep {
+ 	const struct usb_ep_ops	*ops;
+ 	struct list_head	ep_list;
+ 	unsigned		maxpacket:16;
+-        unsigned                maxpacket_limit:16;
++	unsigned		maxpacket_limit:16;
+ 	unsigned		max_streams:16;
+ 	unsigned		mult:2;
+ 	unsigned		maxburst:5;
+@@ -183,18 +186,18 @@ struct usb_ep {
+ /*-------------------------------------------------------------------------*/
+ 
+ /**
+- *  * usb_ep_set_maxpacket_limit - set maximum packet size limit for endpoint
+- *   * @ep:the endpoint being configured
+- *    * @maxpacket_limit:value of maximum packet size limit
+- *     *
+- *      * This function shoud be used only in UDC drivers to initialize endpoint
+- *       * (usually in probe function).
+- *        */
++ * usb_ep_set_maxpacket_limit - set maximum packet size limit for endpoint
++ * @ep:the endpoint being configured
++ * @maxpacket_limit:value of maximum packet size limit
++ *
++ * This function shoud be used only in UDC drivers to initialize endpoint
++ * (usually in probe function).
++ */
+ static inline void usb_ep_set_maxpacket_limit(struct usb_ep *ep,
+-                                              unsigned maxpacket_limit)
++					      unsigned maxpacket_limit)
+ {
+-        ep->maxpacket_limit = maxpacket_limit;
+-        ep->maxpacket = maxpacket_limit;
++	ep->maxpacket_limit = maxpacket_limit;
++	ep->maxpacket = maxpacket_limit;
+ }
+ 
+ /**
+@@ -501,6 +504,11 @@ struct usb_gadget_ops {
+  * @max_speed: Maximal speed the UDC can handle.  UDC must support this
+  *      and all slower speeds.
+  * @state: the state we are now (attached, suspended, configured, etc)
++ * @name: Identifies the controller hardware type.  Used in diagnostics
++ *	and sometimes configuration.
++ * @dev: Driver model state for this abstract device.
++ * @out_epnum: last used out ep number
++ * @in_epnum: last used in ep number
+  * @sg_supported: true if we can handle scatter-gather
+  * @is_otg: True if the USB device port uses a Mini-AB jack, so that the
+  *	gadget driver must provide a USB OTG descriptor.
+@@ -513,11 +521,8 @@ struct usb_gadget_ops {
+  *	only supports HNP on a different root port.
+  * @b_hnp_enable: OTG device feature flag, indicating that the A-Host
+  *	enabled HNP support.
+- * @name: Identifies the controller hardware type.  Used in diagnostics
+- *	and sometimes configuration.
+- * @dev: Driver model state for this abstract device.
+- * @out_epnum: last used out ep number
+- * @in_epnum: last used in ep number
++ * @quirk_ep_out_aligned_size: epout requires buffer size to be aligned to
++ *	MaxPacketSize.
+  *
+  * Gadgets have a mostly-portable "gadget driver" implementing device
+  * functions, handling all usb configurations and interfaces.  Gadget
+@@ -546,18 +551,18 @@ struct usb_gadget {
+ 	enum usb_device_speed		speed;
+ 	enum usb_device_speed		max_speed;
+ 	enum usb_device_state		state;
++	const char			*name;
++	struct device			dev;
++	unsigned			out_epnum;
++	unsigned			in_epnum;
++
+ 	unsigned			sg_supported:1;
+ 	unsigned			is_otg:1;
+ 	unsigned			is_a_peripheral:1;
+ 	unsigned			b_hnp_enable:1;
+ 	unsigned			a_hnp_support:1;
+ 	unsigned			a_alt_hnp_support:1;
+-	const char			*name;
+-	struct device			dev;
+-	unsigned			out_epnum;
+-	unsigned			in_epnum;
+-
+-        unsigned                        quirk_ep_out_aligned_size:1;
++	unsigned			quirk_ep_out_aligned_size:1;
+ };
+ #define work_to_gadget(w)	(container_of((w), struct usb_gadget, work))
+ 
+@@ -576,6 +581,23 @@ static inline struct usb_gadget *dev_to_usb_gadget(struct device *dev)
+ 
+ 
+ /**
++ * usb_ep_align_maybe - returns @len aligned to ep's maxpacketsize if gadget
++ *	requires quirk_ep_out_aligned_size, otherwise reguens len.
++ * @g: controller to check for quirk
++ * @ep: the endpoint whose maxpacketsize is used to align @len
++ * @len: buffer size's length to align to @ep's maxpacketsize
++ *
++ * This helper is used in case it's required for any reason to check and maybe
++ * align buffer's size to an ep's maxpacketsize.
++ */
++static inline size_t
++usb_ep_align_maybe(struct usb_gadget *g, struct usb_ep *ep, size_t len)
++{
++	return !g->quirk_ep_out_aligned_size ? len :
++			round_up(len, (size_t)ep->desc->wMaxPacketSize);
++}
++
++/**
+  * gadget_is_dualspeed - return true iff the hardware handles high speed
+  * @g: controller that might support both high and full speeds
+  */
+diff --git a/include/uapi/linux/usb/functionfs.h b/include/uapi/linux/usb/functionfs.h
+index d6b0128..24b68c5 100644
+--- a/include/uapi/linux/usb/functionfs.h
++++ b/include/uapi/linux/usb/functionfs.h
+@@ -10,9 +10,15 @@
+ 
+ enum {
+ 	FUNCTIONFS_DESCRIPTORS_MAGIC = 1,
+-	FUNCTIONFS_STRINGS_MAGIC     = 2
++	FUNCTIONFS_STRINGS_MAGIC = 2,
++	FUNCTIONFS_DESCRIPTORS_MAGIC_V2 = 3,
+ };
+ 
++enum functionfs_flags {
++	FUNCTIONFS_HAS_FS_DESC = 1,
++	FUNCTIONFS_HAS_HS_DESC = 2,
++	FUNCTIONFS_HAS_SS_DESC = 4,
++};
+ 
+ #ifndef __KERNEL__
+ 
+@@ -27,31 +33,48 @@ struct usb_endpoint_descriptor_no_audio {
+ 	__u8  bInterval;
+ } __attribute__((packed));
+ 
+-
+-/*
+- * All numbers must be in little endian order.
+- */
+-
++/* Legacy format, deprecated as of 3.14. */
+ struct usb_functionfs_descs_head {
+ 	__le32 magic;
+ 	__le32 length;
+ 	__le32 fs_count;
+ 	__le32 hs_count;
+-} __attribute__((packed));
++} __attribute__((packed, deprecated));
+ 
+ /*
+  * Descriptors format:
+  *
+  * | off | name      | type         | description                          |
+  * |-----+-----------+--------------+--------------------------------------|
+- * |   0 | magic     | LE32         | FUNCTIONFS_{FS,HS}_DESCRIPTORS_MAGIC |
++ * |   0 | magic     | LE32         | FUNCTIONFS_DESCRIPTORS_MAGIC_V2      |
++ * |   4 | length    | LE32         | length of the whole data chunk       |
++ * |   8 | flags     | LE32         | combination of functionfs_flags      |
++ * |     | fs_count  | LE32         | number of full-speed descriptors     |
++ * |     | hs_count  | LE32         | number of high-speed descriptors     |
++ * |     | ss_count  | LE32         | number of super-speed descriptors    |
++ * |     | fs_descrs | Descriptor[] | list of full-speed descriptors       |
++ * |     | hs_descrs | Descriptor[] | list of high-speed descriptors       |
++ * |     | ss_descrs | Descriptor[] | list of super-speed descriptors      |
++ *
++ * Depending on which flags are set, various fields may be missing in the
++ * structure.  Any flags that are not recognised cause the whole block to be
++ * rejected with -ENOSYS.
++ *
++ * Legacy descriptors format:
++ *
++ * | off | name      | type         | description                          |
++ * |-----+-----------+--------------+--------------------------------------|
++ * |   0 | magic     | LE32         | FUNCTIONFS_DESCRIPTORS_MAGIC         |
+  * |   4 | length    | LE32         | length of the whole data chunk       |
+  * |   8 | fs_count  | LE32         | number of full-speed descriptors     |
+  * |  12 | hs_count  | LE32         | number of high-speed descriptors     |
+  * |  16 | fs_descrs | Descriptor[] | list of full-speed descriptors       |
+  * |     | hs_descrs | Descriptor[] | list of high-speed descriptors       |
+  *
+- * descs are just valid USB descriptors and have the following format:
++ * All numbers must be in little endian order.
++ *
++ * Descriptor[] is an array of valid USB descriptors which have the following
++ * format:
+  *
+  * | off | name            | type | description              |
+  * |-----+-----------------+------+--------------------------|
+-- 
+1.7.1
+

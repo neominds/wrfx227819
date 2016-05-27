@@ -1,0 +1,48 @@
+From b61ad70c1f48d4ca297542768b486d2985276e25 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:33:17 +0900
+Subject: [PATCH 087/171] 0001-temporary-LPAE-bug-fix
+
+
+diff --git a/arch/arm/mm/ioremap.c b/arch/arm/mm/ioremap.c
+index f599d12..4aca842 100644
+--- a/arch/arm/mm/ioremap.c
++++ b/arch/arm/mm/ioremap.c
+@@ -39,6 +39,7 @@
+ #include <asm/mach/pci.h>
+ #include "mm.h"
+ 
++#define	YAMANO_DEBUG	1
+ 
+ LIST_HEAD(static_vmlist);
+ 
+@@ -258,7 +259,7 @@ remap_area_supersections(unsigned long virt, unsigned long pfn,
+ 
+ 	return 0;
+ }
+-#endif
++#endif	/*  !defined(CONFIG_SMP) && !defined(CONFIG_ARM_LPAE) */
+ 
+ void __iomem * __arm_ioremap_pfn_caller(unsigned long pfn,
+ 	unsigned long offset, size_t size, unsigned int mtype, void *caller)
+@@ -340,7 +341,7 @@ void __iomem *__arm_ioremap_caller(phys_addr_t phys_addr, size_t size,
+ 	unsigned int mtype, void *caller)
+ {
+ 	phys_addr_t last_addr;
+-#ifdef	CONFIG_ARM__LPAE
++#ifdef	CONFIG_ARM_LPAE
+  	phys_addr_t offset;
+ #else
+  	unsigned long offset;
+@@ -352,7 +353,7 @@ void __iomem *__arm_ioremap_caller(phys_addr_t phys_addr, size_t size,
+  	 * Don't allow wraparound or zero size
+ 	 */
+ 	last_addr = phys_addr + size - 1;
+-	if (!size || last_addr < phys_addr)
++	if (!size || (last_addr < phys_addr))
+ 		return NULL;
+ 
+ 	return __arm_ioremap_pfn_caller(pfn, offset, size, mtype,
+-- 
+1.7.1
+

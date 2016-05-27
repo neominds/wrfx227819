@@ -1,0 +1,766 @@
+From 78279b06b36ec182ef8f7f165440f367afbc1cc3 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:32:08 +0900
+Subject: [PATCH 041/171] 0038-SDCard-Lock-Unlock-support
+
+
+diff --git a/drivers/mmc/Kconfig b/drivers/mmc/Kconfig
+index f2eeb38..4dbfe49 100644
+--- a/drivers/mmc/Kconfig
++++ b/drivers/mmc/Kconfig
+@@ -12,6 +12,15 @@ menuconfig MMC
+ 	  If you want MMC/SD/SDIO support, you should say Y here and
+ 	  also to your specific host controller driver.
+ 
++config MMC_LOCK
++	bool "MMC/SD password based card lock/unlock"
++	depends on MMC != n
++	select KEYS
++	help
++	  This will add the ability to lock/unlock SD and MMC cards.
++
++	  If unsure, say N.
++
+ config MMC_DEBUG
+ 	bool "MMC debugging"
+ 	depends on MMC != n
+diff --git a/drivers/mmc/card/block.c b/drivers/mmc/card/block.c
+index 4e8212c..0b68ba5 100644
+--- a/drivers/mmc/card/block.c
++++ b/drivers/mmc/card/block.c
+@@ -2377,6 +2377,14 @@ static int mmc_blk_probe(struct mmc_card *card)
+ 	struct mmc_blk_data *md, *part_md;
+ 	char cap_str[10];
+ 
++	/* if the card is locked, don't bring up the block layer because
++	 * all reads and writes will fail.
++	 */
++	if (mmc_card_locked(card)) {
++		pr_debug("%s: %s - Probe aborted because card is locked\n",
++			mmc_hostname(card->host), __func__);
++		return -ENODEV;
++	}
+ 	/*
+ 	 * Check that the card supports the command class(es) we need.
+ 	 */
+diff --git a/drivers/mmc/core/core.c b/drivers/mmc/core/core.c
+index bf18b6b..8c5e652 100644
+--- a/drivers/mmc/core/core.c
++++ b/drivers/mmc/core/core.c
+@@ -28,6 +28,7 @@
+ #include <linux/random.h>
+ #include <linux/slab.h>
+ #include <linux/of.h>
++#include <linux/key-type.h>
+ 
+ #include <linux/mmc/card.h>
+ #include <linux/mmc/host.h>
+@@ -2749,6 +2750,129 @@ void mmc_init_context_info(struct mmc_host *host)
+ 	init_waitqueue_head(&host->context_info.wait);
+ }
+ 
++#ifdef CONFIG_MMC_LOCK
++static int mmc_key_instantiate(struct key *key,
++                               struct key_preparsed_payload *prep)
++{
++	char *payload;
++
++	if (prep->datalen <= 0 || prep->datalen > MMC_PASSWORD_MAX ||
++	   !prep->data) {
++		pr_warn("Invalid data\n");
++		return  -EINVAL;
++	}
++
++	payload = kmalloc(prep->datalen, GFP_KERNEL);
++	if (!payload)
++		return -ENOMEM;
++	memcpy(payload, prep->data, prep->datalen);
++	key->payload.data = payload;
++	key->datalen = prep->datalen;
++	return 0;
++}
++
++static int mmc_key_match(const struct key *key, const void *description)
++{
++	pr_debug("mmc_key_match: %s, %s\n",
++		key->description, (char *)description);
++	return strcmp(key->description, description) == 0;
++}
++
++/*
++ * dispose of the data dangling from the corpse of a mmc key
++ */
++static void mmc_key_destroy(struct key *key)
++{
++	kfree(key->payload.data);
++}
++
++struct key_type key_type_mmc = {
++	.name		= "mmc",
++	.instantiate	= mmc_key_instantiate,
++	.match		= mmc_key_match,
++	.destroy	= mmc_key_destroy,
++};
++
++int mmc_get_password(struct mmc_card *card, struct mmc_password *password)
++{
++	struct key *mmc_key;
++	char key_desc[(sizeof(card->raw_cid) * 2) + 1];
++
++	/* Use the CID to uniquely identify the card */
++	snprintf(key_desc, sizeof(key_desc), "%08x%08x%08x%08x",
++		card->raw_cid[0], card->raw_cid[1],
++		card->raw_cid[2], card->raw_cid[3]);
++
++	mmc_key = request_key(&key_type_mmc, key_desc,
++				"password");
++	if (IS_ERR(mmc_key)) {
++		dev_warn(&card->dev, "Error, request_key %ld\n",
++			PTR_ERR(mmc_key));
++		return PTR_ERR(mmc_key);
++	}
++	dev_dbg(&card->dev, "Found matching key\n");
++	memcpy(&password->password, mmc_key->payload.data,
++		mmc_key->datalen);
++	password->length = mmc_key->datalen;
++	key_put(mmc_key);
++
++	return 0;
++}
++
++static inline int mmc_register_key_type(void)
++{
++	return register_key_type(&key_type_mmc);
++}
++
++static inline void mmc_unregister_key_type(void)
++{
++	unregister_key_type(&key_type_mmc);
++}
++
++int mmc_unlock_card(struct mmc_card *card)
++{
++	int stat;
++	struct mmc_password password;
++
++	mmc_card_set_locked(card);
++	stat = mmc_get_password(card, &password);
++	if (stat) {
++		pr_warn("%s: Cannot find matching key\n",
++			mmc_hostname(card->host));
++		return stat;
++	}
++	stat = mmc_lock_unlock(card, &password, MMC_LOCK_MODE_UNLOCK);
++	if (stat)
++		pr_warn("%s: Password failed to unlock card\n",
++			mmc_hostname(card->host));
++	else
++		mmc_card_clear_locked(card);
++	return stat;
++}
++
++#else /* CONFIG_MMC_LOCK */
++
++int mmc_get_password(struct mmc_card *card, struct mmc_password *password)
++{
++	return -ENOKEY;
++}
++
++static inline int mmc_register_key_type(void)
++{
++	return 0;
++}
++
++static inline void mmc_unregister_key_type(void)
++{
++}
++
++int mmc_unlock_card(struct mmc_card *card)
++{
++	return -ENOKEY;
++}
++
++#endif /* CONFIG_MMC_LOCK */
++
+ static int __init mmc_init(void)
+ {
+ 	int ret;
+@@ -2769,8 +2893,14 @@ static int __init mmc_init(void)
+ 	if (ret)
+ 		goto unregister_host_class;
+ 
++	ret = mmc_register_key_type();
++	if (ret)
++		goto unregister_sdio_bus;
++
+ 	return 0;
+ 
++unregister_sdio_bus:
++	sdio_unregister_bus();
+ unregister_host_class:
+ 	mmc_unregister_host_class();
+ unregister_bus:
+@@ -2783,6 +2913,7 @@ destroy_workqueue:
+ 
+ static void __exit mmc_exit(void)
+ {
++	mmc_unregister_key_type();
+ 	sdio_unregister_bus();
+ 	mmc_unregister_host_class();
+ 	mmc_unregister_bus();
+diff --git a/drivers/mmc/core/core.h b/drivers/mmc/core/core.h
+index 5345d15..15f7b3d 100644
+--- a/drivers/mmc/core/core.h
++++ b/drivers/mmc/core/core.h
+@@ -81,5 +81,18 @@ void mmc_add_card_debugfs(struct mmc_card *card);
+ void mmc_remove_card_debugfs(struct mmc_card *card);
+ 
+ void mmc_init_context_info(struct mmc_host *host);
++
++/* Lock/Unlock functionality */
++#define MMC_PASSWORD_MAX 16
++struct mmc_password {
++	char password[MMC_PASSWORD_MAX];
++	int length;
++};
++int mmc_unlock_card(struct mmc_card *card);
++int mmc_get_password(struct mmc_card *card, struct mmc_password *password);
++ssize_t mmc_lock_show(struct device *dev, struct device_attribute *att,
++                      char *buf);
++ssize_t mmc_lock_store(struct device *dev, struct device_attribute *att,
++                       const char *data, size_t len);
+ #endif
+ 
+diff --git a/drivers/mmc/core/mmc.c b/drivers/mmc/core/mmc.c
+index 42d0f71..768ce00 100644
+--- a/drivers/mmc/core/mmc.c
++++ b/drivers/mmc/core/mmc.c
+@@ -654,6 +654,108 @@ out:
+ 	return err;
+ }
+ 
++#ifdef CONFIG_MMC_LOCK
++ssize_t mmc_lock_show(struct device *dev, struct device_attribute *att,
++			char *buf)
++{
++	struct mmc_card *card = mmc_dev_to_card(dev);
++
++	if (!mmc_card_lockable(card))
++		return sprintf(buf, "unsupported\n");
++	else
++		return sprintf(buf, "%slocked\n", mmc_card_locked(card) ?
++			"" : "un");
++}
++
++static struct lock_cmd {
++	const char *name;
++	int io_cmd;
++	int locked_required;
++	int need_pw;
++} lock_cmds[] = {
++	{ "erase" , MMC_LOCK_MODE_ERASE,  true,  false },
++	{ "clrpw", MMC_LOCK_MODE_CLR_PWD, false, true },
++	{ "setpw", MMC_LOCK_MODE_SET_PWD, false, true },
++	{ "lock", MMC_LOCK_MODE_LOCK, false,  true },
++	{ "unlock", MMC_LOCK_MODE_UNLOCK, true,  true },
++};
++
++/*
++ * implement MMC password functions: force erase, set password,
++ * clear password, lock and unlock.
++ */
++ssize_t mmc_lock_store(struct device *dev, struct device_attribute *att,
++			const char *data, size_t len)
++{
++	struct mmc_card *card = mmc_dev_to_card(dev);
++	int res = -EINVAL;
++	int x;
++	struct mmc_password password;
++
++	mmc_claim_host(card->host);
++	if (!mmc_card_lockable(card))
++		goto out;
++	for (x = 0; x < ARRAY_SIZE(lock_cmds); x++) {
++		if (sysfs_streq(data, lock_cmds[x].name))
++			break;
++	}
++	if (x >= ARRAY_SIZE(lock_cmds))
++		goto out;
++
++	if ((lock_cmds[x].locked_required && !mmc_card_locked(card)) ||
++	   (!lock_cmds[x].locked_required && mmc_card_locked(card))) {
++		dev_warn(dev, "%s requires %slocked card\n",
++			lock_cmds[x].name,
++			lock_cmds[x].locked_required ? "" : "un");
++		goto out;
++	}
++	if (lock_cmds[x].need_pw) {
++		res = mmc_get_password(card, &password);
++		if (res)
++			goto out;
++	}
++	res = mmc_lock_unlock(card, &password, lock_cmds[x].io_cmd);
++out:
++	mmc_release_host(card->host);
++	if (res == 0)
++		return len;
++	else
++		return res;
++}
++
++static ssize_t mmc_unlock_retry_store(struct device *dev,
++				      struct device_attribute *att,
++				      const char *data, size_t len)
++{
++	struct mmc_card *card = mmc_dev_to_card(dev);
++	struct mmc_host *host = card->host;
++	int err;
++
++	BUG_ON(!card);
++	BUG_ON(!host);
++
++	mmc_claim_host(host);
++	if (!mmc_card_locked(card)) {
++		mmc_release_host(host);
++		return len;
++	}
++	err = mmc_unlock_card(card);
++	mmc_release_host(host);
++	if (err < 0)
++		return err;
++	device_release_driver(dev);
++	err = device_attach(dev);
++	if (err < 0)
++		return err;
++	return len;
++}
++
++static DEVICE_ATTR(lock, S_IWUSR | S_IRUGO,
++                  mmc_lock_show, mmc_lock_store);
++static DEVICE_ATTR(unlock_retry, S_IWUSR,
++                  NULL, mmc_unlock_retry_store);
++#endif /* CONFIG_MMC_LOCK */
++
+ MMC_DEV_ATTR(cid, "%08x%08x%08x%08x\n", card->raw_cid[0], card->raw_cid[1],
+ 	card->raw_cid[2], card->raw_cid[3]);
+ MMC_DEV_ATTR(csd, "%08x%08x%08x%08x\n", card->raw_csd[0], card->raw_csd[1],
+@@ -691,6 +793,10 @@ static struct attribute *mmc_std_attrs[] = {
+ 	&dev_attr_enhanced_area_size.attr,
+ 	&dev_attr_raw_rpmb_size_mult.attr,
+ 	&dev_attr_rel_sectors.attr,
++#ifdef CONFIG_MMC_LOCK
++	&dev_attr_lock.attr,
++	&dev_attr_unlock_retry.attr,
++#endif /* CONFIG_MMC_LOCK */
+ 	NULL,
+ };
+ 
+@@ -876,6 +982,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
+ 	unsigned int max_dtr;
+ 	u32 rocr;
+ 	u8 *ext_csd = NULL;
++	u32 status;
+ 
+ 	BUG_ON(!host);
+ 	WARN_ON(!host->claimed);
+@@ -1334,6 +1441,19 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
+ 		}
+ 	}
+ 
++	/* If card is locked, try to unlock it */
++	err = mmc_send_status(card, &status);
++	if (err)
++		goto free_card;
++	if (status & R1_CARD_IS_LOCKED) {
++		pr_info("%s: card is locked.\n", mmc_hostname(card->host));
++		err = mmc_unlock_card(card);
++		if (err != 0) {
++			pr_warn("%s: Card unlock failed.\n",
++				mmc_hostname(card->host));
++		}
++	}
++
+ 	if (!oldcard)
+ 		host->card = card;
+ 
+diff --git a/drivers/mmc/core/mmc_ops.c b/drivers/mmc/core/mmc_ops.c
+index ef18348..93066f0 100644
+--- a/drivers/mmc/core/mmc_ops.c
++++ b/drivers/mmc/core/mmc_ops.c
+@@ -13,6 +13,8 @@
+ #include <linux/export.h>
+ #include <linux/types.h>
+ #include <linux/scatterlist.h>
++#include <linux/key.h>
++#include <linux/err.h>
+ 
+ #include <linux/mmc/host.h>
+ #include <linux/mmc/card.h>
+@@ -607,3 +609,108 @@ int mmc_send_hpi_cmd(struct mmc_card *card, u32 *status)
+ 
+ 	return 0;
+ }
++#ifdef CONFIG_MMC_LOCK
++/**
++ *     mmc_lock_unlock - send LOCK_UNLOCK command to a specific card.
++ *     @card: card to which the LOCK_UNLOCK command should be sent
++ *     @key: key containing the MMC password
++ *     @mode: LOCK_UNLOCK mode
++ *
++ */
++int mmc_lock_unlock(struct mmc_card *card, struct mmc_password *password,
++			int mode)
++{
++	struct mmc_request mrq;
++	struct mmc_command cmd;
++	struct mmc_data data;
++	struct scatterlist sg;
++	unsigned long erase_timeout;
++	int err;
++	u8 *data_buf;
++	int buffer_size;
++
++	buffer_size = 512;
++	data_buf = kzalloc(buffer_size, GFP_KERNEL);
++	if (!data_buf)
++		return -ENOMEM;
++	data_buf[0] |= mode;
++	if (!(mode & MMC_LOCK_MODE_ERASE)) {
++		data_buf[1] = password->length;
++		memcpy(data_buf + 2, password->password, password->length);
++	}
++
++	memset(&cmd, 0, sizeof(struct mmc_command));
++	cmd.opcode = MMC_SET_BLOCKLEN;
++	cmd.arg = buffer_size;
++	cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
++	err = mmc_wait_for_cmd(card->host, &cmd, MMC_CMD_RETRIES);
++	if (err)
++		goto out;
++	memset(&cmd, 0, sizeof(struct mmc_command));
++	cmd.opcode = MMC_LOCK_UNLOCK;
++	cmd.arg = 0;
++	cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
++
++	memset(&data, 0, sizeof(struct mmc_data));
++	mmc_set_data_timeout(&data, card);
++	data.blksz = buffer_size;
++	data.blocks = 1;
++	data.flags = MMC_DATA_WRITE;
++	data.sg = &sg;
++	data.sg_len = 1;
++
++	memset(&mrq, 0, sizeof(struct mmc_request));
++	mrq.cmd = &cmd;
++	mrq.data = &data;
++
++	sg_init_one(&sg, data_buf, buffer_size);
++	mmc_wait_for_req(card->host, &mrq);
++	if (cmd.error) {
++		err = cmd.error;
++		goto out;
++	}
++	if (data.error) {
++		err = data.error;
++		goto out;
++	}
++
++	memset(&cmd, 0, sizeof(struct mmc_command));
++	cmd.opcode = MMC_SEND_STATUS;
++	cmd.arg = card->rca << 16;
++	cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
++
++	/* set timeout for forced erase operation to 3 min. (see MMC spec) */
++	erase_timeout = jiffies + 180 * HZ;
++	do {
++		/*
++		 * we cannot use "retries" here because the
++		 * R1_LOCK_UNLOCK_FAILED bit is cleared by subsequent reads to
++		 * the status register, hiding the error condition
++		 */
++		err = mmc_wait_for_cmd(card->host, &cmd, 0);
++		if (err)
++			break;
++		/* the other modes don't need timeout checking */
++		if (!(mode & MMC_LOCK_MODE_ERASE))
++			continue;
++		if (time_after(jiffies, erase_timeout) &&
++			!(cmd.resp[0] & R1_READY_FOR_DATA)) {
++			dev_err(&card->dev, "forced erase timed out\n");
++			err = -ETIMEDOUT;
++			break;
++		}
++	} while (!(cmd.resp[0] & R1_READY_FOR_DATA));
++	if (cmd.resp[0] & R1_LOCK_UNLOCK_FAILED) {
++		dev_dbg(&card->dev, "LOCK_UNLOCK operation failed\n");
++		err = -EIO;
++	}
++	if (cmd.resp[0] & R1_CARD_IS_LOCKED)
++		mmc_card_set_locked(card);
++	else
++		mmc_card_clear_locked(card);
++
++out:
++	kfree(data_buf);
++	return err;
++}
++#endif /* CONFIG_MMC_LOCK */
+diff --git a/drivers/mmc/core/mmc_ops.h b/drivers/mmc/core/mmc_ops.h
+index 80ae9f4..8267218 100644
+--- a/drivers/mmc/core/mmc_ops.h
++++ b/drivers/mmc/core/mmc_ops.h
+@@ -12,6 +12,15 @@
+ #ifndef _MMC_MMC_OPS_H
+ #define _MMC_MMC_OPS_H
+ 
++/*
++ * MMC_LOCK_UNLOCK modes
++ */
++#define MMC_LOCK_MODE_ERASE	(1<<3)
++#define MMC_LOCK_MODE_LOCK	(1<<2)
++#define MMC_LOCK_MODE_UNLOCK	(0<<2)
++#define MMC_LOCK_MODE_CLR_PWD	(1<<1)
++#define MMC_LOCK_MODE_SET_PWD	(1<<0)
++
+ int mmc_select_card(struct mmc_card *card);
+ int mmc_deselect_cards(struct mmc_host *host);
+ int mmc_go_idle(struct mmc_host *host);
+@@ -26,6 +35,10 @@ int mmc_spi_read_ocr(struct mmc_host *host, int highcap, u32 *ocrp);
+ int mmc_spi_set_crc(struct mmc_host *host, int use_crc);
+ int mmc_bus_test(struct mmc_card *card, u8 bus_width);
+ int mmc_send_hpi_cmd(struct mmc_card *card, u32 *status);
++#ifdef CONFIG_MMC_LOCK
++int mmc_lock_unlock(struct mmc_card *card, struct mmc_password *password,
++			int mode);
++#endif
+ 
+ #endif
+ 
+diff --git a/drivers/mmc/core/sd.c b/drivers/mmc/core/sd.c
+index 71fc112..906c813 100644
+--- a/drivers/mmc/core/sd.c
++++ b/drivers/mmc/core/sd.c
+@@ -25,6 +25,9 @@
+ #include "sd.h"
+ #include "sd_ops.h"
+ 
++static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
++			    struct mmc_card *oldcard);
++
+ static const unsigned int tran_exp[] = {
+ 	10000,		100000,		1000000,	10000000,
+ 	0,		0,		0,		0
+@@ -668,6 +671,39 @@ out:
+ 	return err;
+ }
+ 
++#ifdef CONFIG_MMC_LOCK
++static ssize_t mmc_sd_unlock_retry_store(struct device *dev,
++                                         struct device_attribute *att,
++                                        const char *data, size_t len)
++{
++	int err;
++	struct mmc_card *card = mmc_dev_to_card(dev);
++	struct mmc_host *host = card->host;
++	BUG_ON(!card);
++	BUG_ON(!host);
++
++	mmc_claim_host(host);
++	if (!mmc_card_locked(card)) {
++		mmc_release_host(host);
++		return len;
++	}
++	err = mmc_sd_init_card(host, host->ocr, card);
++	mmc_release_host(host);
++	if (err)
++		return err;
++	device_release_driver(dev);
++	err = device_attach(dev);
++	if (err < 0)
++		return err;
++	return len;
++}
++
++static DEVICE_ATTR(lock, S_IWUSR | S_IRUGO,
++                   mmc_lock_show, mmc_lock_store);
++static DEVICE_ATTR(unlock_retry, S_IWUSR,
++                   NULL, mmc_sd_unlock_retry_store);
++#endif /* CONFIG_MMC_LOCK */
++
+ MMC_DEV_ATTR(cid, "%08x%08x%08x%08x\n", card->raw_cid[0], card->raw_cid[1],
+ 	card->raw_cid[2], card->raw_cid[3]);
+ MMC_DEV_ATTR(csd, "%08x%08x%08x%08x\n", card->raw_csd[0], card->raw_csd[1],
+@@ -697,6 +733,10 @@ static struct attribute *sd_std_attrs[] = {
+ 	&dev_attr_name.attr,
+ 	&dev_attr_oemid.attr,
+ 	&dev_attr_serial.attr,
++#ifdef CONFIG_MMC_LOCK
++	&dev_attr_lock.attr,
++	&dev_attr_unlock_retry.attr,
++#endif /* CONFIG_MMC_LOCK */
+ 	NULL,
+ };
+ 
+@@ -914,55 +954,75 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
+ 	int err;
+ 	u32 cid[4];
+ 	u32 rocr = 0;
++	u32 status;
+ 
+ 	BUG_ON(!host);
+ 	WARN_ON(!host->claimed);
+ 
+-	err = mmc_sd_get_cid(host, ocr, cid, &rocr);
+-	if (err)
+-		return err;
+-
+-	if (oldcard) {
+-		if (memcmp(cid, oldcard->raw_cid, sizeof(cid)) != 0)
+-			return -ENOENT;
+-
++	/* Retry init of locked card */
++	if (oldcard && mmc_card_locked(oldcard)) {
+ 		card = oldcard;
++		oldcard = NULL;
++		rocr = card->raw_ocr;
+ 	} else {
+-		/*
+-		 * Allocate card structure.
+-		 */
+-		card = mmc_alloc_card(host, &sd_type);
+-		if (IS_ERR(card))
+-			return PTR_ERR(card);
+-
+-		card->type = MMC_TYPE_SD;
+-		memcpy(card->raw_cid, cid, sizeof(card->raw_cid));
+-	}
+-
+-	/*
+-	 * For native busses:  get card RCA and quit open drain mode.
+-	 */
+-	if (!mmc_host_is_spi(host)) {
+-		err = mmc_send_relative_addr(host, &card->rca);
++		err = mmc_sd_get_cid(host, ocr, cid, &rocr);
+ 		if (err)
+-			goto free_card;
+-	}
++			return err;
+ 
+-	if (!oldcard) {
+-		err = mmc_sd_get_csd(host, card);
+-		if (err)
+-			goto free_card;
++		if (oldcard) {
++			if (memcmp(cid, oldcard->raw_cid, sizeof(cid)) != 0)
++				return -ENOENT;
++			card = oldcard;
++		} else {
++			/*
++			 * Allocate card structure.
++			 */
++			card = mmc_alloc_card(host, &sd_type);
++			if (IS_ERR(card))
++				return PTR_ERR(card);
++
++			card->type = MMC_TYPE_SD;
++			memcpy(card->raw_cid, cid, sizeof(card->raw_cid));
++		}
++
++		/*
++		 * For native busses:  get card RCA and quit open drain mode.
++		 */
++		if (!mmc_host_is_spi(host)) {
++			err = mmc_send_relative_addr(host, &card->rca);
++			if (err)
++				goto free_card;
++		}
++		if (!oldcard) {
++			err = mmc_sd_get_csd(host, card);
++			if (err)
++				goto free_card;
+ 
+-		mmc_decode_cid(card);
++			mmc_decode_cid(card);
++		}
++		/*
++		 * Select card, as all following commands rely on that.
++		 */
++		if (!mmc_host_is_spi(host)) {
++			err = mmc_select_card(card);
++			if (err)
++				goto free_card;
++		}
+ 	}
+ 
+-	/*
+-	 * Select card, as all following commands rely on that.
+-	 */
+-	if (!mmc_host_is_spi(host)) {
+-		err = mmc_select_card(card);
+-		if (err)
+-			goto free_card;
++	/* If card is locked, skip the rest of the init */
++	err = mmc_send_status(card, &status);
++	if (err)
++		goto free_card;
++	if (status & R1_CARD_IS_LOCKED) {
++		pr_info("%s: card is locked.\n", mmc_hostname(card->host));
++		err = mmc_unlock_card(card);
++		if (err != 0) {
++			pr_warn("%s: Card unlock failed.\n",
++				mmc_hostname(card->host));
++			card->raw_ocr = rocr;
++			goto locked_return;
++		}
+ 	}
+ 
+ 	err = mmc_sd_setup_card(host, card, oldcard != NULL);
+@@ -1005,6 +1065,7 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
+ 		}
+ 	}
+ 
++locked_return:
+ 	host->card = card;
+ 	return 0;
+ 
+diff --git a/include/linux/mmc/card.h b/include/linux/mmc/card.h
+index 842de3e..9c59fc2 100644
+--- a/include/linux/mmc/card.h
++++ b/include/linux/mmc/card.h
+@@ -257,6 +257,7 @@ struct mmc_card {
+ #define MMC_CARD_REMOVED	(1<<7)		/* card has been removed */
+ #define MMC_STATE_HIGHSPEED_200	(1<<8)		/* card is in HS200 mode */
+ #define MMC_STATE_DOING_BKOPS	(1<<10)		/* card is doing BKOPS */
++#define MMC_STATE_LOCKED	(1<<12)		/* card is currently locked */
+ 	unsigned int		quirks; 	/* card quirks */
+ #define MMC_QUIRK_LENIENT_FN0	(1<<0)		/* allow SDIO FN0 writes outside of the VS CCCR range */
+ #define MMC_QUIRK_BLKSZ_FOR_BYTE_MODE (1<<1)	/* use func->cur_blksize */
+@@ -281,6 +282,7 @@ struct mmc_card {
+ 	u32			raw_cid[4];	/* raw card CID */
+ 	u32			raw_csd[4];	/* raw card CSD */
+ 	u32			raw_scr[2];	/* raw card SCR */
++	u32			raw_ocr;	/* raw card OCR */
+ 	struct mmc_cid		cid;		/* card identification */
+ 	struct mmc_csd		csd;		/* card specific */
+ 	struct mmc_ext_csd	ext_csd;	/* mmc v4 extended card specific */
+@@ -424,6 +426,8 @@ static inline void __maybe_unused remove_quirk(struct mmc_card *card, int data)
+ #define mmc_card_ext_capacity(c) ((c)->state & MMC_CARD_SDXC)
+ #define mmc_card_removed(c)	((c) && ((c)->state & MMC_CARD_REMOVED))
+ #define mmc_card_doing_bkops(c)	((c)->state & MMC_STATE_DOING_BKOPS)
++#define mmc_card_locked(c)	((c)->state & MMC_STATE_LOCKED)
++#define mmc_card_lockable(c)	((c)->csd.cmdclass & CCC_LOCK_CARD)
+ 
+ #define mmc_card_set_present(c)	((c)->state |= MMC_STATE_PRESENT)
+ #define mmc_card_set_readonly(c) ((c)->state |= MMC_STATE_READONLY)
+@@ -437,6 +441,8 @@ static inline void __maybe_unused remove_quirk(struct mmc_card *card, int data)
+ #define mmc_card_set_removed(c) ((c)->state |= MMC_CARD_REMOVED)
+ #define mmc_card_set_doing_bkops(c)	((c)->state |= MMC_STATE_DOING_BKOPS)
+ #define mmc_card_clr_doing_bkops(c)	((c)->state &= ~MMC_STATE_DOING_BKOPS)
++#define mmc_card_set_locked(c)	((c)->state |= MMC_STATE_LOCKED)
++#define mmc_card_clear_locked(c) ((c)->state &= ~MMC_STATE_LOCKED)
+ 
+ /*
+  * Quirk add/remove for MMC products.
+-- 
+1.7.1
+

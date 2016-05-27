@@ -1,0 +1,29 @@
+From 35f59b40871d1bbd23bb5656d1746b2b641c09f6 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:34:48 +0900
+Subject: [PATCH 147/171] 0001-Energy-Efficient-ether-support
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index a2fcdaf..7a1a331 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -42,6 +42,7 @@
+ #include <mach/irqs.h>
+ #include <mach/eth.h>
+ #include <plat/sched_clock.h>
++#include <linux/phy.h>
+ 
+ #include "core.h"
+ 
+@@ -170,6 +171,7 @@ static	struct	plat_stmmacenet_data	lm2_eth_config = {
+ 	.has_gmac	= 1,
+ 	.clk_csr	= 0,
+ 	.enh_desc       = 1,	/* add */
++	.interface	= PHY_INTERFACE_MODE_MII,
+ };
+ 
+ static struct platform_device lm2_eth_device = {
+-- 
+1.7.1
+

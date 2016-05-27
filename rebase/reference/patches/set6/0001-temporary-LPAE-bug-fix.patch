@@ -1,0 +1,59 @@
+From 0f2c97e50d47237ba0d8aee8f95405d2d95b799b Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Tue, 10 Feb 2015 21:52:28 +0900
+Subject: [PATCH 1/1] temporary LPAE bug fix
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mm/ioremap.c |    8 +++++---
+ 1 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm/mm/ioremap.c b/arch/arm/mm/ioremap.c
+index db0f5ee..315fb1a 100644
+--- a/arch/arm/mm/ioremap.c
++++ b/arch/arm/mm/ioremap.c
+@@ -39,6 +39,7 @@
+ #include <asm/mach/pci.h>
+ #include "mm.h"
+ 
++#define	YAMANO_DEBUG	1
+ 
+ LIST_HEAD(static_vmlist);
+ 
+@@ -258,7 +259,7 @@ remap_area_supersections(unsigned long virt, unsigned long pfn,
+ 
+ 	return 0;
+ }
+-#endif
++#endif	/*  !defined(CONFIG_SMP) && !defined(CONFIG_ARM_LPAE) */
+ 
+ void __iomem * __arm_ioremap_pfn_caller(unsigned long pfn,
+ 	unsigned long offset, size_t size, unsigned int mtype, void *caller)
+@@ -344,20 +345,21 @@ void __iomem *__arm_ioremap_caller(unsigned long phys_addr, size_t size,
+ 	unsigned int mtype, void *caller)
+ #endif	/* CONFIG_ARM_LPAE yamano */
+ {
+-#ifdef	CONFIG_ARM__LPAE
++#ifdef	CONFIG_ARM_LPAE
+ 	phys_addr_t last_addr;
+  	phys_addr_t offset = phys_addr & ~PAGE_MASK;
+ #else
+ 	unsigned long last_addr;
+  	unsigned long offset = phys_addr & ~PAGE_MASK;
+ #endif	/* CONFIG_ARM_LPAE yamano */
++
+  	unsigned long pfn = __phys_to_pfn(phys_addr);
+ 
+  	/*
+  	 * Don't allow wraparound or zero size
+ 	 */
+ 	last_addr = phys_addr + size - 1;
+-	if (!size || last_addr < phys_addr)
++	if (!size || (last_addr < phys_addr))
+ 		return NULL;
+ 
+ 	return __arm_ioremap_pfn_caller(pfn, offset, size, mtype,
+-- 
+1.7.1
+

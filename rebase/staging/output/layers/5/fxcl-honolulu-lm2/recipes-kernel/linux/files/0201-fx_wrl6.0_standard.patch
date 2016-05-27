@@ -1,0 +1,33 @@
+From 00168125b82fb5852f58c3534d447e0be0c00dae Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:28:29 +0900
+Subject: [PATCH 156/170] 0201-fx_wrl6.0_standard
+
+
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index c771f25..7b7c693 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -7108,8 +7108,8 @@ void __might_sleep(const char *file, int line, int preempt_offset)
+ {
+ 	static unsigned long prev_jiffy;	/* ratelimiting */
+ 
+-	rcu_sleep_check(); /* WARN_ON_ONCE() by default, no rate limit reqd. */
+-	if ((preempt_count_equals(preempt_offset) && !irqs_disabled()) ||
++/*	rcu_sleep_check(); */ /* WARN_ON_ONCE() by default, no rate limit reqd. */
++/*	if ((preempt_count_equals(preempt_offset) && !irqs_disabled()) ||
+ 	    system_state != SYSTEM_RUNNING || oops_in_progress)
+ 		return;
+ 	if (time_before(jiffies, prev_jiffy + HZ) && prev_jiffy)
+@@ -7127,7 +7127,7 @@ void __might_sleep(const char *file, int line, int preempt_offset)
+ 	debug_show_held_locks(current);
+ 	if (irqs_disabled())
+ 		print_irqtrace_events(current);
+-	dump_stack();
++	dump_stack(); */
+ }
+ EXPORT_SYMBOL(__might_sleep);
+ #endif
+-- 
+1.7.1
+

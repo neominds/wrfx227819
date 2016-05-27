@@ -1,0 +1,281 @@
+From ce55a2ef2c31921cb5ddd71506baacf6102811ed Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:31:13 +0900
+Subject: [PATCH 005/171] 0004-fxcl-waikiki-device-tree-base
+
+
+diff --git a/arch/arm/boot/dts/Makefile b/arch/arm/boot/dts/Makefile
+index dbd0158..6a81e18 100644
+--- a/arch/arm/boot/dts/Makefile
++++ b/arch/arm/boot/dts/Makefile
+@@ -226,6 +226,9 @@ dtb-$(CONFIG_ARCH_ZYNQ) += zynq-zc702.dtb \
+ targets += dtbs
+ targets += $(dtb-y)
+ endif
++targets += $(dtb-y)
++
++dtb-$(CONFIG_ARCH_LM2)   += waikiki-lm2.dtb
+ 
+ # *.dtb used to be generated in the directory above. Clean out the
+ # old build results so people don't accidentally use them.
+diff --git a/arch/arm/boot/dts/waikiki-lm2.dts b/arch/arm/boot/dts/waikiki-lm2.dts
+new file mode 100644
+index 0000000..66714f9
+--- /dev/null
++++ b/arch/arm/boot/dts/waikiki-lm2.dts
+@@ -0,0 +1,252 @@
++/*
++ * FujiXerox
++ *
++ * Waikiki  A15x2 A7x1 M3x2
++ * LM 2 Multi core  (CA15_A7)
++ *
++ *
++ */
++
++/dts-v1/;
++
++/memreserve/ 0xff000000 0x01000000;
++
++/ {
++	model = "WAIKIKI-LM2";
++	arm,hbi = <0x249>;
++	compatible = "arm,lm2,waikiki", "arm,lm2";
++	interrupt-parent = <&gic>;
++	#address-cells = <1>;
++	#size-cells = <1>;
++
++	chosen { };
++
++	aliases {
++		serial0 = &lm2_serial0;
++		serial1 = &lm2_serial1;
++		serial2 = &lm2_serial2;
++		serial3 = &lm2_serial3;
++	};
++
++	clusters {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		cluster0: cluster@0 {
++			reg = <0>;
++			freqs = <500000000 600000000 700000000 800000000 900000000 1000000000 1100000000 1200000000>;
++			cores {
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				core0: core@0 {
++					reg = <0>;
++				};
++
++				core1: core@1 {
++					reg = <1>;
++				};
++
++			};
++		};
++
++	};
++
++	cpus {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		cpu0: cpu@0 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a15";
++			reg = <0>;
++			cluster = <&cluster0>;
++			core = <&core0>;
++			clock-frequency = <1000000000>;
++		};
++
++		cpu1: cpu@1 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a15";
++			reg = <1>;
++			cluster = <&cluster0>;
++			core = <&core1>;
++			clock-frequency = <1000000000>;
++		};
++	};
++
++	memory@80000000 {
++		device_type = "memory";
++		reg = <0x80000000 0x80000000>;
++	};
++
++	wdt@2a490000 {
++		compatible = "arm,sp805", "arm,primecell";
++		reg = <0x2a490000 0x1000>;
++		interrupts = <98>;
++	};
++
++	cci@04060000 {
++		compatible = "arm,cci";
++		reg = <0x04060000 0x8000>;
++	};
++
++	memory-controller@2b0a0000 {
++		compatible = "arm,pl341", "arm,primecell";
++		reg = <0x2b0a0000 0x1000>;
++	};
++
++	gic: interrupt-controller@2c001000 {
++		compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
++		#interrupt-cells = <3>;
++		#address-cells = <0>;
++		interrupt-controller;
++		reg = <0x04000000 0x1000>,
++		      <0x04001000 0x1000>,
++		      <0x04002000 0x2000>,
++		      <0x04004000 0x2000>;
++		interrupts = <1 9 0xf04>;
++
++		gic-cpuif@0 {
++			compatible = "arm,gic-cpuif";
++			cpuif-id = <0>;
++			cpu = <&cpu0>;
++		};
++		gic-cpuif@1 {
++			compatible = "arm,gic-cpuif";
++			cpuif-id = <1>;
++			cpu = <&cpu1>;
++		};
++	};
++
++	memory-controller@7ffd0000 {
++		compatible = "arm,pl354", "arm,primecell";
++		reg = <0x7ffd0000 0x1000>;
++		interrupts = <0 86 4>,
++			     <0 87 4>;
++	};
++
++	dma@7ff00000 {
++		compatible = "arm,pl330", "arm,primecell";
++		reg = <0x7ff00000 0x1000>;
++		interrupts = <0 92 4>,
++			     <0 88 4>,
++			     <0 89 4>,
++			     <0 90 4>,
++			     <0 91 4>;
++	};
++
++	timer {
++		compatible = "arm,armv7-timer";
++		interrupts = <1 13 0xf08>,
++			     <1 14 0xf08>,
++			     <1 11 0xf08>,
++			     <1 10 0xf08>;
++	};
++
++	lm2_serial0: uart@040b0000 {
++		compatible = "arm,pl011", "arm,primecell";
++		reg = <0x040b0000 0x1000>;
++		interrupts = <18>;
++	};
++
++	lm2_serial1: uart@04160000 {
++		compatible = "arm,pl011", "arm,primecell";
++		reg = <0x04160000 0x1000>;
++		interrupts = <29>;
++	};
++
++	lm2_serial2: uart@052c0000 {
++		compatible = "arm,pl011", "arm,primecell";
++		reg = <0x052c0000 0x1000>;
++		interrupts = <5>;
++	};
++
++	lm2_serial3: uart@52e0000 {
++   		compatible = "arm,pl011", "arm,primecell";
++                                reg = <0x052e0000 0x1000>;
++                                interrupts = <5>;
++	};
++
++	lm2_serial4: uart@052f0000 {
++                                compatible = "arm,pl011", "arm,primecell";
++                                reg = <0x052f0000 0x1000>;
++                                interrupts = <5>;
++	};
++
++	ethernet@04410000 {
++		compatible = "fujitsu,fm3";
++		reg = <2 0x04410000 0x10000>;
++		interrupts = <15>;
++		phy-mode = "mii";
++		reg-io-width = <4>;
++	};
++
++	usb@2,03000000 {
++		compatible = "nxp,usb-isp1761";
++		reg = <2 0x03000000 0x20000>;
++		interrupts = <16>;
++		port1-otg;
++	};
++
++	rtc@170000 {
++		compatible = "arm,pl031", "arm,primecell";
++		reg = <0x170000 0x1000>;
++		interrupts = <4>;
++	};
++
++	motherboard {
++		ranges = <0 0 0x08000000 0x04000000>,
++			 <1 0 0x14000000 0x04000000>,
++			 <2 0 0x18000000 0x04000000>,
++			 <3 0 0x1c000000 0x04000000>,
++			 <4 0 0x0c000000 0x04000000>,
++			 <5 0 0x10000000 0x04000000>;
++
++		interrupt-map-mask = <0 0 63>;
++		interrupt-map = <0 0  0 &gic 0  0 4>,
++				<0 0  1 &gic 0  1 4>,
++				<0 0  2 &gic 0  2 4>,
++				<0 0  3 &gic 0  3 4>,
++				<0 0  4 &gic 0  4 4>,
++				<0 0  5 &gic 0  5 4>,
++				<0 0  6 &gic 0  6 4>,
++				<0 0  7 &gic 0  7 4>,
++				<0 0  8 &gic 0  8 4>,
++				<0 0  9 &gic 0  9 4>,
++				<0 0 10 &gic 0 10 4>,
++				<0 0 11 &gic 0 11 4>,
++				<0 0 12 &gic 0 12 4>,
++				<0 0 13 &gic 0 13 4>,
++				<0 0 14 &gic 0 14 4>,
++				<0 0 15 &gic 0 15 4>,
++				<0 0 16 &gic 0 16 4>,
++				<0 0 17 &gic 0 17 4>,
++				<0 0 18 &gic 0 18 4>,
++				<0 0 19 &gic 0 19 4>,
++				<0 0 20 &gic 0 20 4>,
++				<0 0 21 &gic 0 21 4>,
++				<0 0 22 &gic 0 22 4>,
++				<0 0 23 &gic 0 23 4>,
++				<0 0 24 &gic 0 24 4>,
++				<0 0 25 &gic 0 25 4>,
++				<0 0 26 &gic 0 26 4>,
++				<0 0 27 &gic 0 27 4>,
++				<0 0 28 &gic 0 28 4>,
++				<0 0 29 &gic 0 29 4>,
++				<0 0 30 &gic 0 30 4>,
++				<0 0 31 &gic 0 31 4>,
++				<0 0 32 &gic 0 32 4>,
++				<0 0 33 &gic 0 33 4>,
++				<0 0 34 &gic 0 34 4>,
++				<0 0 35 &gic 0 35 4>,
++				<0 0 36 &gic 0 36 4>,
++				<0 0 37 &gic 0 37 4>,
++				<0 0 38 &gic 0 38 4>,
++				<0 0 39 &gic 0 39 4>,
++				<0 0 40 &gic 0 40 4>,
++				<0 0 41 &gic 0 41 4>,
++				<0 0 42 &gic 0 42 4>;
++	};
++
++};
+-- 
+1.7.1
+

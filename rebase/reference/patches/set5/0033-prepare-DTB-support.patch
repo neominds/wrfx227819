@@ -1,0 +1,145 @@
+From 50c14bf76538a3757a93d2888563e68121257020 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Mon, 22 Dec 2014 11:53:19 +0900
+Subject: [PATCH 1/1] prepare DTB support
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/boot/compressed/atags_to_fdt.c |   61 +++++++++++++++++++++++++++++++
+ arch/arm/boot/compressed/head.S         |   12 +++----
+ 2 files changed, 66 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm/boot/compressed/atags_to_fdt.c b/arch/arm/boot/compressed/atags_to_fdt.c
+index d1153c8..5dd2f25 100644
+--- a/arch/arm/boot/compressed/atags_to_fdt.c
++++ b/arch/arm/boot/compressed/atags_to_fdt.c
+@@ -1,6 +1,63 @@
+ #include <asm/setup.h>
+ #include <libfdt.h>
+ 
++#ifdef	CONFIG_ARCH_LM2
++#include <asm/string.h>
++#include <asm/page.h>
++/*
++ * 0x7fff_f000 start virtual address
++ */
++#define	PARAM_ADDR	0x7ffff000
++#define	ATAGS_ADDR	0x80000100
++
++struct	lm2_param {
++	unsigned int	magic;
++	unsigned char	macaddr[6];
++	unsigned long long	ramsize;
++	unsigned char	bootparam[512];
++	unsigned long	initrd_addr;
++	unsigned long	initrd_size;
++	unsigned long	firm_addr;
++	unsigned long	firm_size;
++};
++
++static	void	prepare_atag_list(void)
++{
++	struct	lm2_param	*p_ptr = PARAM_ADDR;
++	struct	tag		*t_ptr = ATAGS_ADDR;
++
++	t_ptr->hdr.size = sizeof(struct tag_header) + sizeof(struct tag_core);
++	t_ptr->hdr.tag = ATAG_CORE;
++	t_ptr->u.core.flags= 0x1;
++	t_ptr->u.core.pagesize = PAGE_SIZE;
++	t_ptr->u.core.rootdev = 0xff;
++
++	t_ptr = t_ptr + t_ptr->hdr.size;
++
++	t_ptr->hdr.size = sizeof(struct tag_header) + sizeof(struct tag_mem32);
++	t_ptr->hdr.tag = ATAG_MEM;
++	t_ptr->u.mem.size = (unsigned long)p_ptr->ramsize;
++	t_ptr->u.mem.start = 0x80000000;
++
++	t_ptr = t_ptr + t_ptr->hdr.size;
++
++	t_ptr->hdr.size = sizeof(struct tag_header) + sizeof(struct tag_initrd);
++	t_ptr->hdr.tag = ATAG_INITRD;
++	t_ptr->u.initrd.start = p_ptr->initrd_addr;
++	t_ptr->u.initrd.size = p_ptr->initrd_size;
++
++	t_ptr = t_ptr + t_ptr->hdr.size;
++
++	t_ptr->hdr.size = sizeof(struct tag_header) + 512;
++	t_ptr->hdr.tag = ATAG_CMDLINE;
++	memcpy(t_ptr->u.cmdline.cmdline, p_ptr->bootparam, 512);
++
++	return;
++	
++}
++
++#endif	/* CONFIG_ARCH_LM2 */
++
+ #if defined(CONFIG_ARM_ATAG_DTB_COMPAT_CMDLINE_EXTEND)
+ #define do_extend_cmdline 1
+ #else
+@@ -112,6 +169,10 @@ int atags_to_fdt(void *atag_list, void *fdt, int total_space)
+ 	int memcount = 0;
+ 	int ret, memsize;
+ 
++#ifdef	CONFIG_ARCH_LM2
++	prepare_atag_list();
++#endif	/* CONFIG_ARCH_LM2 */
++
+ 	/* make sure we've got an aligned pointer */
+ 	if ((u32)atag_list & 0x3)
+ 		return 1;
+diff --git a/arch/arm/boot/compressed/head.S b/arch/arm/boot/compressed/head.S
+index c9a25bd..b348794 100644
+--- a/arch/arm/boot/compressed/head.S
++++ b/arch/arm/boot/compressed/head.S
+@@ -196,7 +196,7 @@ not_angel:
+ 		addcc	r0, r0, pc
+ 		cmpcc	r4, r0
+ 		orrcc	r4, r4, #1		@ remember we skipped cache_on
+-/*		blcs	cache_on */	/* yamano debug */
++		blcs	cache_on 	/* yamano debug */
+ 
+ restart:	adr	r0, LC0
+ 		ldmia	r0, {r1, r2, r3, r6, r10, r11, r12}
+@@ -407,9 +407,7 @@ dtb_check_done:
+ #endif
+ 
+ 		tst	r4, #1
+-/*
+-		bleq	cache_clean_flush
+-*/	/* yamano */
++		bleq	cache_clean_flush	/* yamano debug without */
+ 		adr	r0, BSYM(restart)
+ 		add	r0, r0, r6
+ 		mov	pc, r0
+@@ -490,7 +488,7 @@ not_relocated:	mov	r0, #0
+ 		 */
+ 		tst	r4, #1
+ 		bic	r4, r4, #1
+-/*		blne	cache_on	*/	/* yamano */
++		blne	cache_on		/* yamano */
+ 
+ /*
+  * The C runtime environment should now be setup sufficiently.
+@@ -504,7 +502,7 @@ not_relocated:	mov	r0, #0
+ 		add	r2, sp, #0x10000	@ 64k max
+ 		mov	r3, r7
+ 		bl	decompress_kernel
+-/*		bl	cache_clean_flush	*/	/* yamano */
++		bl	cache_clean_flush		/* yamano */
+ /*		bl	cache_off		*/	/* yamano */
+ 		mov	r1, r7			@ restore architecture number
+ 		mov	r2, r8			@ restore atags pointer
+@@ -756,7 +754,7 @@ __armv7_mmu_cache_on:
+ 		mcrne   p15, 0, r6, c2, c0, 2   @ load ttb control
+ #endif	/* yamano */
+ #endif
+-#if 0	/* yamano */
++#if 1	/* yamano */
+ 		mcr	p15, 0, r0, c7, c5, 4	@ ISB
+ 		mcr	p15, 0, r0, c1, c0, 0	@ load control register
+ 		mrc	p15, 0, r0, c1, c0, 0	@ and read it back
+-- 
+1.7.1
+

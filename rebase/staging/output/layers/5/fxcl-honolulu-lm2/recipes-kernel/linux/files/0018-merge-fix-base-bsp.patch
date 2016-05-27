@@ -1,0 +1,49 @@
+From e0cefa3dfd4b5fcf7dcd02c471033100253a8ec9 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:31:36 +0900
+Subject: [PATCH 019/171] 0018-merge-fix-base-bsp
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 8cd3660..8d1f1e5 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -7,8 +7,6 @@
+  */
+ 
+ #include <linux/device.h>
+-#include <linux/amba/bus.h>
+-#include <linux/amba/mmci.h>
+ #include <linux/io.h>
+ #include <linux/init.h>
+ #include <linux/of_address.h>
+@@ -16,12 +14,11 @@
+ #include <linux/of_irq.h>
+ #include <linux/of_platform.h>
+ #include <linux/platform_device.h>
++#include <linux/dma-mapping.h>
+ #include <linux/ata_platform.h>
+-#include <linux/smsc911x.h>
+ #include <linux/memblock.h>
+ #include <linux/spinlock.h>
+ #include <linux/device.h>
+-#include <linux/usb/isp1760.h>
+ #include <linux/clkdev.h>
+ #include <linux/mtd/physmap.h>
+ #include <linux/serial_8250.h>
+@@ -37,11 +34,8 @@
+ #include <asm/mach/time.h>
+ #include <asm/hardware/arm_timer.h>
+ #include <asm/hardware/cache-l2x0.h>
+-#include <asm/hardware/gic.h>
+-#include <asm/hardware/timer-sp.h>
+-#include <asm/hardware/sp810.h>
+ #include <linux/stmmac.h>
+-
++#include <linux/irqchip/arm-gic.h>
+ /*
+  * BSPs include files 
+  */
+-- 
+1.7.1
+

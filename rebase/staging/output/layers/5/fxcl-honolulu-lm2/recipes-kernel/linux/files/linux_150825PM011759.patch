@@ -1,0 +1,165 @@
+From b7c7569844a9d852594adf958c75cb30b0e3f1e5 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:34:41 +0900
+Subject: [PATCH 142/171] linux_150825PM011759
+
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac1000.h b/drivers/net/ethernet/stmicro/stmmac/dwmac1000.h
+index 11c1f08..44b9102 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac1000.h
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac1000.h
+@@ -152,8 +152,13 @@ enum inter_frame_gap {
+ #define GMAC_CONTROL_TE		0x00000008	/* Transmitter Enable */
+ #define GMAC_CONTROL_RE		0x00000004	/* Receiver Enable */
+ 
++#if 1	/* No34 */
++#define GMAC_CORE_INIT (GMAC_CONTROL_JD | GMAC_CONTROL_PS | GMAC_CONTROL_ACS | \
++			GMAC_CONTROL_IPC | GMAC_CONTROL_BE | GMAC_CONTROL_WD)
++#else	/* No34 */
+ #define GMAC_CORE_INIT (GMAC_CONTROL_JD | GMAC_CONTROL_PS | GMAC_CONTROL_ACS | \
+ 			GMAC_CONTROL_JE | GMAC_CONTROL_BE | GMAC_CONTROL_WD)
++#endif	/* No34 */
+ 
+ /* GMAC Frame Filter defines */
+ #define GMAC_FRAME_FILTER_PR	0x00000001	/* Promiscuous Mode */
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
+index e478528..8317e04 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
+@@ -43,10 +43,17 @@ static void dwmac1000_core_init(void __iomem *ioaddr, int mtu)
+ {
+ 	u32 value = readl(ioaddr + GMAC_CONTROL);
+ 	value |= GMAC_CORE_INIT;
++#if 1	/* No34 */
++	if (mtu > 1500) {
++		value |= GMAC_CONTROL_2K;
++		value |= GMAC_CONTROL_JE;
++	}
++#else	/* No32 */
+ 	if (mtu > 1500)
+ 		value |= GMAC_CONTROL_2K;
+ 	if (mtu > 2000)
+ 		value |= GMAC_CONTROL_JE;
++#endif	/* No32 */
+ 
+ 	writel(value, ioaddr + GMAC_CONTROL);
+ 
+@@ -283,15 +290,18 @@ static int dwmac1000_irq_status(void __iomem *ioaddr,
+ 				x->pcs_speed = SPEED_10;
+ 
+ 			x->pcs_link = 1;
++#if 1	/* No32 */
++#else	/* No32 */
+ #ifdef  CONFIG_ARCH_LM2		/* lm2 workaround */
+ 			if ( x->pcs_speed == SPEED_1000 ) {
+-				writel(0x00000800,ioaddr + GMAC_TCPD);	/* GMACTCPD */
+-				writel(0x00000000,ioaddr + GMAC_RCPD);	/* GMACRCPD */
++				writel(0x00000800,ioaddr + GMAC_TCPD);  /* GMACTCPD */
++				writel(0x00000000,ioaddr + GMAC_RCPD);  /* GMACRCPD */
+ 			} else {
+-				writel(0x00003f00,ioaddr + GMAC_TCPD);	/* GMACTCPD */
+-				writel(0x00003f00,ioaddr + GMAC_RCPD);	/* GMACRCPD */
++				writel(0x00003f00,ioaddr + GMAC_TCPD);  /* GMACTCPD */
++				writel(0x00003f00,ioaddr + GMAC_RCPD);  /* GMACRCPD */
+ 			}
+ #endif	/* CONFIG_ARCH_LM2 */	/* lm2 workaround */
++#endif	/* No32 */
+ 			pr_debug("Link is Up - %d/%s\n", (int)x->pcs_speed,
+ 				 x->pcs_duplex ? "Full" : "Half");
+ 		} else {
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index 38b89d3..223e7d6 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -227,13 +227,25 @@ static void stmmac_clk_csr_set(struct stmmac_priv *priv)
+ static void print_pkt(unsigned char *buf, int len)
+ {
+ 	int j;
+-	pr_info("len = %d byte, buf addr: 0x%p", len, buf);
+-	for (j = 0; j < len; j++) {
+-		if ((j % 16) == 0)
+-			pr_info("\n %03x:", j);
+-		pr_info(" %02x", buf[j]);
++	unsigned char	tmp[64];
++	int		tmp_len=0;
++	if ( len > 0 ) {
++		printk(KERN_ERR "** frm_len=%d byte, bufaddr=0x%p **\n", len, buf);
++		len -= ETH_HLEN;
++		for (j = 0; j < len; j++) {
++			if ((j % 16) == 0) {
++				if ( j != 0 )
++					printk(KERN_ERR "%s\n",tmp);
++	
++				memset(&tmp, 0, sizeof(tmp));
++				sprintf(tmp, "%03x: %02x",j,buf[j]);
++			} else {
++				sprintf(&tmp[tmp_len], " %02x",buf[j]);
++			}
++			tmp_len=strlen(tmp);
++		}
++		printk(KERN_ERR "%s\n",tmp);
+ 	}
+-	pr_info("\n");
+ }
+ #endif
+ 
+@@ -732,6 +744,12 @@ static void stmmac_release_ptp(struct stmmac_priv *priv)
+  * @dev: net device structure
+  * Description: it adjusts the link parameters.
+  */
++/* lm2 work around start */
++#define GMAC_RDPD       0x8004
++#define GMAC_RCPD       0x8008
++#define GMAC_TDPD       0x800c
++#define GMAC_TCPD       0x8010
++/* lm2 work around end */
+ static void stmmac_adjust_link(struct net_device *dev)
+ {
+ 	struct stmmac_priv *priv = netdev_priv(dev);
+@@ -796,6 +814,18 @@ static void stmmac_adjust_link(struct net_device *dev)
+ 			}
+ 
+ 			priv->speed = phydev->speed;
++#if 1	/* No32 */
++#ifdef  CONFIG_ARCH_LM2         /* lm2 workaround */
++			if ( phydev->speed == SPEED_1000 ) {
++				writel(0x00000800,priv->ioaddr + GMAC_TCPD);  /* GMACTCPD */
++				writel(0x00000000,priv->ioaddr + GMAC_RCPD);  /* GMACRCPD */
++			} else {
++				writel(0x00003f00,priv->ioaddr + GMAC_TCPD);  /* GMACTCPD */
++				writel(0x00003f00,priv->ioaddr + GMAC_RCPD);  /* GMACRCPD */
++			}
++//			printk(KERN_ERR "No32 Link is Up (%d) TCPD/RCPD Set\n", (int)priv->speed);
++#endif  /* CONFIG_ARCH_LM2 */   /* lm2 workaround */
++#endif	/* No32 */
+ 		}
+ 
+ 		writel(ctrl, priv->ioaddr + MAC_CTRL_REG);
+@@ -2245,6 +2275,14 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit)
+ 			 */
+ 			if (unlikely(status != llc_snap))
+ 				frame_len -= ETH_FCS_LEN;
++#if 1	/* No34 No35 No36 */
++			if (frame_len > priv->dev->mtu + ETH_HLEN) {
++//printk(KERN_ERR "No34-36 RX frame size=%d > %d ==>drop\n",frame_len, priv->dev->mtu + ETH_HLEN);
++				pr_debug("RX frame size %d > (%d) ==>drop\n",frame_len, priv->dev->mtu + ETH_HLEN);
++				priv->dev->stats.rx_dropped++;
++				break;
++			}
++#endif	/* No34 No35 No36 */
+ #ifdef STMMAC_RX_DEBUG
+ 			if (frame_len > ETH_FRAME_LEN)
+ 				pr_debug("\tRX frame size %d, COE status: %d\n",
+@@ -2277,6 +2315,9 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit)
+ 			else
+ 				skb->ip_summed = CHECKSUM_UNNECESSARY;
+ 
++#ifdef	STMMAC_RX_DEBUG
++			print_pkt(skb->data, frame_len);
++#endif
+ 			napi_gro_receive(&priv->napi, skb);
+ 
+ 			priv->dev->stats.rx_packets++;
+-- 
+1.7.1
+

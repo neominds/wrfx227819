@@ -1,0 +1,65 @@
+From f32d9fa42735ff38bcf8e8494719220185306cf8 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:35:08 +0900
+Subject: [PATCH 161/171] 0206-SuspendResumae_IRQ
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index dbf3866..901b07d 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -102,6 +102,7 @@ static struct map_desc lm2_io_desc[] __initdata = {
+ /*
+  * Use Irq
+  */
++#if 0 // AR226922
+ const unsigned char lm2_use_irq[] = {
+ 34,    // RTC
+ 40,    // Timer
+@@ -129,6 +130,10 @@ const unsigned char lm2_use_irq[] = {
+ 133,   // mmc1
+ };
+ const unsigned int lm2_use_irq_size = sizeof(lm2_use_irq);
++#else
++unsigned char lm2_use_irq[256];
++unsigned int lm2_use_irq_size = 0;
++#endif // AR226922
+ 
+ static int lm2_board_version = 0;
+ 
+diff --git a/kernel/irq/pm.c b/kernel/irq/pm.c
+index e66f95b..7acf5f5 100644
+--- a/kernel/irq/pm.c
++++ b/kernel/irq/pm.c
+@@ -14,8 +14,8 @@
+ #include "internals.h"
+ 
+ #ifdef  CONFIG_ARCH_LM2         /* Linux IRQ Only */
+-extern const unsigned char lm2_use_irq[];
+-extern const const unsigned int lm2_use_irq_size;
++extern unsigned char lm2_use_irq[];
++extern unsigned int lm2_use_irq_size;
+ #define LM2USEIRQ_SIZE  (lm2_use_irq_size)
+ #endif  /* CONFIG_ARCH_LM2 */
+ /**
+@@ -30,10 +30,17 @@ void suspend_device_irqs(void)
+ {
+ 	struct irq_desc *desc;
+ 	int irq;
++	int i = 0;
++
++	lm2_use_irq_size = 0;
+ 
+ 	for_each_irq_desc(irq, desc) {
+ 		unsigned long flags;
+ 
++		if (desc->action != NULL){
++			lm2_use_irq[i++] = irq;
++			lm2_use_irq_size = i;
++		}
+ 		raw_spin_lock_irqsave(&desc->lock, flags);
+ 		__disable_irq(desc, irq, true);
+ 		raw_spin_unlock_irqrestore(&desc->lock, flags);
+-- 
+1.7.1
+

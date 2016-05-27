@@ -1,0 +1,233 @@
+From 9fb033fe086eadf7fa39ca5d7f727539702b1b3b Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:33:15 +0900
+Subject: [PATCH 086/171] 0001-temporary-pcie-host
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 316589a..5096796 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -97,7 +97,7 @@ static struct map_desc lm2_io_desc[] __initdata = {
+ #if 0
+ 	{
+ 		.virtual	= 0xffc00000,
+-		.pfn		= __phys_to_pfn(0x0000000004060000ULL),
++		.pfn		= __phys_to_pfn(0x0000000410000000ULL),
+ 		.length		= SZ_64K,
+ 		.type		= MT_DEVICE,
+ 	},
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 8c64115..5856a23 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -163,13 +163,23 @@ static int synopsys_pcie_link_up(struct pcie_port *pp)
+ 
+ /*
+  * PCI Express Configuration Register Access primitive
++ * bus : device data
++ * devfn : function number
++ * where : 
++ * size  : byte 1,2,4
++ * val   : read data
+  */
+ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int size, u32 *val)
+ {
+ 	struct pcie_port *pp = sys_to_pcie(bus->sysdata);
+ //	unsigned long flags;
+-//	int ret;
++	int ret;
++	void __iomem	*pciegen3_base1 = pp->pciegen3_base1;
+ 
++#ifdef	DEBUG_TRACE1
++	dev_err(pp->dev, "%s entry\n",__FUNCTION__);
++	dev_err(pp->dev, "devfn=%x ibus = %d where=%x size=%d\n", devfn, bus->number,where, size);
++#endif
+ 	if (!pp) {
+ 		BUG();
+ 		return -EINVAL;
+@@ -179,13 +189,19 @@ static int synopsys_pcie_rd_conf(struct pci_bus *bus, u32 devfn, int where, int
+ 		*val = 0xffffffff;
+ 		return PCIBIOS_DEVICE_NOT_FOUND;
+ 	}
+-//	addr = pp->base + (where & ~0x3);
+-//	*val = readl(addr);
+-
++	if(bus->number != pp->root_bus_nr){
++		dev_err(pp->dev, "endpoint access\n");
++	}else{
++		dev_err(pp->dev, "bridge access : %x %x\n", pciegen3_base1, where);
++		*val = synopsys_readl(pciegen3_base1 + (where & ~0x03));
++	}	
+ 	if (size == 1)
+ 		*val = (*val >> (8 * (where & 3))) & 0xff;
+ 	else if (size == 2)
+ 		*val = (*val >> (8 * (where & 3))) & 0xffff;
++#ifdef	DEBUG_TRACE1
++	dev_err(pp->dev, "%s exit\n",__FUNCTION__);
++#endif
+ 
+ 	return PCIBIOS_SUCCESSFUL;
+ }
+@@ -198,6 +214,9 @@ static int synopsys_pcie_wr_conf(struct pci_bus *bus, u32 devfn,
+ //	u32 mask;
+ //	u32 tmp;
+ 
++#ifdef	DEBUG_TRACE
++	dev_err(pp->dev, "%s entry\n",__FUNCTION__);
++#endif
+ 	if (!pp) {
+ 		BUG();
+ 		return -EINVAL;
+@@ -222,6 +241,9 @@ static int synopsys_pcie_wr_conf(struct pci_bus *bus, u32 devfn,
+ //	tmp |= val << ((where & 0x3) * 8);
+ //	writel(tmp, addr);
+ 
++#ifdef	DEBUG_TRACE
++	dev_err(pp->dev, "%s exit\n",__FUNCTION__);
++#endif
+ 	return PCIBIOS_SUCCESSFUL;
+ }
+ 
+@@ -235,7 +257,7 @@ static struct pci_bus *synopsys_pcie_scan_bus(int nr, struct pci_sys_data *sys)
+ 	struct pci_bus *bus;
+ 	struct pcie_port *pp = sys_to_pcie(sys);
+ #ifdef	DEBUG_TRACE
+-	dev_err(pp->dev, "synopsys_pcie_scan_bus: Start\n");
++	dev_err(pp->dev, "synopsys_pcie_scan_bus:%d Start\n",sys->busnr);
+ #endif
+ 	if (pp) {
+ 		pp->root_bus_nr = sys->busnr;
+@@ -546,14 +568,17 @@ static void synopsys_pcie_AxiToPexInit(struct pcie_port *pp, int which, int wher
+ 			//   - CFG access
+ 			//   - 256 MB
+ 			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_CTRL0,
+-			      PAB_AXI_AMAP_CTRL_256_CFG);
++			      PAB_AXI_AMAP_CTRL_32_CFG);
++//			      PAB_AXI_AMAP_CTRL_256_CFG);
+ 			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE0,
+-				  AXI_ADDR_PCIE1_TO_PCIE23_CFG);	// AXI_ADDR_PCIE1_TO_PCIE23_CFG=0x40000000
++				  0x00000000);	// AXI_ADDR_PCIE1_TO_PCIE23_CFG=0x40000000
++			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_AXI_BASE0X,
++				  0x00000004);	// AXI_ADDR_PCIE1_TO_PCIE23_CFG=0x40000000
+ 			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEL0,
+ 				 0x00000000);  // should be 0 for cfg
+ 			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_AMAP_PEX_BASEH0,
+ 				 0x00000000);  // should be 0 for cfg
+-
++#if 0
+ 			// - window 1
+ 			//   - MEM access
+ 			//   - 128 MB
+@@ -754,6 +779,7 @@ static void synopsys_pcie_AxiToPexInit(struct pcie_port *pp, int which, int wher
+ //					qlLogStrOut("Error! qlAxiToPexInit called with illegal where and which combination");
+ 				}
+ 				break;
++#endif
+     	default: 
+ 				dev_err(pp->dev, "synopsys_pcie_AxiToPexInit: which is %d Error\n",which);
+ 				break;
+@@ -942,17 +968,17 @@ static int synopsys_pcie_establish_link(struct pcie_port *pp)
+ 
+ 	/* de-assert PIPE Reset */
+ 	synopsys_pcie_deassert_pipe_reset(pp, PCIE_PORT1, 0);
+-	synopsys_pcie_deassert_pipe_reset(pp, PCIE_PORT2, 0);
+-	synopsys_pcie_deassert_pipe_reset(pp, PCIE_PORT3, 0);
++//	synopsys_pcie_deassert_pipe_reset(pp, PCIE_PORT2, 0);
++//	synopsys_pcie_deassert_pipe_reset(pp, PCIE_PORT3, 0);
+ 	
+ 	/*  PIPE Status Check */
+ 	synopsys_pcie_pipe_ok(pp, PCIE_PORT1);
+-	synopsys_pcie_pipe_ok(pp, PCIE_PORT2);
++//	synopsys_pcie_pipe_ok(pp, PCIE_PORT2);
+ //	synopsys_pcie_pipe_ok(pp, PCIE_PORT3);
+ 	
+ 	/* de-assert GPEX Reset */
+ 	synopsys_pcie_deassert_gpex_reset(pp, PCIE_PORT1, 0);
+-	synopsys_pcie_deassert_gpex_reset(pp, PCIE_PORT2, 0);
++//	synopsys_pcie_deassert_gpex_reset(pp, PCIE_PORT2, 0);
+ //	synopsys_pcie_deassert_gpex_reset(pp, PCIE_PORT3, 0);
+ 	
+ 	/* Set GPEXD_CORE_CLK_RATIO  */
+@@ -961,10 +987,10 @@ static int synopsys_pcie_establish_link(struct pcie_port *pp)
+ 	//-------------------------------------------------------
+ 	// - INITIALIZE AXI and PEX WINDOWS
+ 	//-------------------------------------------------------
+-//	synopsys_writel(pciegen3_base1 + PCIE_PAB_CTRL, 0x00000a2f);	/* yamano */
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_CTRL, 0x00000a2f);	/* yamano */
+ //	synopsys_writel(pciegen3_base2 + PCIE_PAB_CTRL, 0x00000a2f);
+ 	/* initialize AXI to PEX windows for RC to EP accesses */
+-//	synopsys_pcie_AxiToPexInit(pp, rc_num, ep_num, rc_num);
++	synopsys_pcie_AxiToPexInit(pp, rc_num, ep_num, rc_num);
+ 	
+ 	/* initialize AXI to PEX windows for EP to RC accesses */
+ //	synopsys_pcie_AxiToPexInit(pp, ep_num, rc_num, rc_num);	/* yamano */
+@@ -1038,11 +1064,15 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ 	void __iomem *pciegen3_base1 = pp->pciegen3_base1;
+ 	void __iomem *pciegen3_base2 = pp->pciegen3_base2;
+ //	void __iomem *pciegen3_base3 = pp->pciegen3_base3;
+-	
++	void __iomem *conFig;
++
+ #ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "synopsys_pcie_host_init: Start\n");
+ #endif
+ 
++	conFig = ioremap(0x410000000ULL,0x10000);	/* yamano debug */
++	dev_info(pp->dev, "config map = %x\n",conFig);
++
+ 	/* PCIE core resets from RSTGEN default to asserted, deassert them now */
+ 	val = synopsys_readl(resetgen_base + RSTGENSWRSTSTATIC10);
+ 	val &= 0xff0fffff;
+@@ -1069,7 +1099,7 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ 	if ( val != 0x123411de ) {
+ 		dev_err(pp->dev, "synopsys_pcie_host_init: PCIE_GPEXD_ID error rc(0x%x != 0x123411de)\n",val);
+ 	}
+-#if 0	
++#if 0
+ 	/* PCIE2 (EP) */
+ 	val = synopsys_readl(pciegen3_base2 + PCIE_GPEXP_CFG_VENDORID);
+ 	if ( val != 0x000811de ) {
+@@ -1149,7 +1179,7 @@ static void synopsys_pcie_host_init(struct pcie_port *pp)
+ 	synopsys_pcie_enable_interrupts(pp);
+ out:
+ #ifdef	DEBUG_TRACE
+-	dev_err(pp->dev, "synopsys_pcie_host_init: End\n");
++	dev_err(pp->dev, "synopsys_pcie_host_init:%x End\n",pciegen3_base1);
+ #endif
+ }
+ 
+@@ -1222,7 +1252,7 @@ static int add_pcie_port(struct pcie_port *pp, struct platform_device *pdev)
+ 	}
+ 	
+ 	
+-	pp->root_bus_nr = -1;
++	pp->root_bus_nr = 0;
+ 
+ 	spin_lock_init(&pp->conf_lock);
+ 	synopsys_pcie_host_init(pp);
+@@ -1330,15 +1360,15 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ 	}
+ #endif
+ 
+-	pp->io.name	= "Multiport";
+-	pp->io.start	= 0x410000000ULL;
+-	pp->io.end	= 0x41000ffffULL;
+-	pp->config[0].io_size = resource_size(&pp->io);
++//	pp->io.name	= "Multiport";
++//	pp->io.start	= 0x410000000ULL;
++//	pp->io.end	= 0x41000ffffULL;
++//	pp->config[0].io_size = resource_size(&pp->io);
+ //	pp->config[0].io_bus_addr	= 0x410000000ULL;
+ 
+ 	pp->mem.name	= "Memory";
+-	pp->mem.start	= 0x400000000ULL;
+-	pp->mem.end	= 0x40fffffffULL;
++	pp->mem.start	= 0x410000000ULL;
++	pp->mem.end	= 0x40000ffffULL;
+ 	pp->config[0].mem_size = resource_size(&pp->mem);
+ //	pp->config[0].mem_bus_addr	= 0x400000000ULL;
+ 
+-- 
+1.7.1
+

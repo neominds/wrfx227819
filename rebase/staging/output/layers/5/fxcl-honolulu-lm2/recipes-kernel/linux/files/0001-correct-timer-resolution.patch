@@ -1,0 +1,47 @@
+From 6e32a9e739055537a6ba56fca9a4851d215d4298 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:33:29 +0900
+Subject: [PATCH 095/171] 0001-correct-timer-resolution
+
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 8a672bf..a94361c 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -1719,6 +1719,7 @@ source kernel/Kconfig.preempt
+ 
+ config HZ
+ 	int
++	default 3000 if ARCH_LM2
+ 	default 200 if ARCH_EBSA110 || ARCH_S3C24XX || ARCH_S5P64X0 || \
+ 		ARCH_S5PV210 || ARCH_EXYNOS4
+ 	default AT91_TIMER_HZ if ARCH_AT91
+diff --git a/arch/arm/Kconfig.orig b/arch/arm/Kconfig.orig
+index 97f010a..025d7d0 100644
+--- a/arch/arm/Kconfig.orig
++++ b/arch/arm/Kconfig.orig
+@@ -384,6 +384,8 @@ config ARCH_LM2
+         select PLAT_WAIKIKI
+         select ARCH_DMA_ADDR_T_64BIT
+         select HAVE_SMP
++	select PCIEPORTBUS
++	select PCIE_LM2
+         help
+           This enables support for the Fuji Xerox Co., Ltd Waikiki LM2 boards.
+ 
+diff --git a/drivers/watchdog/lm2_wdt.c b/drivers/watchdog/lm2_wdt.c
+index e16b21e..9fffab3 100644
+--- a/drivers/watchdog/lm2_wdt.c
++++ b/drivers/watchdog/lm2_wdt.c
+@@ -303,7 +303,7 @@ static int lm2_wdt_probe(struct platform_device *pdev)
+ 	lm2_wdt->max_timeout	= WDT_MAX_TIMER;
+ 	wdev->running = 0;
+ 	lm2_wdt_free = 0;
+-	lm2_ninesec = msecs_to_jiffies(10000 * 9);
++	lm2_ninesec = msecs_to_jiffies(1000 * 9);
+ 
+ 	watchdog_set_drvdata(lm2_wdt, wdev);
+ 
+-- 
+1.7.1
+

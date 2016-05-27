@@ -1,0 +1,96 @@
+From 55095047534727fc5ff812d6aace079b11556919 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Fri, 15 Apr 2016 13:55:31 +0900
+Subject: [PATCH 1/1] Panbug_0.0.148_change
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/mach-lm2/include/mach/motherboard.h |   12 +++++++++++-
+ arch/arm/plat-waikiki/time.c                 |   11 ++++++++++-
+ 2 files changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-lm2/include/mach/motherboard.h b/arch/arm/mach-lm2/include/mach/motherboard.h
+index 8c626b5..306733f 100644
+--- a/arch/arm/mach-lm2/include/mach/motherboard.h
++++ b/arch/arm/mach-lm2/include/mach/motherboard.h
+@@ -1,6 +1,6 @@
+ /*
+  * Fuji Xerox Co., Ltd. Waikiki LM2 board
+- * Copyright 2014-2015 Wind River Systems Inc.
++ * Copyright 2014-2016 Wind River Systems Inc.
+  * koki.yamano@windriver.com
+  * JPN-FXCL-12490
+  */
+@@ -9,6 +9,7 @@
+ #define __MACH_MOTHERBOARD_H
+ 
+ #define	LM2_A15_CPUS	2
++#define	PANBUG148
+ /*
+  * System clocking
+  */
+@@ -16,12 +17,21 @@
+ #define	LM2_A7_CLK	(400*1000*1000) /* 400MHz */
+ #define	LM2_TIM32_CLK	(300*1000*1000)	/* 300MHz */
+ #define	LM2_TIM64_CLK	(300*1000*1000)	/* 300MHz */
++#ifdef	PANBUG148
++#define	LM2_UART0_CLK	(300*1000*1000) /* 300MHz */
++#define	LM2_UART1_CLK	(300*1000*1000)	/* 300MHz */
++#define	LM2_UART2_CLK	(300*1000*1000)	/* 314MHz */
++#define LM2_UART3_CLK   (300*1000*1000) /* 314MHz */
++#define	LM2_UART4_CLK	(300*1000*1000)	/* 314MHz */
++#define	LM2_UART5_CLK	(300*1000*1000)	/* 314MHz */
++#else
+ #define	LM2_UART0_CLK	(275*1000*1000) /* 300MHz */
+ #define	LM2_UART1_CLK	(275*1000*1000)	/* 300MHz */
+ #define	LM2_UART2_CLK	(314*1000*1000)	/* 314MHz */
+ #define LM2_UART3_CLK   (314*1000*1000) /* 314MHz */
+ #define	LM2_UART4_CLK	(314*1000*1000)	/* 314MHz */
+ #define	LM2_UART5_CLK	(314*1000*1000)	/* 314MHz */
++#endif
+ 
+ #define	LM2_UART0_BPS	38400
+ 
+diff --git a/arch/arm/plat-waikiki/time.c b/arch/arm/plat-waikiki/time.c
+index 4d65f6d..3520cdb 100644
+--- a/arch/arm/plat-waikiki/time.c
++++ b/arch/arm/plat-waikiki/time.c
+@@ -1,7 +1,7 @@
+ /*
+  * arch/arm/plat-waikiki/time.c
+  *
+- * Copyright (C) 2014 Wind River Systems, Inc.
++ * Copyright (C) 2014-2016 Wind River Systems, Inc.
+  * Koki Yamano <koki.yamano@windriver.com>
+  *
+  * This file is licensed under the terms of the GNU General Public
+@@ -24,6 +24,7 @@
+ #include <linux/irq.h>
+ #include <asm/mach/time.h>
+ #include <asm/sched_clock.h>
++#define	PANBUG148
+ /*
+  * We would use TIMER0 and TIMER1 as clockevent and clocksource.
+  * Timer0 and Timer1 both belong to same gpt block in cpu subbsystem. Further
+@@ -32,9 +33,17 @@
+  */
+ 
+ extern int lm2_board_is_A0(void);
++#ifdef	PANBUG148
++#define	SYSCLK		300*1000*1000 /* 300MHz */
++#else
+ #define	SYSCLK		( lm2_board_is_A0() ? (300*1000*1000) : (275*1000*1000) ) /* 275MHz */
++#endif
+ #define	DIVISOR		100	/* For HZ=100 10msec */
++#ifdef	PANBUG148
++#define	PRESCALE	300	/* Same as Panbug */
++#else
+ #define	PRESCALE	275	/* Same as Panbug */
++#endif
+ 
+ /* Register offsets, x is channel number */
+ #define	PRESCL(x)	((x)+0)
+-- 
+1.7.1
+

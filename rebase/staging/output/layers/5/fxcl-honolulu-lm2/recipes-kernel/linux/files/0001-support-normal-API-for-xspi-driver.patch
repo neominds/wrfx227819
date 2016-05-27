@@ -1,0 +1,352 @@
+From 00dae68af9e638bfaf5fb3f68bf13516b10303f1 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:34:28 +0900
+Subject: [PATCH 134/171] 0001-support-normal-API-for-xspi-driver
+
+
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index 78e0e79..1df5920 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -42,10 +42,10 @@
+ 
+ #include <linux/spi/xspi.h>
+ 
+-#define	XSPI_DEBUG_FUNC
+-#define	XSPI_DEBUG_REG
+-#define	XSPI_DEBUG_OPE
+-#define	XSPI_DEBUG_INT
++#undef	XSPI_DEBUG_FUNC
++#undef	XSPI_DEBUG_REG
++#undef	XSPI_DEBUG_OPE
++#undef	XSPI_DEBUG_INT
+ 
+ /* Register offset Address */
+ /* configuration and clock */
+@@ -227,7 +227,8 @@ static	int	xspi_read_trans(struct xspi_dev *xspi, int adr, int offset)
+ 
+ 	/* Endian */
+ 	reg = xspi_rd(xspi, SPI_CFG + offset);
+-	reg |= 0xca000007;
++//	reg |= 0xca000007;
++	reg |= 0x08000000;
+ 	xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+ 	/* DCTL */
+@@ -263,7 +264,8 @@ static	int	xspi_read_trans24(struct xspi_dev *xspi, int adr, int offset)
+ 
+ 	/* Endian */
+ 	reg = xspi_rd(xspi, SPI_CFG + offset);
+-	reg |= 0xca000007;
++//	reg |= 0xca000007;
++	reg |= 0x08000000;
+ 	xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+ 	/* DCTL */
+@@ -299,7 +301,8 @@ static	void	xspi_write_trans(struct xspi_dev *xspi, int adr, char dat, int offse
+ 
+ 	/* Endian */
+ 	reg = xspi_rd(xspi, SPI_CFG + offset);
+-	reg |= 0xca000007;
++//	reg |= 0xca000007;
++	reg |= 0x08000000;
+ 	xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+ 	/* DCTL */
+@@ -336,7 +339,8 @@ static	void	xspi_write_trans24(struct xspi_dev *xspi, int adr, char dat, int off
+ 
+ 	/* Endian */
+ 	reg = xspi_rd(xspi, SPI_CFG + offset);
+-	reg |= 0xca000007;
++//	reg |= 0xca000007;
++	reg |= 0x08000000;
+ 	xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+ 	/* DCTL */
+@@ -349,7 +353,7 @@ static	void	xspi_write_trans24(struct xspi_dev *xspi, int adr, char dat, int off
+ 	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
+ 
+ 	/* SPI Command */
+-	cmd = (SPI_WR_CMD << 24) | (adr &0x00ffffff);
++	cmd = (SPI_WR_CMD << 24) | (adr & 0x00ffffff);
+ 	xspi_wr(xspi, SPI_FIFO, cmd);
+ 	cmd = dat << 24;
+ 	xspi_wr(xspi, SPI_FIFO, cmd);
+@@ -378,7 +382,7 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 	int	cnt;
+ 	u32	reg;
+ 
+-#ifdef	XSPI_DEBUG
++#ifdef	XSPI_DEBUG_FUNC
+ 	dev_info(&spi->dev, "xspi_start_transfer\n");
+ 	dev_info(&spi->dev, "tfr->len %d\n",tfr->len);
+ 	dev_info(&spi->dev, "tfr->cs_change %d\n",tfr->cs_change);
+@@ -389,12 +393,15 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 
+ 	mutex_lock(&xspi->lock);
+ 
+-	xspi_wr(xspi, SPI_ERR, 0x00000000);	/* error clear */
+-	xspi_clear_fifo(xspi);
+-	xspi_wr(xspi, SPI_DCTL, 0x00000100);	/* No DMA mode */
+-
++//	xspi_wr(xspi, SPI_ERR, 0x00000000);	/* error clear */
++//	xspi_clear_fifo(xspi);
++//	xspi_wr(xspi, SPI_DCTL, 0x00000100);	/* No DMA mode */
++#if 0	/* LM debug */
++if(spi->chip_select == 0)	tfr->bits_per_word = 24;
++else				tfr->bits_per_word = 8;
++#endif
+ 	if(tfr->tx_buf == NULL){	/* read only */
+-		xspi_read_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->rx_buf);
++		cnt = xspi_read_prim(xspi, spi->chip_select, tfr->bits_per_word, 0, tfr->len, tfr->rx_buf);
+ 	}else{
+ 		/* read */
+ 		if(tfr->rx_buf != NULL)
+@@ -412,6 +419,9 @@ static	int	xspi_transfer_one(struct spi_master *master, struct spi_message *msg)
+ 	struct spi_device	*spi = msg->spi;
+ 	int	err,dat;
+ 
++#ifdef	XPSI_DEBUG_FUNC
++	printk(KERN_ERR "# %s entry\n",__func__);
++#endif
+ //	dev_info(&spi->dev,"xspi_transfer_one call\n");
+ //	dev_info(&spi->dev,"actual_length=%d\n",msg->actual_length);
+ //	dev_info(&spi->dev,"chip_select=%d\n",spi->chip_select);
+@@ -423,7 +433,7 @@ static	int	xspi_transfer_one(struct spi_master *master, struct spi_message *msg)
+ 		if(err)
+ 			goto out;
+ 
+-		msg->actual_length += xspi->len;
++		msg->actual_length += tfr->len;
+ 	}
+ 	msg->status = 0;
+ out:
+@@ -453,6 +463,7 @@ static int xspi_probe(struct platform_device *pdev)
+ //	master->dev.of_node = pdev->dev.of_node;
+ 	master->mode_bits = SPI_MODE_0;
+ //	master->bits_per_word_mask = BIT(8 - 1);
++	master->bits_per_word_mask = 0;
+ 	master->bus_num = pdev->id;
+ 	master->num_chipselect = 3;
+ 	master->transfer_one_message = xspi_transfer_one;
+@@ -502,10 +513,10 @@ static int xspi_probe(struct platform_device *pdev)
+ 
+ //	dev_info(&pdev->dev, "XSPI I/O %x IRQ %d \n",xspi->reg_base,xspi->irq);
+ 	/* initialize hardware set up */
+-//	dev_info(&pdev->dev, "SPI_CLK0 %x\n", xspi_rd(xspi, SPI_CLK0));
+-//	dev_info(&pdev->dev, "SPI_CLK1 %x\n", xspi_rd(xspi, SPI_CLK1));
+-//	dev_info(&pdev->dev, "SPI0CFG0 %x\n", xspi_rd(xspi, SPI_CFG));
+-//	dev_info(&pdev->dev, "SPI0CFG1 %x\n", xspi_rd(xspi, SPI_CFG+4));
++	dev_info(&pdev->dev, "SPI_CLK0 %x\n", xspi_rd(xspi, SPI_CLK0));
++	dev_info(&pdev->dev, "SPI_CLK1 %x\n", xspi_rd(xspi, SPI_CLK1));
++	dev_info(&pdev->dev, "SPI0CFG0 %x\n", xspi_rd(xspi, SPI_CFG));
++	dev_info(&pdev->dev, "SPI0CFG1 %x\n", xspi_rd(xspi, SPI_CFG+4));
+ 	/* CS0 :SRAM,FRAM,MRAM */
+ //	xspi_wr(xspi, SPI_CLK0, 0x00002020); /* SPI mode 0 300MHz/32 */
+ //	xspi_wr(xspi, SPI_CFG, 0x80000000);
+@@ -538,7 +549,7 @@ out_master_put:
+ 
+ static int xspi_remove(struct platform_device *pdev)
+ {
+-	struct xspi_dev *xspi = platform_get_drvdata(pdev);
++//	struct xspi_dev *xspi = platform_get_drvdata(pdev);
+ 
+ 	dev_info(&pdev->dev, "XSPI device remove\n");
+ #if 0
+@@ -577,18 +588,22 @@ static	int	xspi_read_prim(
+ 	u32	read_cnt,cur_pos;
+ 	u32	reg_off;
+ 	u32	reg;
+-	u32	shift;
++	int	shift;
+ 	u32	timeout;
+ 
+ 	/* cmd = 0xe000c000; start bit and write and read  no int and big endian */
+-
++#ifdef	XSPI_DEBUG_FUNC
++	printk(KERN_ERR "# %s entry cs[%d] Width[%d] offset[%x] length[%d]\n",
++		__func__, cs, width, offset, length);
++#endif
+ 	reg_off = cs * 4;	/* cs0 : 0 cs1 : 4 cs2 : 8 */	
+ 
+ 	/* Endian */
+ 	reg = xspi_rd(xspi, SPI_CFG + reg_off);
+-	reg |= 0xca000007;
++//	reg |= 0xc8000000;
++	reg |= 0x08000000;
+ 	xspi_wr(xspi, SPI_CFG + reg_off, reg);
+-
++#if 0
+ 	/* DCTL */
+ 	reg = 0x100;
+ 	xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
+@@ -596,11 +611,14 @@ static	int	xspi_read_prim(
+ 	reg = xspi_rd(xspi, SPI_DCTL);
+ 	reg |= 0x80;
+ 	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
+-
++#endif
+ 	/* transrate mode setting */
+ 	read_cnt = length;
+ 	cur_pos = offset;
+ 
++#ifdef	XSPI_DEBUG_FUNC
++	printk(KERN_ERR "# %s count %d offset %x\n",__func__,length,offset);
++#endif
+ 	/* transaction start */
+ 	while(read_cnt > 0){
+ 
+@@ -616,7 +634,7 @@ static	int	xspi_read_prim(
+ 		else		trans = read_cnt;
+ 
+ 		/* command start SPIx Direct Mode command register */
+-		if(width){
++		if(width != 8){
+ 			write_bit = 31;
+ 			ope = (SPI_RD_CMD << 24) | (cur_pos & 0x00ffffff);
+ 		}else{
+@@ -638,6 +656,9 @@ static	int	xspi_read_prim(
+ 			timeout++;
+ 		}
+ 
++#ifdef	XSPI_DEBUG_FUNC
++	printk(KERN_ERR "# %s  trans %d \n",__func__,trans);
++#endif
+ 		/* one read transaction ( a frame read )*/
+ 		for(rt_cnt = 0 ; rt_cnt < trans ; ){
+ 			data = xspi_rd(xspi, SPI_FIFO);
+@@ -645,15 +666,18 @@ static	int	xspi_read_prim(
+ 				*buf = (u8)(data >> (shift * 8));
+ 				rt_cnt++;
+ 				buf++;
+-				if(rt_cnt >= length)
++				if(rt_cnt >= trans)
+ 					break;
+ 			}
+ 		}
++#ifdef	XSPI_DEBUG_FUNC
++	printk(KERN_ERR "# %s  rt_cnt %d shift %d \n",__func__,rt_cnt,shift);
++#endif
+ 		read_cnt = read_cnt - rt_cnt;
+ 		cur_pos = cur_pos + rt_cnt;
+ 	}
+ 	xspi_wr(xspi,SPI_ERR, 0);	/* error clear */
+-	return	0;
++	return	length;
+ }
+ 
+ static  int     xspi_write_prim(
+@@ -668,20 +692,25 @@ static  int     xspi_write_prim(
+         u32     ope,cmd;
+         u32     data;
+         u32     read_bit,write_bit;
+-        u32     write_cnt,cur_pos;
++        int     write_cnt,cur_pos;
+ 	u32	reg_off,reg;
+ 	u32	trans,dat_cnt;
+ 	u32	wt_cnt;
+-	u32	shift;
++	int	shift;
+ 	u32	timeout;
+ 
+         /* cmd = 0x2000c000; start bit and write and read  no int and big endian */
+ 
++#ifdef	XSPI_DEBUG_FUNC
++	printk(KERN_ERR "# %s entry cs[%d] Width[%d] offset[%x] length[%d]\n",
++		__func__, cs, width, offset, length);
++#endif
+ 	reg_off = cs * 4;	/* cs0 : 0 cs1 : 4 cs2 : 8 */	
+         
+ 	/* Endian */
+ 	reg = xspi_rd(xspi, SPI_CFG + reg_off);
+-	reg |= 0xca000007;
++//	reg |= 0xc8000000;
++	reg |= 0x08000000;
+ 	xspi_wr(xspi, SPI_CFG + reg_off, reg);
+ 
+ 	/* DCTL */
+@@ -697,6 +726,9 @@ static  int     xspi_write_prim(
+         cur_pos = offset;
+ 	read_bit = 0;
+ 
++#ifdef	XSPI_DEBUG_FUNC
++	printk(KERN_ERR "# %s write_cnt %d offset %x\n",__func__,length,offset);
++#endif
+         /* transaction start */
+         while(write_cnt > 0){
+                 
+@@ -712,7 +744,7 @@ static  int     xspi_write_prim(
+                  * Maximam 60 ( 4byte command + 4 byte * 15 fifos) byte write
+                  *  per frame transcation 
+                  */
+-		if(width){
++		if(width != 8){
+ 			/* 24 bit */
+                 	if(write_cnt > 60) trans = 60;
+                 	else            trans = write_cnt;
+@@ -730,34 +762,44 @@ static  int     xspi_write_prim(
+ 				trans = 0;
+ 				ope = ope | ((*buf) << 8);
+ 				write_bit = write_bit + 8;
++				buf++;
+ 			}else{
+ 				trans = trans - 2;
+ 				ope = ope | ((*buf) << 8);
+ 				buf++;
+ 				ope = ope | (*buf);
+ 				write_bit = write_bit + 16;
++				buf++;
+ 			}
+ 		}
+ 
+-                write_bit = write_bit + trans * 8 - 1;
++//		write_bit = write_bit + trans * 8 - 1;
++		write_bit = write_bit + trans * 8;
+ 
+ 		/* 1st command and data(8bit only) */
+                 xspi_wr(xspi,SPI_FIFO,ope);
+ 
++#ifdef	XSPI_DEBUG_FUNC
++	printk(KERN_ERR "# %s trans %d \n",__func__,trans);
++#endif
+ 		/* other data into FIFO */
+ 		for(wt_cnt = 0; wt_cnt < trans ; ){
++			data = 0;
+ 			for(shift= 3 ; shift >=0 ; shift--){
+ 				data = data | (*buf << (shift * 8));
+ 				wt_cnt++;
+-				if(wt_cnt > trans)	break;
++				buf++;
++				if(wt_cnt >= trans)
++					break;
+ 			}
+ 			xspi_wr(xspi, SPI_FIFO, data);
+-			write_cnt = write_cnt - wt_cnt;
++//			write_cnt = write_cnt - wt_cnt;
+ 			 
+ 		}
+ 
+                 /* set command register */
+-                cmd = 0x2000c000 | (write_bit << 16) | read_bit;
++//                cmd = 0x2000c000 | (write_bit << 16) | read_bit;
++		cmd = 0xa000c000 | (write_bit << 16) | read_bit;
+ 
+ 		/* transaction start */
+                 xspi_wr(xspi, SPI_CMD, cmd);
+@@ -769,9 +811,13 @@ static  int     xspi_write_prim(
+                         msleep(10);
+                         timeout++;
+                 }
++
+ 		/* update variables */
+                 write_cnt = write_cnt - dat_cnt;
+                 cur_pos = cur_pos + dat_cnt;
++#ifdef	XSPI_DEBUG_FUNC
++	printk(KERN_ERR "# %s write_cnt %d \n",__func__,write_cnt);
++#endif
+         }
+         xspi_wr(xspi, SPI_ERR, 0);      /* error clear */
+         return  0;
+-- 
+1.7.1
+

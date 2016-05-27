@@ -1,0 +1,977 @@
+From 24a31829bbb9255a42fa8395aa31d7af050ef688 Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:33:49 +0900
+Subject: [PATCH 109/171] 0001-support-pcie-and-e1000e
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 64c1f3d..e7a474a 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -338,8 +338,8 @@ static struct resource lm2_pcie_resource[]={
+ //               .start  = LM2_IRQ_PCIE_BUS,
+ //               .end    = LM2_IRQ_PCIE_BUS,
+                .flags  = IORESOURCE_IRQ,
+-               .start  = LM2_IRQ_PCIE1-1,
+-               .end    = LM2_IRQ_PCIE1-1,
++               .start  = LM2_IRQ_PCIE1,
++               .end    = LM2_IRQ_PCIE1,
+        },
+ };
+ 
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index 985ff03..af5b47a 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -54,6 +54,7 @@
+ #include "e1000.h"
+ 
+ #define DRV_EXTRAVERSION "-k"
++extern	int	synopsys_pcie_interrupt_clear(unsigned int irq_no);
+ 
+ #define DRV_VERSION "2.3.2" DRV_EXTRAVERSION
+ char e1000e_driver_name[] = "e1000e";
+@@ -1799,6 +1800,7 @@ static irqreturn_t e1000_intr(int __always_unused irq, void *data)
+ 	struct e1000_hw *hw = &adapter->hw;
+ 	u32 rctl, icr = er32(ICR);
+ 
++//printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
+ 	if (!icr || test_bit(__E1000_DOWN, &adapter->state))
+ 		return IRQ_NONE;  /* Not our interrupt */
+ 
+@@ -1838,7 +1840,8 @@ static irqreturn_t e1000_intr(int __always_unused irq, void *data)
+ 		if (!test_bit(__E1000_DOWN, &adapter->state))
+ 			mod_timer(&adapter->watchdog_timer, jiffies + 1);
+ 	}
+-
++	synopsys_pcie_interrupt_clear(95);	/* yamano */
++//printk(KERN_ERR "___%s Interrupt Clear\n",__FUNCTION__);
+ 	/* Reset on uncorrectable ECC error */
+ 	if ((icr & E1000_ICR_ECCER) && (hw->mac.type == e1000_pch_lpt)) {
+ 		u32 pbeccsts = er32(PBECCSTS);
+@@ -2135,32 +2138,44 @@ static int e1000_request_irq(struct e1000_adapter *adapter)
+ {
+ 	struct net_device *netdev = adapter->netdev;
+ 	int err;
+-
++//printk(KERN_ERR "===== %s Entry\n",__FUNCTION__);
+ 	if (adapter->msix_entries) {
+ 		err = e1000_request_msix(adapter);
+-		if (!err)
++		if (!err){
++//printk(KERN_ERR "===== %s msix error\n",__FUNCTION__);
+ 			return err;
++		}
+ 		/* fall back to MSI */
+ 		e1000e_reset_interrupt_capability(adapter);
+ 		adapter->int_mode = E1000E_INT_MODE_MSI;
+ 		e1000e_set_interrupt_capability(adapter);
++//printk(KERN_ERR "===== %s msix fall back\n",__FUNCTION__);
+ 	}
+ 	if (adapter->flags & FLAG_MSI_ENABLED) {
++//printk(KERN_ERR "===== %s FLAG_MSI_ENABLE\n",__FUNCTION__);
+ 		err = request_irq(adapter->pdev->irq, e1000_intr_msi, 0,
+ 				  netdev->name, netdev);
+-		if (!err)
+-			return err;
++		if (!err){
++//printk(KERN_ERR "===== %s MSI error\n",__FUNCTION__);
+ 
++			return err;
++		}
+ 		/* fall back to legacy interrupt */
+ 		e1000e_reset_interrupt_capability(adapter);
+ 		adapter->int_mode = E1000E_INT_MODE_LEGACY;
++//printk(KERN_ERR "===== %s MSI fall back legacy\n",__FUNCTION__);
+ 	}
+ 
++//printk(KERN_ERR "===== %s interrupt register %d \n",__FUNCTION__,adapter->pdev->irq);
+ 	err = request_irq(adapter->pdev->irq, e1000_intr, IRQF_SHARED,
+ 			  netdev->name, netdev);
+-	if (err)
++	if (err){
++
++//printk(KERN_ERR "===== %s unable to allocate interrupt\n",__FUNCTION__);
+ 		e_err("Unable to allocate interrupt, Error: %d\n", err);
++	}
+ 
++//printk(KERN_ERR "===== %s Normal Exit\n",__FUNCTION__);
+ 	return err;
+ }
+ 
+@@ -4476,11 +4491,12 @@ static void e1000e_update_phy_task(struct work_struct *work)
+ static void e1000_update_phy_info(unsigned long data)
+ {
+ 	struct e1000_adapter *adapter = (struct e1000_adapter *)data;
+-
++//printk(KERN_ERR "===== %s Entry\n",__FUNCTION__);
+ 	if (test_bit(__E1000_DOWN, &adapter->state))
+ 		return;
+ 
+ 	schedule_work(&adapter->update_phy_task);
++//printk(KERN_ERR "===== %s Reschedule Exit\n",__FUNCTION__);
+ }
+ 
+ /**
+@@ -4829,6 +4845,7 @@ static void e1000_watchdog_task(struct work_struct *work)
+ 	struct e1000_hw *hw = &adapter->hw;
+ 	u32 link, tctl;
+ 
++//printk(KERN_ERR "===== %s Entry \n",__FUNCTION__);	/* yamano */
+ 	if (test_bit(__E1000_DOWN, &adapter->state))
+ 		return;
+ 
+@@ -5196,7 +5213,7 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
+ 	unsigned int len = skb_headlen(skb);
+ 	unsigned int offset = 0, size, count = 0, i;
+ 	unsigned int f, bytecount, segs;
+-
++//printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
+ 	i = tx_ring->next_to_use;
+ 
+ 	while (len) {
+@@ -5213,6 +5230,7 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
+ 		if (dma_mapping_error(&pdev->dev, buffer_info->dma))
+ 			goto dma_error;
+ 
++//printk(KERN_ERR "___%s DMA %llx\n",__FUNCTION__,buffer_info->dma);
+ 		len -= size;
+ 		offset += size;
+ 		count++;
+@@ -5245,6 +5263,7 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
+ 			buffer_info->dma = skb_frag_dma_map(&pdev->dev, frag,
+ 							    offset, size,
+ 							    DMA_TO_DEVICE);
++//printk(KERN_ERR "___%s DMA %llx\n",__FUNCTION__,buffer_info->dma);
+ 			buffer_info->mapped_as_page = true;
+ 			if (dma_mapping_error(&pdev->dev, buffer_info->dma))
+ 				goto dma_error;
+@@ -5267,6 +5286,7 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
+ 	return count;
+ 
+ dma_error:
++//printk(KERN_ERR "___%s Error\n",__FUNCTION__);
+ 	dev_err(&pdev->dev, "Tx DMA map failed\n");
+ 	buffer_info->dma = 0;
+ 	if (count)
+@@ -6499,7 +6519,6 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 	u16 eeprom_data = 0;
+ 	u16 eeprom_apme_mask = E1000_EEPROM_APME;
+ 
+-printk(KERN_ERR "###>>> %s Entry\n",__FUNCTION__);
+ 	if (ei->flags2 & FLAG2_DISABLE_ASPM_L0S)
+ 		aspm_disable_flag = PCIE_LINK_STATE_L0S;
+ 	if (ei->flags2 & FLAG2_DISABLE_ASPM_L1)
+@@ -6507,7 +6526,6 @@ printk(KERN_ERR "###>>> %s Entry\n",__FUNCTION__);
+ 	if (aspm_disable_flag)
+ 		e1000e_disable_aspm(pdev, aspm_disable_flag);
+ 
+-printk(KERN_ERR "###>>> %s PCI enable\n",__FUNCTION__);
+ 	err = pci_enable_device_mem(pdev);
+ 	if (err)
+ 		return err;
+@@ -6540,7 +6558,6 @@ printk(KERN_ERR "###>>> %s PCI enable\n",__FUNCTION__);
+ 	/* AER (Advanced Error Reporting) hooks */
+ 	pci_enable_pcie_error_reporting(pdev);
+ 
+-printk(KERN_ERR "###>>> %s PCI master enable\n",__FUNCTION__);
+ 	pci_set_master(pdev);
+ 	/* PCI config space info */
+ 	err = pci_save_state(pdev);
+@@ -6572,11 +6589,12 @@ printk(KERN_ERR "###>>> %s PCI master enable\n",__FUNCTION__);
+ 
+ 	mmio_start = pci_resource_start(pdev, 0);
+ 	mmio_len = pci_resource_len(pdev, 0);
++
+ 	err = -EIO;
+ 	adapter->hw.hw_addr = ioremap(mmio_start, mmio_len);
+ 	if (!adapter->hw.hw_addr)
+ 		goto err_ioremap;
+-printk(KERN_ERR "pci resource start : 0x%llx len : 0x%x \n",mmio_start,mmio_len);
++
+ 	if ((adapter->flags & FLAG_HAS_FLASH) &&
+ 	    (pci_resource_flags(pdev, 1) & IORESOURCE_MEM)) {
+ 		flash_start = pci_resource_start(pdev, 1);
+@@ -6603,14 +6621,12 @@ printk(KERN_ERR "pci resource start : 0x%llx len : 0x%x \n",mmio_start,mmio_len)
+ 	adapter->bd_number = cards_found++;
+ 
+ 	e1000e_check_options(adapter);
+-printk(KERN_ERR "____ %s check option\n",__FUNCTION__);
+ 
+ 	/* setup adapter struct */
+ 	err = e1000_sw_init(adapter);
+ 	if (err)
+ 		goto err_sw_init;
+ 
+-printk(KERN_ERR "____ %s setup adapter\n",__FUNCTION__);
+ 	memcpy(&hw->mac.ops, ei->mac_ops, sizeof(hw->mac.ops));
+ 	memcpy(&hw->nvm.ops, ei->nvm_ops, sizeof(hw->nvm.ops));
+ 	memcpy(&hw->phy.ops, ei->phy_ops, sizeof(hw->phy.ops));
+@@ -6625,7 +6641,7 @@ printk(KERN_ERR "____ %s setup adapter\n",__FUNCTION__);
+ 
+ 	hw->mac.ops.get_bus_info(&adapter->hw);
+ 
+-	adapter->hw.phy.autoneg_wait_to_complete = 1;	/* yamano debug 0-> 1*/
++	adapter->hw.phy.autoneg_wait_to_complete = 0;
+ 
+ 	/* Copper options */
+ 	if (adapter->hw.phy.media_type == e1000_media_type_copper) {
+@@ -6634,11 +6650,10 @@ printk(KERN_ERR "____ %s setup adapter\n",__FUNCTION__);
+ 		adapter->hw.phy.ms_type = e1000_ms_hw_default;
+ 	}
+ 
+-	if (hw->phy.ops.check_reset_block && hw->phy.ops.check_reset_block(hw)){
+-printk(KERN_ERR "____ %s PHY reset is blocked\n",__FUNCTION__);
++	if (hw->phy.ops.check_reset_block && hw->phy.ops.check_reset_block(hw))
+ 		dev_info(&pdev->dev,
+ 			 "PHY reset is blocked due to SOL/IDER session.\n");
+-}
++
+ 	/* Set initial default active device features */
+ 	netdev->features = (NETIF_F_SG |
+ 			    NETIF_F_HW_VLAN_CTAG_RX |
+@@ -6799,7 +6814,7 @@ printk(KERN_ERR "____ %s PHY reset is blocked\n",__FUNCTION__);
+ 
+ 	if (pci_dev_run_wake(pdev))
+ 		pm_runtime_put_noidle(&pdev->dev);
+-printk(KERN_ERR "###<<< %s Exit\n",__FUNCTION__);
++
+ 	return 0;
+ 
+ err_register:
+diff --git a/drivers/net/ethernet/intel/e1000e/phy.c b/drivers/net/ethernet/intel/e1000e/phy.c
+index 5f916de..be4d7c1 100644
+--- a/drivers/net/ethernet/intel/e1000e/phy.c
++++ b/drivers/net/ethernet/intel/e1000e/phy.c
+@@ -28,8 +28,6 @@
+ 
+ #include "e1000.h"
+ 
+-#undef	YAMADEBUG
+-#undef	YAMADEBUG_DELAY
+ static s32 e1000_wait_autoneg(struct e1000_hw *hw);
+ static s32 e1000_access_phy_wakeup_reg_bm(struct e1000_hw *hw, u32 offset,
+ 					  u16 *data, bool read, bool page_set);
+@@ -146,9 +144,7 @@ s32 e1000e_read_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 *data)
+ {
+ 	struct e1000_phy_info *phy = &hw->phy;
+ 	u32 i, mdic = 0;
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "=== %s Entry\n",__FUNCTION__);
+-#endif
++
+ 	if (offset > MAX_PHY_REG_ADDRESS) {
+ 		e_dbg("PHY Address %d is out of range\n", offset);
+ 		return -E1000_ERR_PARAM;
+@@ -162,9 +158,6 @@ printk(KERN_ERR "=== %s Entry\n",__FUNCTION__);
+ 		(phy->addr << E1000_MDIC_PHY_SHIFT) |
+ 		(E1000_MDIC_OP_READ));
+ 
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "=== %s write MDIO offset %x addr %x\n",__FUNCTION__,offset, phy->addr);
+-#endif
+ 	ew32(MDIC, mdic);
+ 
+ 	/* Poll the ready bit to see if the MDI read completed
+@@ -172,32 +165,21 @@ printk(KERN_ERR "=== %s write MDIO offset %x addr %x\n",__FUNCTION__,offset, phy
+ 	 * the lower time out
+ 	 */
+ 	for (i = 0; i < (E1000_GEN_POLL_TIMEOUT * 3); i++) {
+-#ifdef	YAMADEBUG_DELAY
+-		udelay(900);/* yamano debug orig 50 */
+-		msleep(1000);	/* yamano */
+-#else
+ 		udelay(50);
+-#endif
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "=== %s Read status MDIO\n",__FUNCTION__);
+-#endif
+ 		mdic = er32(MDIC);
+ 		if (mdic & E1000_MDIC_READY)
+ 			break;
+ 	}
+ 	if (!(mdic & E1000_MDIC_READY)) {
+ 		e_dbg("MDI Read did not complete\n");
+-		printk(KERN_ERR "=== %s MDI Read did not complete\n",__FUNCTION__);
+ 		return -E1000_ERR_PHY;
+ 	}
+ 	if (mdic & E1000_MDIC_ERROR) {
+ 		e_dbg("MDI Error\n");
+-		printk(KERN_ERR "=== %s MDI Error\n",__FUNCTION__);
+ 		return -E1000_ERR_PHY;
+ 	}
+ 	if (((mdic & E1000_MDIC_REG_MASK) >> E1000_MDIC_REG_SHIFT) != offset) {
+-//		e_dbg("MDI Read offset error - requested %d, returned %d\n",
+-		printk(KERN_ERR "MDI Read offset error - requested %d, returned %d\n",
++		e_dbg("MDI Read offset error - requested %d, returned %d\n",
+ 		      offset,
+ 		      (mdic & E1000_MDIC_REG_MASK) >> E1000_MDIC_REG_SHIFT);
+ 		return -E1000_ERR_PHY;
+@@ -207,13 +189,9 @@ printk(KERN_ERR "=== %s Read status MDIO\n",__FUNCTION__);
+ 	/* Allow some time after each MDIC transaction to avoid
+ 	 * reading duplicate data in the next MDIC transaction.
+ 	 */
+-	if (hw->mac.type == e1000_pch2lan){
+-		printk(KERN_ERR "=== %s e1000_pch2len\n",__FUNCTION__);
++	if (hw->mac.type == e1000_pch2lan)
+ 		udelay(100);
+-	}
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "=== %s Normal Exit %x\n",__FUNCTION__,*data);
+-#endif
++
+ 	return 0;
+ }
+ 
+@@ -230,9 +208,6 @@ s32 e1000e_write_phy_reg_mdic(struct e1000_hw *hw, u32 offset, u16 data)
+ 	struct e1000_phy_info *phy = &hw->phy;
+ 	u32 i, mdic = 0;
+ 
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "=== %s Normal Entry %x\n",__FUNCTION__,data);
+-#endif
+ 	if (offset > MAX_PHY_REG_ADDRESS) {
+ 		e_dbg("PHY Address %d is out of range\n", offset);
+ 		return -E1000_ERR_PARAM;
+@@ -247,9 +222,6 @@ printk(KERN_ERR "=== %s Normal Entry %x\n",__FUNCTION__,data);
+ 		(phy->addr << E1000_MDIC_PHY_SHIFT) |
+ 		(E1000_MDIC_OP_WRITE));
+ 
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "=== %s write MDIO offset %x addr %x\n",__FUNCTION__,offset, phy->addr);
+-#endif
+ 	ew32(MDIC, mdic);
+ 
+ 	/* Poll the ready bit to see if the MDI read completed
+@@ -257,32 +229,21 @@ printk(KERN_ERR "=== %s write MDIO offset %x addr %x\n",__FUNCTION__,offset, phy
+ 	 * the lower time out
+ 	 */
+ 	for (i = 0; i < (E1000_GEN_POLL_TIMEOUT * 3); i++) {
+-#ifdef	YAMADEBUG_DELAY
+-		udelay(900);	/* yamano modified orig 50 */
+-		msleep(1000);	/* yamano debug */
+-#else
+ 		udelay(50);
+-#endif
+ 		mdic = er32(MDIC);
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "=== %s Read status MDIO\n",__FUNCTION__);
+-#endif
+ 		if (mdic & E1000_MDIC_READY)
+ 			break;
+ 	}
+ 	if (!(mdic & E1000_MDIC_READY)) {
+ 		e_dbg("MDI Write did not complete\n");
+-		printk(KERN_ERR "=== %s MDI Write did not complete\n",__FUNCTION__);
+ 		return -E1000_ERR_PHY;
+ 	}
+ 	if (mdic & E1000_MDIC_ERROR) {
+ 		e_dbg("MDI Error\n");
+-		printk(KERN_ERR "=== %s MDI Error\n",__FUNCTION__);
+ 		return -E1000_ERR_PHY;
+ 	}
+ 	if (((mdic & E1000_MDIC_REG_MASK) >> E1000_MDIC_REG_SHIFT) != offset) {
+-//		e_dbg("MDI Write offset error - requested %d, returned %d\n",
+-		printk(KERN_ERR "=== %s MDI Write offset error - requested %d, returned %d\n",__FUNCTION__,
++		e_dbg("MDI Write offset error - requested %d, returned %d\n",
+ 		      offset,
+ 		      (mdic & E1000_MDIC_REG_MASK) >> E1000_MDIC_REG_SHIFT);
+ 		return -E1000_ERR_PHY;
+@@ -291,13 +252,9 @@ printk(KERN_ERR "=== %s Read status MDIO\n",__FUNCTION__);
+ 	/* Allow some time after each MDIC transaction to avoid
+ 	 * reading duplicate data in the next MDIC transaction.
+ 	 */
+-	if (hw->mac.type == e1000_pch2lan){
+-		printk(KERN_ERR "=== %s e1000_pch2len\n",__FUNCTION__);
++	if (hw->mac.type == e1000_pch2lan)
+ 		udelay(100);
+-	}
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "=== %s Normal Exit %x\n",__FUNCTION__,data);
+-#endif
++
+ 	return 0;
+ }
+ 
+@@ -315,17 +272,15 @@ s32 e1000e_read_phy_reg_m88(struct e1000_hw *hw, u32 offset, u16 *data)
+ {
+ 	s32 ret_val;
+ 
+-printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
+ 	ret_val = hw->phy.ops.acquire(hw);
+ 	if (ret_val)
+ 		return ret_val;
+-printk(KERN_ERR "___%s read phy\n",__FUNCTION__);
++
+ 	ret_val = e1000e_read_phy_reg_mdic(hw, MAX_PHY_REG_ADDRESS & offset,
+ 					   data);
+ 
+ 	hw->phy.ops.release(hw);
+ 
+-printk(KERN_ERR "___%s Exit\n",__FUNCTION__);
+ 	return ret_val;
+ }
+ 
+@@ -387,7 +342,7 @@ static s32 __e1000e_read_phy_reg_igp(struct e1000_hw *hw, u32 offset, u16 *data,
+ 				     bool locked)
+ {
+ 	s32 ret_val = 0;
+-printk(KERN_ERR "___%s Entry \n",__FUNCTION__);
++
+ 	if (!locked) {
+ 		if (!hw->phy.ops.acquire)
+ 			return 0;
+@@ -991,8 +946,6 @@ static s32 e1000_phy_setup_autoneg(struct e1000_hw *hw)
+ 	u16 mii_autoneg_adv_reg;
+ 	u16 mii_1000t_ctrl_reg = 0;
+ 
+-printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
+-
+ 	phy->autoneg_advertised &= phy->autoneg_mask;
+ 
+ 	/* Read the MII Auto-Neg Advertisement Register (Address 4). */
+@@ -1124,7 +1077,7 @@ printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
+ 
+ 	if (phy->autoneg_mask & ADVERTISE_1000_FULL)
+ 		ret_val = e1e_wphy(hw, MII_CTRL1000, mii_1000t_ctrl_reg);
+-printk(KERN_ERR "___%s Normal Exit\n",__FUNCTION__);
++
+ 	return ret_val;
+ }
+ 
+@@ -1142,7 +1095,7 @@ static s32 e1000_copper_link_autoneg(struct e1000_hw *hw)
+ 	struct e1000_phy_info *phy = &hw->phy;
+ 	s32 ret_val;
+ 	u16 phy_ctrl;
+-printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
++
+ 	/* Perform some bounds checking on the autoneg advertisement
+ 	 * parameter.
+ 	 */
+@@ -1186,7 +1139,6 @@ printk(KERN_ERR "___%s Entry\n",__FUNCTION__);
+ 	}
+ 
+ 	hw->mac.get_link_status = true;
+-printk(KERN_ERR "___%s Normal Exit\n",__FUNCTION__);
+ 
+ 	return ret_val;
+ }
+@@ -1205,7 +1157,6 @@ s32 e1000e_setup_copper_link(struct e1000_hw *hw)
+ 	s32 ret_val;
+ 	bool link;
+ 
+-printk(KERN_ERR "___%s Entry\n",__FUNCTION__);	/* yamano */
+ 	if (hw->mac.autoneg) {
+ 		/* Setup autoneg and flow control advertisement and perform
+ 		 * autonegotiation.
+@@ -1241,7 +1192,6 @@ printk(KERN_ERR "___%s Entry\n",__FUNCTION__);	/* yamano */
+ 		e_dbg("Unable to establish link!!!\n");
+ 	}
+ 
+-printk(KERN_ERR "___%s Normal Exit\n",__FUNCTION__);	/* yamano */
+ 	return ret_val;
+ }
+ 
+@@ -1777,11 +1727,7 @@ static s32 e1000_wait_autoneg(struct e1000_hw *hw)
+ 			break;
+ 		if (phy_status & BMSR_ANEGCOMPLETE)
+ 			break;
+-#ifdef	YAMADEBUG_DELAY
+-		msleep(100*50);	/* yamano */
+-#else
+ 		msleep(100);
+-#endif
+ 	}
+ 
+ 	/* PHY_AUTO_NEG_TIME expiration doesn't guarantee auto-negotiation
+@@ -1804,9 +1750,7 @@ s32 e1000e_phy_has_link_generic(struct e1000_hw *hw, u32 iterations,
+ {
+ 	s32 ret_val = 0;
+ 	u16 i, phy_status;
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR " $$$ <<< %s Entry iterations %d usec = %d\n",__FUNCTION__,iterations,usec_interval);
+-#endif
++
+ 	for (i = 0; i < iterations; i++) {
+ 		/* Some PHYs require the MII_BMSR register to be read
+ 		 * twice due to the link bit being sticky.  No harm doing
+@@ -1824,9 +1768,6 @@ printk(KERN_ERR " $$$ <<< %s Entry iterations %d usec = %d\n",__FUNCTION__,itera
+ 				udelay(usec_interval);
+ 		}
+ 		ret_val = e1e_rphy(hw, MII_BMSR, &phy_status);
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR " $$$ <<< %s phy status 0x%x\n",__FUNCTION__,phy_status);
+-#endif
+ 		if (ret_val)
+ 			break;
+ 		if (phy_status & BMSR_LSTATUS)
+@@ -1838,9 +1779,7 @@ printk(KERN_ERR " $$$ <<< %s phy status 0x%x\n",__FUNCTION__,phy_status);
+ 	}
+ 
+ 	*success = (i < iterations);
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR " $$$ >>>  %s Exit phy status = %x\n",__FUNCTION__,phy_status);
+-#endif
++
+ 	return ret_val;
+ }
+ 
+@@ -1866,21 +1805,15 @@ s32 e1000e_get_cable_length_m88(struct e1000_hw *hw)
+ 	u16 phy_data, index;
+ 
+ 	ret_val = e1e_rphy(hw, M88E1000_PHY_SPEC_STATUS, &phy_data);
+-	if (ret_val){
+-#ifndef	YAMADEBUG
+-printk(KERN_ERR "___%s Phys accress Error return %x\n",__FUNCTION__,ret_val);
+-#endif
++	if (ret_val)
+ 		return ret_val;
+-	}
++
+ 	index = ((phy_data & M88E1000_PSSR_CABLE_LENGTH) >>
+ 		 M88E1000_PSSR_CABLE_LENGTH_SHIFT);
+-printk(KERN_ERR "___%s cable %d  %x\n",__FUNCTION__,index,phy_data);
+-	if(index >=M88E1000_CABLE_LENGTH_TABLE_SIZE - 1)
+-		index = 3;
+-	if (index >= M88E1000_CABLE_LENGTH_TABLE_SIZE - 1){
+-printk(KERN_ERR "___%s cable table out of range %d\n",__FUNCTION__,index);
++
++	if (index >= M88E1000_CABLE_LENGTH_TABLE_SIZE - 1)
+ 		return -E1000_ERR_PHY;
+-	}
++
+ 	phy->min_cable_length = e1000_m88_cable_length_table[index];
+ 	phy->max_cable_length = e1000_m88_cable_length_table[index + 1];
+ 
+@@ -1974,55 +1907,47 @@ s32 e1000e_get_phy_info_m88(struct e1000_hw *hw)
+ 	s32  ret_val;
+ 	u16 phy_data;
+ 	bool link;
+-printk(KERN_ERR " $$$ <<< %s Entry \n",__FUNCTION__);
++
+ 	if (phy->media_type != e1000_media_type_copper) {
+-printk(KERN_ERR " $$$ >>> %s media type Exit \n",__FUNCTION__);
+ 		e_dbg("Phy info is only valid for copper media\n");
+ 		return -E1000_ERR_CONFIG;
+ 	}
+ 
+ 	ret_val = e1000e_phy_has_link_generic(hw, 1, 0, &link);
+-	if (ret_val){
+-printk(KERN_ERR " $$$ >>> %s link generic Exit \n",__FUNCTION__);
++	if (ret_val)
+ 		return ret_val;
+-}
++
+ 	if (!link) {
+-printk(KERN_ERR " $$$ >>> %s No link up Exit \n",__FUNCTION__);
+ 		e_dbg("Phy info is only valid if link is up\n");
+ 		return -E1000_ERR_CONFIG;
+ 	}
+ 
+ 	ret_val = e1e_rphy(hw, M88E1000_PHY_SPEC_CTRL, &phy_data);
+-	if (ret_val){
+-printk(KERN_ERR " $$$ >>> %s M88E1000 PHY CTRL Exit \n",__FUNCTION__);
++	if (ret_val)
+ 		return ret_val;
+-}
++
+ 	phy->polarity_correction = !!(phy_data &
+ 				      M88E1000_PSCR_POLARITY_REVERSAL);
+ 
+ 	ret_val = e1000_check_polarity_m88(hw);
+-	if (ret_val){
+-printk(KERN_ERR " $$$ >>> %s check_poly Exit \n",__FUNCTION__);
++	if (ret_val)
+ 		return ret_val;
+-}
++
+ 	ret_val = e1e_rphy(hw, M88E1000_PHY_SPEC_STATUS, &phy_data);
+-	if (ret_val){
+-printk(KERN_ERR " $$$ >>> %s M88E1000_PHY STATUS Exit \n",__FUNCTION__);
++	if (ret_val)
+ 		return ret_val;
+-}
++
+ 	phy->is_mdix = !!(phy_data & M88E1000_PSSR_MDIX);
+ 
+ 	if ((phy_data & M88E1000_PSSR_SPEED) == M88E1000_PSSR_1000MBS) {
+ 		ret_val = hw->phy.ops.get_cable_length(hw);
+-		if (ret_val){
+-printk(KERN_ERR " $$$ >>> %s get_cable_length Exit \n",__FUNCTION__);
++		if (ret_val)
+ 			return ret_val;
+-}
++
+ 		ret_val = e1e_rphy(hw, MII_STAT1000, &phy_data);
+-		if (ret_val){
+-printk(KERN_ERR " $$$ >>> %s ele_rphy Exit \n",__FUNCTION__);
++		if (ret_val)
+ 			return ret_val;
+-}
++
+ 		phy->local_rx = (phy_data & LPA_1000LOCALRXOK)
+ 		    ? e1000_1000t_rx_status_ok : e1000_1000t_rx_status_not_ok;
+ 
+@@ -2034,7 +1959,6 @@ printk(KERN_ERR " $$$ >>> %s ele_rphy Exit \n",__FUNCTION__);
+ 		phy->local_rx = e1000_1000t_rx_status_undefined;
+ 		phy->remote_rx = e1000_1000t_rx_status_undefined;
+ 	}
+-printk(KERN_ERR " $$$ >>> %s Exit \n",__FUNCTION__);
+ 
+ 	return ret_val;
+ }
+@@ -2553,19 +2477,14 @@ s32 e1000e_read_phy_reg_bm2(struct e1000_hw *hw, u32 offset, u16 *data)
+ 	s32 ret_val;
+ 	u16 page = (u16)(offset >> IGP_PAGE_SHIFT);
+ 
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "___%s Entry \n",__FUNCTION__);
+-#endif
+ 	ret_val = hw->phy.ops.acquire(hw);
+-	if (ret_val){
+-printk(KERN_ERR "___%s acquire err \n",__FUNCTION__);
++	if (ret_val)
+ 		return ret_val;
+-	}
++
+ 	/* Page 800 works differently than the rest so it has its own func */
+ 	if (page == BM_WUC_PAGE) {
+ 		ret_val = e1000_access_phy_wakeup_reg_bm(hw, offset, data,
+ 							 true, false);
+-printk(KERN_ERR "___%s phy wakeup reg \n",__FUNCTION__);
+ 		goto release;
+ 	}
+ 
+@@ -2576,18 +2495,12 @@ printk(KERN_ERR "___%s phy wakeup reg \n",__FUNCTION__);
+ 		ret_val = e1000e_write_phy_reg_mdic(hw, BM_PHY_PAGE_SELECT,
+ 						    page);
+ 
+-printk(KERN_ERR "___%s phy write reg mdic \n",__FUNCTION__);
+-		if (ret_val){
+-printk(KERN_ERR "___%s phy write reg mdic error \n",__FUNCTION__);
++		if (ret_val)
+ 			goto release;
+-}
+ 	}
+ 
+ 	ret_val = e1000e_read_phy_reg_mdic(hw, MAX_PHY_REG_ADDRESS & offset,
+ 					   data);
+-#ifdef	YAMADEBUG
+-printk(KERN_ERR "___%s phy read reg mdic \n",__FUNCTION__);
+-#endif
+ release:
+ 	hw->phy.ops.release(hw);
+ 	return ret_val;
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index 7bdcabd..f13a059 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -80,6 +80,8 @@ int	rc_num = 1;
+ int	ep_num = 2;
+ int	nu_num = 3;
+ int	bifur_num = 2;
++static	void __iomem	*pcie_1_reg;
++static	void __iomem	*pcie_wrap;
+ 
+ #define IRQ_V2M_PCIE            (32 + 17)
+ /*
+@@ -723,96 +725,137 @@ static void synopsys_pcie_PexToAxiInitRc(struct pcie_port *pp, int which)
+ 	void __iomem *pciegen3_base1 = pp->pciegen3_base1;
+ 	void __iomem *pciegen3_base2 = pp->pciegen3_base2;
+ 	void __iomem *pciegen3_base3 = pp->pciegen3_base3;
+-	
++	unsigned long	kernel_addr = 0x05000000;
++	unsigned long	in_size = 0x0ffffc00;	/* 255MB */
++	unsigned long	pex_addr = 0x05000000;
++	unsigned long	wind_cmd;
++
++	wind_cmd = in_size | 0x05;
++
+ 	switch (which)
+ 	{
+-		case 1: 
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_PIO_CTRL0, ENABLE_PORT);
+-
+-			// window 0
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL0,      PAB_PEX_AMAP_CTRL0X);
+-//			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE0,  AXI_ADDR_L_DDR);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE0,  0x05000000);
+-//			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE0X, AXI_ADDR_H_DDR);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE0X, 0x00000008);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL0, PEX_ADDR_L_PCIE1_DDR);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH0, PEX_ADDR_H_PCIE1_DDR);
++	case 1: 
++		synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_PIO_CTRL0, ENABLE_PORT);
++
++		// window 0
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL0,      wind_cmd);
++//	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE0,  AXI_ADDR_L_DDR);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE0,  kernel_addr);
++//	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE0X, AXI_ADDR_H_DDR);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE0X, 0x00000008);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL0, pex_addr);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH0, 0x00000008);
++
++	kernel_addr = kernel_addr + in_size;
++	pex_addr = pex_addr + in_size;
++		// Windows 1
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL1,      wind_cmd);
++//	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  AXI_ADDR_L_DDR);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  kernel_addr);
++//	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE1X, AXI_ADDR_H_DDR);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE1X, 0x00000008);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL1, pex_addr);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH1, 0x00000008);
++
++	kernel_addr = kernel_addr + in_size;
++	pex_addr = pex_addr + in_size;
++		// Window 2
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL2,      wind_cmd);
++//	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE2,  AXI_ADDR_L_DDR);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE2,  kernel_addr);
++//	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE2X, AXI_ADDR_H_DDR);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE2X, 0x00000008);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL2, pex_addr);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH2, 0x00000008);
++
++	kernel_addr = kernel_addr + in_size;
++	pex_addr = pex_addr + in_size;
++
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL3,      wind_cmd);
++//	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  AXI_ADDR_L_DDR);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  kernel_addr);
++//	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE3X, AXI_ADDR_H_DDR);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE3X, 0x00000008);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL3, pex_addr);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH3, 0x00000008);
+ #if 0
+-			// window 1
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL1,      PAB_PEX_AMAP_CTRL1);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  AXI_ADDR_SP);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE1_SP);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE1_SP);
+-			// window 2
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL2,      PAB_PEX_AMAP_CTRL2);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE2,  AXI_ADDR_XYZ);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL2, PEX_ADDR_PCIE1_XYZ);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH2, 0x00000000);
+-			// window 3
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL3,      PAB_PEX_AMAP_CTRL3);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  0x00000000); // not applicable
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL3, PEX_ADDR_L_PCIE1_MSI);
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH3, PEX_ADDR_H_PCIE1_MSI);
++		// window 1
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL1,      PAB_PEX_AMAP_CTRL1);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  AXI_ADDR_SP);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE1X,  AXI_ADDR_SP);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE1_SP);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE1_SP);
++
++		// window 2
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL2,      PAB_PEX_AMAP_CTRL2);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE2,  AXI_ADDR_XYZ);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL2, PEX_ADDR_PCIE1_XYZ);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH2, 0x00000000);
++		// window 3
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_CTRL3,      PAB_PEX_AMAP_CTRL3);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  0x00000000); // not applicable
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEL3, PEX_ADDR_L_PCIE1_MSI);
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_PEX_AMAP_PEX_BASEH3, PEX_ADDR_H_PCIE1_MSI);
+ #endif 	/* not used */
+-			/* INT A Enable */
+-			synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_INT_MISC_EN, 0x00000020);
+-			break;
++		/* INT A Enable */
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_INT_MISC_EN, 0x00000020);
++	break;
+ #if 0
+-		case 2: 
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_PIO_CTRL0, ENABLE_PORT);
+-			// window 0
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_CTRL0,      PAB_PEX_AMAP_CTRL0);
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE0,  AXI_ADDR_L_DDR);
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE0X,  AXI_ADDR_H_DDR);
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL0, PEX_ADDR_L_PCIE2_DDR_RC); // NOTE special _RC suffix
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH0, PEX_ADDR_H_PCIE2_DDR_RC); // NOTE special _RC suffix
+-
+-			// window 1
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_CTRL1,      PAB_PEX_AMAP_CTRL1);
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  AXI_ADDR_SP);
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE2_SP_RC);  // NOTE special _RC suffix
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE2_SP_RC);  // NOTE special _RC suffix
+-			// window 2
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_CTRL2,      PAB_PEX_AMAP_CTRL2);
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE2,  AXI_ADDR_XYZ);
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL2, PEX_ADDR_PCIE2_XYZ_RC);   // NOTE special _RC suffix
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH2, 0x00000000);
+-			// window 3
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_CTRL3,      PAB_PEX_AMAP_CTRL3);
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  0x00000000); // not applicable
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL3, PEX_ADDR_L_PCIE2_MSI_RC); // NOTE special _RC suffix
+-			synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH3, PEX_ADDR_H_PCIE2_MSI_RC); // NOTE special _RC suffix
+-			break;
+-		case 3: 
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_PIO_CTRL0, ENABLE_PORT);
+-			// window 0
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_CTRL0,      PAB_PEX_AMAP_CTRL0);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE0,  AXI_ADDR_L_DDR);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE0X,  AXI_ADDR_H_DDR);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL0, PEX_ADDR_L_PCIE3_DDR);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH0, PEX_ADDR_H_PCIE3_DDR);
+-
+-			// window 1
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_CTRL1,      PAB_PEX_AMAP_CTRL1);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  AXI_ADDR_SP);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE3_SP);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE3_SP);
+-			// window 2
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_CTRL2,      PAB_PEX_AMAP_CTRL2);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE2,  AXI_ADDR_XYZ);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL2, PEX_ADDR_PCIE3_XYZ);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH2, 0x00000000);
+-			// window 3
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_CTRL3,      PAB_PEX_AMAP_CTRL3);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  0x00000000); // not applicable
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL3, PEX_ADDR_L_PCIE3_MSI);
+-			synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH3, PEX_ADDR_H_PCIE3_MSI);
+-
+-			break;
++	case 2: 
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_PIO_CTRL0, ENABLE_PORT);
++		// window 0
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_CTRL0,      PAB_PEX_AMAP_CTRL0);
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE0,  AXI_ADDR_L_DDR);
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE0X,  AXI_ADDR_H_DDR);
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL0, PEX_ADDR_L_PCIE2_DDR_RC); // NOTE special _RC suffix
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH0, PEX_ADDR_H_PCIE2_DDR_RC); // NOTE special _RC suffix
++
++		// window 1
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_CTRL1,      PAB_PEX_AMAP_CTRL1);
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  AXI_ADDR_SP);
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE2_SP_RC);  // NOTE special _RC suffix
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE2_SP_RC);  // NOTE special _RC suffix
++		// window 2
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_CTRL2,      PAB_PEX_AMAP_CTRL2);
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE2,  AXI_ADDR_XYZ);
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL2, PEX_ADDR_PCIE2_XYZ_RC);   // NOTE special _RC suffix
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH2, 0x00000000);
++		// window 3
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_CTRL3,      PAB_PEX_AMAP_CTRL3);
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  0x00000000); // not applicable
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEL3, PEX_ADDR_L_PCIE2_MSI_RC); // NOTE special _RC suffix
++	synopsys_writel(pciegen3_base2 + PCIE_PAB_PEX_AMAP_PEX_BASEH3, PEX_ADDR_H_PCIE2_MSI_RC); // NOTE special _RC suffix
++	break;
++	case 3: 
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_PIO_CTRL0, ENABLE_PORT);
++	// window 0
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_CTRL0,      PAB_PEX_AMAP_CTRL0);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE0,  AXI_ADDR_L_DDR);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE0X,  AXI_ADDR_H_DDR);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL0, PEX_ADDR_L_PCIE3_DDR);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH0, PEX_ADDR_H_PCIE3_DDR);
++
++		// window 1
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_CTRL1,      PAB_PEX_AMAP_CTRL1);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE1,  AXI_ADDR_SP);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL1, PEX_ADDR_L_PCIE3_SP);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH1, PEX_ADDR_H_PCIE3_SP);
++		// window 2
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_CTRL2,      PAB_PEX_AMAP_CTRL2);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE2,  AXI_ADDR_XYZ);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL2, PEX_ADDR_PCIE3_XYZ);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH2, 0x00000000);
++		// window 3
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_CTRL3,      PAB_PEX_AMAP_CTRL3);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_AXI_BASE3,  0x00000000); // not applicable
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEL3, PEX_ADDR_L_PCIE3_MSI);
++	synopsys_writel(pciegen3_base3 + PCIE_PAB_PEX_AMAP_PEX_BASEH3, PEX_ADDR_H_PCIE3_MSI);
++
++	break;
+ #endif
+-		default:
+-			dev_err(pp->dev, "synopsys_pcie_PexToAxiInitRc: which is %d Error\n",which);
+-			break;
++	default:
++	dev_err(pp->dev, "synopsys_pcie_PexToAxiInitRc: which is %d Error\n",which);
++	break;
+ 	}
+ }
+ 
+@@ -991,6 +1034,15 @@ static void synopsys_pcie_enable_interrupts(struct pcie_port *pp)
+ 	return;
+ }
+ 
++/* PCIe Card Driver Interrupt helper function */
++int	synopsys_pcie_interrupt_clear(unsigned int irq_no)
++{
++	synopsys_writel(pcie_1_reg + PCIE_PAB_AXI_INT_MISC_STAT, irq_no);
++	synopsys_writel(pcie_wrap + PCIE_PCIE1_INT_CLR, PCIE_INT_GDA_PAB);
++	return	0;
++}
++EXPORT_SYMBOL(synopsys_pcie_interrupt_clear);
++
+ static int  synopsys_pcie_host_init(struct pcie_port *pp)
+ {
+ 	struct pcie_port_info *config = &pp->config;
+@@ -1007,6 +1059,7 @@ static int  synopsys_pcie_host_init(struct pcie_port *pp)
+ 	dev_err(pp->dev, "synopsys_pcie_host_init: Start\n");
+ #endif
+ 
++
+ 	/* PCIE core resets from RSTGEN default to asserted, deassert them now */
+ 	val = synopsys_readl(resetgen_base + RSTGENSWRSTSTATIC10);
+ 	val &= 0xff0fffff;
+@@ -1100,10 +1153,21 @@ static int  synopsys_pcie_host_init(struct pcie_port *pp)
+ 		dev_err(pp->dev, "PCIe can't Data link Up\n");
+ 		return	-1;
+ 	}
++	/* Interrupt clear reg base */
++	pcie_wrap = pp->pciewrap_base;
++	pcie_1_reg = pp->pciegen3_base1;
+ 
+ 	/* host bridge interrupt routing enable */
+-	synopsys_writel(pciewrap_base + PCIE_INT_EN, 0x00000001);
+-	synopsys_pcie_enable_interrupts(pp);
++	val = synopsys_readl(pciewrap_base +PCIE_PCIE1_INT_EN);
++	val |= PCIE_INT_GDA_PAB;
++	synopsys_writel(pciewrap_base + PCIE_PCIE1_INT_EN, val);
++
++	val = synopsys_readl(pciegen3_base1 + PCIE_PAB_AXI_INT_MISC_EN);
++	val |= PCIE_AXI_INT_INTA;
++	synopsys_writel(pciegen3_base1 + PCIE_PAB_AXI_INT_MISC_EN, val);
++
++//	synopsys_writel(pciewrap_base + PCIE_INT_EN, 0x00000001);
++//	synopsys_pcie_enable_interrupts(pp);
+ out:
+ #ifdef	DEBUG_TRACE
+ 	dev_err(pp->dev, "synopsys_pcie_host_init:%x End\n",pciegen3_base1);
+diff --git a/drivers/pci/pcie/synopsys_pcie.h b/drivers/pci/pcie/synopsys_pcie.h
+index 8f9baa1..f017239 100644
+--- a/drivers/pci/pcie/synopsys_pcie.h
++++ b/drivers/pci/pcie/synopsys_pcie.h
+@@ -213,6 +213,14 @@
+ #define PCIE3_PMEM_LIMIT_U		0x000022FF
+ 
+ #define	PCIE_INT_EN			0x0000005C
++#define	PCIE_PCIE1_INT_EN		0x00000060
++#define	PCIE_INT_GDA_PAB		0x00000001
++
++//#define	PCIE_PAB_AXI_INT_MISC_EN	0x00000bec
++#define	PCIE_AXI_INT_INTA		0x00000020
++
++#define	PCIE_PAB_AXI_INT_MISC_STAT	0x00000c00	/* Clear interrupt */
++#define	PCIE_PCIE1_INT_CLR		0x00000070	/* Clear PEX Interrupt */
+ 
+ 
+ //--------------------------------------------------------------
+@@ -312,6 +320,7 @@
+ #define	PCIE_PAB_PEX_AMAP_AXI_BASE0X	0x0F40
+ #define	PCIE_PAB_PEX_AMAP_AXI_BASE1X	0x0F44
+ #define	PCIE_PAB_PEX_AMAP_AXI_BASE2X	0x0F48
++#define	PCIE_PAB_PEX_AMAP_AXI_BASE3X	0x0F4c	/* May be */
+ #define	PCIE_PAB_PEX_AMAP_BAR0_F0X	0x0F80
+ #define	PCIE_PAB_PEX_AMAP_BAR1_F0X	0x0F84
+ #define	PCIE_PAB_PEX_AMAP_BAR2_F0X	0x0F88
+-- 
+1.7.1
+

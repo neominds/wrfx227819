@@ -167,3 +167,5 @@ linux_150831PM032505
 0214-GPIO_96Panic
 0215-Panbug_0_0_148_change
 0216-Boardname_waikiki_to_honolulu
+0217-SystemTimer_Adjust
+0218-Standard_Kernel_i2c_Resume

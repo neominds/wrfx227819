@@ -1,0 +1,471 @@
+From 103311f55929ab8df22fbb243266ddafb2eea6fc Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Wed, 28 Jan 2015 19:24:19 +0900
+Subject: [PATCH 1/1] xspi sram access
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ drivers/spi/xspi.c       |  240 ++++++++++++++++++++++++++++++++++++++++------
+ include/linux/spi/xspi.h |   26 +++---
+ 2 files changed, 226 insertions(+), 40 deletions(-)
+
+diff --git a/drivers/spi/xspi.c b/drivers/spi/xspi.c
+index e62f404..71e86ab 100644
+--- a/drivers/spi/xspi.c
++++ b/drivers/spi/xspi.c
+@@ -51,11 +51,11 @@
+ #define	SPI_CST		0x01c
+ 
+ /* operation register */
+-#define	SPI_CFG		0x020
++#define	SPI_CFG		0x020	/* CS0=0x20 CS1=0x24 CS2= 0x28 */
+ 
+ #define	SPI_STAT	0x030
+ #define	SPI_CMD		0x040	/*  */
+-#define	SPI_LIT		0x050
++#define	SPI_LIT		0x050	/* CS0=0x50 CS1=0x54 CS2=0x58 */
+ #define	SPI_ROM		0x060	/* not used */
+ #define	SPI_PROG	0x070	/* not used */
+ 
+@@ -75,12 +75,20 @@
+ /* Boot device */
+ #define	SPI_ROMB	0x0e0	/* not used */
+ 
+-#define	SPI_WR_CMD	2	/* Write */
+-#define	SPI_RD_CMD	3	/* Read */
++#define	SPI_WRSR_CMD	1	/* Write Status Register */
++#define	SPI_WR_CMD	2	/* Write memory */
++#define	SPI_RD_CMD	3	/* Read memory */
+ #define	SPI_WRDI_CMD	4	/* Write Disable */
+ #define	SPI_RDST_CMD	5	/* read status */
+ #define	SPI_WREN_CMD	6	/* Write enable */
+ 
++#define	SPI_CMD_START	0x80000000
++#define	CMD_ARG		0x00000000
++#define	CMD_ARG_WD	0x20000000
++#define	CMD_RD		0x40000000
++#define	CMD_ARG_RD	0x60000000
++#define	CMD_LEN		0x07000000
++
+ /* target memory type */
+ #define	TYPE_SRAM	0
+ #define	TYPE_FRAM	1
+@@ -90,7 +98,6 @@ struct xspi_dev {
+ 	struct mutex		lock;
+ 	struct completion	done;
+ 	volatile void __iomem	*reg_base;
+-//	volatile u32 __iomem	*reg_base;
+ 	int			irq;
+ 
+ 	int			mem_type;
+@@ -100,6 +107,8 @@ struct xspi_dev {
+ 	int			stat;
+ };
+ 
++static struct xspi_dev	*xspi_api_lib = NULL;
++
+ static	inline	u32 xspi_rd(struct xspi_dev *dev, unsigned int reg)
+ {
+ 	return	readl(dev->reg_base + reg);
+@@ -113,6 +122,46 @@ static	inline	void	xspi_wr(struct xspi_dev *dev, unsigned int reg, u32 val)
+ 	barrier();
+ }
+ 
++static	void	xspi_write_disable(struct xspi_dev *dev, int cs)
++{
++	u32	reg;
++
++	reg = xspi_rd(dev, (SPI_CFG + cs )));
++	reg = reg & 0xfffffff0;
++	reg = reg | 0x00000007;
++	xspi_wr(dev, (SPI_CFG + cs), reg);
++
++//	init_completion(&dev->done);
++
++	reg = SPI_CMD_START | (SPI_WRDI_CMD << 16);	/* 0x80040000 */
++	xspi_wr(dev, (SPI_LIT + cs), reg);	
++
++	while(xspi_rd(dev , SPI_CST) & 0xc000){};
++//	wait_for_completion(&dev->done);
++	
++	return;
++}
++
++static	void	xspi_write_enable(struct xspi_dev *dev, int cs)
++{
++	u32	reg;
++
++	reg = xspi_rd(dev, (SPI_CFG + cs));
++	reg = reg & 0xfffffff0;
++	reg = reg | 0x00000007;
++	xspi_wr(dev, (SPI_CFG + cs), reg);
++
++//	init_completion(&dev->done);
++
++	reg = SPI_CMD_START | (SPI_WREN_CMD << 16);	/* 0x80060000 */
++	xspi_wr(dev, (SPI_LIT + cs), reg);	
++	
++	while(xspi_rd(dev , SPI_CST) & 0xc000){};
++//	wait_for_completion(&dev->done);
++
++	return;
++}
++
+ static	void	xspi_clear_fifo(struct xspi_dev *dev)
+ {
+ 	int	cnt;
+@@ -130,6 +179,9 @@ static	irqreturn_t	xspi_interrupt(int irq, void *dev_id)
+ 	u32	stat;
+ 
+ 	stat = xspi_rd(dev, SPI_SPIINT);
++	if((stat & 0x00000003)== 0){	/* no interrupt */
++		goto	none;
++	}
+ 	if(stat & SPI_SPIINT_DONE){
+ 		dev->stat = 0;
+ 	}else{
+@@ -138,6 +190,8 @@ static	irqreturn_t	xspi_interrupt(int irq, void *dev_id)
+ 	xspi_wr(dev, SPI_SPIINT, stat);
+ 	complete(&dev->done);
+ 	return	IRQ_HANDLED;
++none:
++	return	IRQ_NONE;
+ }
+ 
+ static	int	xspi_read_trans(struct xspi_dev *xspi, int adr, int offset)
+@@ -150,9 +204,9 @@ static	int	xspi_read_trans(struct xspi_dev *xspi, int adr, int offset)
+ 	xspi_wr(xspi, SPI_ERR, 0x00);
+ 
+ 	/* Endian */
+-	reg = xspi_rd(xspi, SPI_CFG + 4);
++	reg = xspi_rd(xspi, SPI_CFG + offset);
+ 	reg |= 0xca000007;
+-	xspi_wr(xspi, SPI_CFG +4, reg);
++	xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+ 	/* DCTL */
+ 	reg = 0x100;
+@@ -165,7 +219,6 @@ static	int	xspi_read_trans(struct xspi_dev *xspi, int adr, int offset)
+ 
+ 	/* SPI Command */
+ 	cmd = (SPI_RD_CMD << 24) | (adr << 16);
+-//	dev_info(&spi->dev, "command = %x %x\n", cmd,adr);
+ 	xspi_wr(xspi, SPI_FIFO, cmd);
+ 
+ 	/* Operation */
+@@ -177,6 +230,42 @@ static	int	xspi_read_trans(struct xspi_dev *xspi, int adr, int offset)
+ 	return	(xspi_rd(xspi, SPI_FIFO) >> 24);
+ }
+ 
++static	int	xspi_read_trans24(struct xspi_dev *xspi, int adr, int offset)
++{
++	unsigned int	reg;
++	unsigned int	cmd;
++
++	xspi_clear_fifo(xspi);  /* fifo clear */
++	/* err */
++	xspi_wr(xspi, SPI_ERR, 0x00);
++
++	/* Endian */
++	reg = xspi_rd(xspi, SPI_CFG + offset);
++	reg |= 0xca000007;
++	xspi_wr(xspi, SPI_CFG + offset, reg);
++
++	/* DCTL */
++	reg = 0x100;
++	xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
++
++	/* DCTL */
++	reg = xspi_rd(xspi, SPI_DCTL);
++	reg |= 0x80;
++	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
++
++	/* SPI Command */
++	cmd = (SPI_RD_CMD << 24) | (adr & 0x00ffffff);
++	xspi_wr(xspi, SPI_FIFO, cmd);
++
++	/* Operation */
++	cmd = 0xe01fc007;
++	xspi_wr(xspi, SPI_CMD + offset, cmd);	/* operation start */
++
++	while(xspi_rd(xspi, SPI_CST) & 0xc000){};
++
++	return	(xspi_rd(xspi, SPI_FIFO) >> 24);
++}
++
+ static	void	xspi_write_trans(struct xspi_dev *xspi, int adr, char dat, int offset)
+ {
+ 	unsigned int	reg;
+@@ -187,9 +276,9 @@ static	void	xspi_write_trans(struct xspi_dev *xspi, int adr, char dat, int offse
+ 	xspi_wr(xspi, SPI_ERR, 0x00);
+ 
+ 	/* Endian */
+-	reg = xspi_rd(xspi, SPI_CFG + 4);
++	reg = xspi_rd(xspi, SPI_CFG + offset);
+ 	reg |= 0xca000007;
+-	xspi_wr(xspi, SPI_CFG +4, reg);
++	xspi_wr(xspi, SPI_CFG + offset, reg);
+ 
+ 	/* DCTL */
+ 	reg = 0x100;
+@@ -201,12 +290,12 @@ static	void	xspi_write_trans(struct xspi_dev *xspi, int adr, char dat, int offse
+ 	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
+ 
+ 	/* SPI Command */
+-	cmd = (SPI_RD_CMD << 24) | (adr << 16) | dat << 8;
++	cmd = (SPI_WR_CMD << 24) | (adr << 16) | dat << 8;
+ //	dev_info(&spi->dev, "command = %x %x\n", cmd,adr);
+ 	xspi_wr(xspi, SPI_FIFO, cmd);
+ 
+ 	/* Operation */
+-	cmd = 0xa017c000;
++	cmd = 0xa017c000;	/* 3byte cmd adr dat no read */
+ 	xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
+ 
+ 	while(xspi_rd(xspi, SPI_CST) & 0xc000){};
+@@ -214,12 +303,43 @@ static	void	xspi_write_trans(struct xspi_dev *xspi, int adr, char dat, int offse
+ 	return;
+ }
+ 
+-#define	CMD_START	0x80000000
+-#define	CMD_ARG		0x00000000
+-#define	CMD_ARG_WD	0x20000000
+-#define	CMD_RD		0x40000000
+-#define	CMD_ARG_RD	0x60000000
+-#define	CMD_LEN		0x07000000
++static	void	xspi_write_trans24(struct xspi_dev *xspi, int adr, char dat, int offset)
++{
++	unsigned int	reg;
++	unsigned int	cmd;
++
++	xspi_clear_fifo(xspi);  /* fifo clear */
++	/* err */
++	xspi_wr(xspi, SPI_ERR, 0x00);
++
++	/* Endian */
++	reg = xspi_rd(xspi, SPI_CFG + offset);
++	reg |= 0xca000007;
++	xspi_wr(xspi, SPI_CFG + offset, reg);
++
++	/* DCTL */
++	reg = 0x100;
++	xspi_wr(xspi, SPI_DCTL, reg);	/* DMA Off */
++
++	/* DCTL */
++	reg = xspi_rd(xspi, SPI_DCTL);
++	reg |= 0x80;
++	xspi_wr(xspi, SPI_DCTL, reg);	/* FIFO Clear */
++
++	/* SPI Command */
++	cmd = (SPI_WR_CMD << 24) | (adr &0x00ffffff);
++	xspi_wr(xspi, SPI_FIFO, cmd);
++	cmd = dat << 24;
++	xspi_wr(xspi, SPI_FIFO, cmd);
++
++	/* Operation */
++	cmd = 0xa027c000;	/* 5byte cmd adr dat no read */
++	xspi_wr(xspi,SPI_CMD + offset,cmd);	/* operation start */
++
++	while(xspi_rd(xspi, SPI_CST) & 0xc000){};
++
++	return;
++}
+ 
+ #define	DIR_BUSY	0x00000000
+ #define	DIR_WRITE	0x20000000
+@@ -231,6 +351,7 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 	struct xspi_dev	*xspi = spi_master_get_devdata(spi->master);
+ 	char	*buf;
+ 	int	cnt;
++	u32	reg;
+ 
+ 	dev_info(&spi->dev, "xspi_start_transfer\n");
+ 	dev_info(&spi->dev, "tfr->len %d\n",tfr->len);
+@@ -247,9 +368,11 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 		buf = (char *)tfr->tx_buf;
+ 		for( cnt = 0 ; cnt < tfr->len ; cnt++ ){
+ 			if(spi->chip_select == 1){
++				dev_info(&spi->dev, "### Write CPLD ### %d : %x\n",addr,*buf);
+ 				xspi_write_trans(xspi, addr, *buf, 4);
+ 			}else{
+-				xspi_write_trans(xspi, addr, *buf, 0);
++				dev_info(&spi->dev, "### Write MEMORY ### %d : %x\n",addr,*buf);
++				xspi_write_trans24(xspi, addr, *buf, 0);
+ 			}
+ 			addr++;
+ 			buf++;
+@@ -259,8 +382,10 @@ static	int	xspi_start_transfer(struct spi_device *spi,struct spi_transfer *tfr,
+ 		for(cnt = 0 ; cnt < tfr->len ;cnt++){
+ 			if(spi->chip_select == 1){
+ 				*buf = (char)xspi_read_trans(xspi, addr, 4);
++				dev_info(&spi->dev, "### read CPLD ### %d : %x\n",addr,*buf);
+ 			}else{
+-				*buf = (char)xspi_read_trans(xspi, addr, 0);
++				*buf = (char)xspi_read_trans24(xspi, addr, 0);
++				dev_info(&spi->dev, "### read MEMORY ### %d : %x\n",addr,*buf);
+ 			}
+ 			addr++;
+ 			buf++;
+@@ -312,6 +437,9 @@ out:
+ 	return	0;
+ }
+ 
++/*
++ * driver probing
++ */
+ static int xspi_probe(struct platform_device *pdev)
+ {
+ 	struct xspi_dev	*xspi;
+@@ -375,7 +503,7 @@ static int xspi_probe(struct platform_device *pdev)
+ 	clk_prepare_enable(xspi->clk);
+ #endif	/* yamano debug */
+ 
+-	err = request_irq(xspi->irq, xspi_interrupt, 0, "xspi", master);
++	err = request_irq(xspi->irq, xspi_interrupt, IRQF_SHARED, "xspi", master);
+ 	if(err){
+ 		dev_err(&pdev->dev, "could not register IRQ\n");
+ 		goto out_master_put;
+@@ -383,10 +511,10 @@ static int xspi_probe(struct platform_device *pdev)
+ 
+ 	dev_info(&pdev->dev, "XSPI I/O %x IRQ %d \n",xspi->reg_base,xspi->irq);
+ 	/* initialize hardware set up */
+-	dev_info(&pdev->dev, "SPI_CLK0 %x\n", xspi_rd(xspi, SPI_CLK0));
+-	dev_info(&pdev->dev, "SPI_CLK1 %x\n", xspi_rd(xspi, SPI_CLK1));
+-	dev_info(&pdev->dev, "SPI0CFG0 %x\n", xspi_rd(xspi, SPI_CFG));
+-	dev_info(&pdev->dev, "SPI0CFG1 %x\n", xspi_rd(xspi, SPI_CFG+4));
++//	dev_info(&pdev->dev, "SPI_CLK0 %x\n", xspi_rd(xspi, SPI_CLK0));
++//	dev_info(&pdev->dev, "SPI_CLK1 %x\n", xspi_rd(xspi, SPI_CLK1));
++//	dev_info(&pdev->dev, "SPI0CFG0 %x\n", xspi_rd(xspi, SPI_CFG));
++//	dev_info(&pdev->dev, "SPI0CFG1 %x\n", xspi_rd(xspi, SPI_CFG+4));
+ 	/* CS0 :SRAM,FRAM,MRAM */
+ //	xspi_wr(xspi, SPI_CLK0, 0x00002020); /* SPI mode 0 300MHz/32 */
+ //	xspi_wr(xspi, SPI_CFG, 0x80000000);
+@@ -403,6 +531,8 @@ static int xspi_probe(struct platform_device *pdev)
+ 	}
+ 	dev_info(&pdev->dev, "XSPI set up completed Virt %x \n",xspi->reg_base);
+ 
++	xspi_api_lib = xspi;	/* SPILIB Static data */
++
+ 	return 0;
+ 
+ 	/* error exit */
+@@ -432,17 +562,71 @@ static int xspi_remove(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-int	xspi_read(XSPILIB_PARAM *spiParam)
++/*
++ * Driver Function xspi_read
++ */
++int	xspi_read(SPILIB_PARAM *spiParam)
+ {
+ 	int	ret = 0;
+-
++	int	cs;
++	int	count;
++	char	*buf;
++	u32	adr;
++
++	if(xspi_api_lib == NULL)	return	-1;
++
++	if(spiParam->unit == SPI_UNIT1)	cs = 4;
++	else				cs = 0;
++	adr = spiParam->offset;
++	buf = (char *)spiParam->buf;
++
++	for(count = 0 ; count < spiParam->size ; count++){
++		if(spiParam->unit == SPI_UNIT1)
++			*buf =xspi_read_trans(xspi_api_lib, adr, cs);
++		else
++			*buf =xspi_read_trans24(xspi_api_lib, adr, cs);
++		buf++;
++		adr++;
++	}
+ 	return	ret;
+ }
+ EXPORT_SYNBOL(xspi_read);
+ 
+-int	xspi_write(XSPILIB_PARAM *spiParam)
++/*
++ * Driver Function xspi_write
++ */
++int	xspi_write(SPILIB_PARAM *spiParam)
+ {
+ 	int	ret = 0;
++	int	cs;
++	int	count;
++	char	*buf;
++	u32	adr;
++
++	if(xspi_api_lib == NULL)	return	-1;
++
++	if(spiParam->unit == SPI_UNIT1)	cs = 4;
++	else				cs = 0;
++
++	adr = spiParam->offset;
++	buf = (char *)spiParam->buf;
++
++	if(spiParam->unit == SPI_UNIT3){
++		/* Write enable */
++		xspi_write_enable(xspi_api_lib, cs);
++	}
++	for(count = 0 ; count < spiParam->size ; count++){
++		if(spiParam->unit == SPI_UNIT1)
++			xspi_write_trans(xspi_api_lib, adr , *buf, cs);
++		else
++			xspi_write_trans24(xspi_api_lib, adr , *buf, cs);
++		buf++;
++		adr++;
++	}
++	if(spiParam->unit == SPI_UNIT3){
++		/* Write disable */
++		xspi_write_disable(xspi_api_lib, cs);
++	}
+ 
+ 	return	ret;
+ }
+diff --git a/include/linux/spi/xspi.h b/include/linux/spi/xspi.h
+index 24a9153..ec74d5d 100644
+--- a/include/linux/spi/xspi.h
++++ b/include/linux/spi/xspi.h
+@@ -4,22 +4,24 @@
+  * Copyright (C) 2014 Wind River Systems Inc.
+  *
+  */
+-
++/*
++ * change type 
++ */
+ #ifndef	XSPI_H_
+ #define	XSPI_H_
+ 
+-typedef	struct _XSPILIB_PARAM {
+-	int		unit;
+-	unsigned char	offset;
+-	void		*buf;
+-	unsigned long	size;
+-}XSPILIB_PARAM, *PXSPILIB_PARAM;
++typedef	struct _SPILIB_PARAM {
++	unsigned int	unit;	/* Unit # */
++	unsigned int	offset;	/* write/read start address */
++	void		*buf;	/* write/read buffer address */
++	size_t		size;	/* write/read byte size */ 
++}SPILIB_PARAM, *PSPILIB_PARAM;
+ 
+-#define	XSPI_UNIT1	0;
+-#define	XSPI_UNIT2	1;
+-#define	XSPI_UNIT3	2;
++#define	SPI_UNIT1	0	/* CPLD */
++#define	SPI_UNIT2	1	/* SRAM	*/
++#define	SPI_UNIT3	2	/* MRAM/FRAM */
+ 
+-extern	int	xspi_read(XSPILIB_PARAM *spiParam);
+-extern	int	xspi_write(XSPILIB_PARAM *spiParam);
++extern	int	xspi_read(SPILIB_PARAM *spiParam);
++extern	int	xspi_write(SPILIB_PARAM *spiParam);
+ 
+ #endif	/* XSPI_ */
+-- 
+1.7.1
+

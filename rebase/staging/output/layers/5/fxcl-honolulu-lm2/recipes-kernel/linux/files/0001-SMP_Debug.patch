@@ -1,0 +1,391 @@
+From e9ee4709b5f0edee687a2b13c9f33d8deab8234f Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:32:38 +0900
+Subject: [PATCH 061/171] 0001-SMP_Debug
+
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 350fec5..f7bff3b 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -384,6 +384,7 @@ config ARCH_LM2
+         select NO_IOPORT
+         select PLAT_WAIKIKI
+         select ARCH_DMA_ADDR_T_64BIT
++        select HAVE_SMP
+         help
+           This enables support for the Fuji Xerox Co., Ltd Waikiki LM2 boards.
+ 
+diff --git a/arch/arm/Kconfig.orig b/arch/arm/Kconfig.orig
+index 69dab8f..31ed81a 100644
+--- a/arch/arm/Kconfig.orig
++++ b/arch/arm/Kconfig.orig
+@@ -108,6 +108,12 @@ config HAVE_PWM
+ config MIGHT_HAVE_PCI
+ 	bool
+ 
++config PCIEPORTBUS
++	bool
++
++config PCIE_LM2
++	bool
++
+ config SYS_SUPPORTS_APM_EMULATION
+ 	bool
+ 
+diff --git a/arch/arm/kernel/setup.c b/arch/arm/kernel/setup.c
+index 96d7c6d..7e49a8a 100644
+--- a/arch/arm/kernel/setup.c
++++ b/arch/arm/kernel/setup.c
+@@ -487,15 +487,15 @@ u32 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = MPIDR_INVALID };
+ 
+ void __init smp_setup_processor_id(void)
+ {
+-#if 0	/* yamano */
+-	int i;
+-	u32 mpidr = is_smp() ? read_cpuid_mpidr() & MPIDR_HWID_BITMASK : 0;
+-#else
+ 	int	i;
+-	u32	mpidr;
+-
+-	mpidr = 0;	/* yamano force single processor */
++#if 0   /* yamano force single processor */
++	u32     mpidr = 0;      /* yamano force single processor */
+ 	u32 cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
++#else
++	u32 mpidr = is_smp() ? read_cpuid_mpidr() & MPIDR_HWID_BITMASK : 0;
++	u32 cpu = mpidr & 0x1;
++#endif
++
+ 	cpu_logical_map(0) = cpu;
+ 	for (i = 1; i < nr_cpu_ids; ++i)
+ 		cpu_logical_map(i) = i == cpu ? 0 : i;
+@@ -508,7 +508,6 @@ void __init smp_setup_processor_id(void)
+ 	set_my_cpu_offset(0);
+ 
+ 	printk(KERN_INFO "Booting Linux on physical CPU 0x%x\n", mpidr);
+-#endif	/* yamano */
+ }
+ 
+ static void __init setup_processor(void)
+diff --git a/arch/arm/kernel/smp.c b/arch/arm/kernel/smp.c
+index dedd0d7..35eb89a 100644
+--- a/arch/arm/kernel/smp.c
++++ b/arch/arm/kernel/smp.c
+@@ -81,6 +81,9 @@ void __init smp_set_ops(struct smp_operations *ops)
+ static unsigned long get_arch_pgd(pgd_t *pgd)
+ {
+ 	phys_addr_t pgdir = virt_to_phys(pgd);
++#if 1	/* debug */
++	printk("### pgd=%p pgdir=%llx\n", pgd, pgdir);
++#endif
+ 	BUG_ON(pgdir & ARCH_PGD_MASK);
+ 	return pgdir >> ARCH_PGD_SHIFT;
+ }
+@@ -93,6 +96,9 @@ int __cpuinit __cpu_up(unsigned int cpu, struct task_struct *idle)
+ 	 * We need to tell the secondary core where to find
+ 	 * its stack and the page tables.
+ 	 */
++#if 1	/* debug */
++	printk("#### get_arch_pgdi(idmap_pgd)=%p idmap_pgd=%p\n", get_arch_pgd(idmap_pgd), idmap_pgd);
++#endif
+ 	secondary_data.stack = task_stack_page(idle) + THREAD_START_SP;
+ 	secondary_data.pgdir = get_arch_pgd(idmap_pgd);
+ 	secondary_data.swapper_pg_dir = get_arch_pgd(swapper_pg_dir);
+diff --git a/arch/arm/mach-lm2/platsmp.c b/arch/arm/mach-lm2/platsmp.c
+index 4528a5b..82445f4 100644
+--- a/arch/arm/mach-lm2/platsmp.c
++++ b/arch/arm/mach-lm2/platsmp.c
+@@ -16,13 +16,15 @@
+ #include <linux/of_fdt.h>
+ 
+ #include <asm/smp_scu.h>
+-#include <asm/hardware/gic.h>
++//#include <asm/hardware/gic.h>
+ #include <asm/mach/map.h>
+ 
+ #include <mach/motherboard.h>
+ 
+ #include "core.h"
+ 
++extern	void	lm2_secondary_startup(void);
++static	void	__iomem *misc_base;
+ extern	void	waikiki_boot_secondary(void);
+ extern	void	waikiki_secondary_init(unsigned int cpus);
+ 
+@@ -90,12 +92,14 @@ void __init lm2_smp_init_cpus(void)
+ 
+ 	for(i = 0 ; i < ncore ; i++)
+ 		set_cpu_possible(i,true);
+-	set_smp_cross_call(gic_raise_softirq);
++//	set_smp_cross_call(gic_raise_softirq);
+ #endif	/* CONFIG_ARCH_LM2_DT */
+ }
+ 
+ void __init lm2_smp_prepare_cpus(unsigned int max_cpus)
+ {
++	void __iomem		*cpu1_addr;
++	unsigned long long	adr;
+ 	/*
+ 	 * Initialise the present map, which describes the set of CPUs
+ 	 * actually populated at the present time.
+@@ -115,6 +119,20 @@ void __init lm2_smp_prepare_cpus(unsigned int max_cpus)
+ /*
+ 	v2m_flags_set(virt_to_phys(versatile_secondary_startup));
+ */
++	misc_base = ioremap(0x05400018, 0x4);
++	adr = virt_to_phys(lm2_secondary_startup);
++	__raw_writel((adr&0xffffffff), misc_base);
++#if 0	// FX
++	cpu1_addr = ioremap(0x043B0000,0x32);
++	writel(0x3ff, cpu1_addr + 0x24);
++	printk(KERN_ERR "** CPU1 Power Up.(0x05400018=>0x%x(vir=0x%x)) (0x043B0024=>0x%x)\n",readl(misc_base), &lm2_secondary_startup, readl(cpu1_addr + 0x24));
++	iounmap(cpu1_addr);
++#endif
++	iounmap(misc_base);
++}
++
++void __ref waikiki_cpu_die(unsigned int cpu)
++{
+ }
+ 
+ struct	smp_operations	__initdata	lm2_smp_ops = {
+@@ -122,5 +140,8 @@ struct	smp_operations	__initdata	lm2_smp_ops = {
+ 	.smp_prepare_cpus	= lm2_smp_prepare_cpus,
+ 	.smp_secondary_init	= waikiki_secondary_init,
+ 	.smp_boot_secondary	= waikiki_boot_secondary,
++#ifdef CONFIG_HOTPLUG_CPU
++	.cpu_die		= waikiki_cpu_die,
++#endif
+ };
+ 
+diff --git a/arch/arm/plat-waikiki/headsmp.S b/arch/arm/plat-waikiki/headsmp.S
+index c805e0c..087fb3c 100644
+--- a/arch/arm/plat-waikiki/headsmp.S
++++ b/arch/arm/plat-waikiki/headsmp.S
+@@ -1,5 +1,5 @@
+ /*
+- *  linux/arch/arm/plat-versatile/headsmp.S
++ *  linux/arch/arm/plat-waikiki/headsmp.S
+  *
+  *  Copyright (c) 2003 ARM Limited
+  *  All Rights Reserved
+@@ -11,14 +11,91 @@
+ #include <linux/linkage.h>
+ #include <linux/init.h>
+ 
++#define	SOC_QUATRO5500
++
++#ifdef SOC_QUATRO5500
++	.text
++#else
+ 	__INIT
++#endif
+ 
+ /*
+  * Realview/Versatile Express specific entry point for secondary CPUs.
+  * This provides a "holding pen" into which all secondary cores are held
+  * until we're ready for them to initialise.
+  */
+-ENTRY(versatile_secondary_startup)
++#ifdef	SOC_QUATRO5500
++ENTRY(lm2_secondary_startup)
++#if 1 /* FX */
++	wfi
++#endif
++        b out_of_vector
++        ldr pc,=4
++        ldr pc,=8
++        ldr pc,=12
++        ldr pc,=16
++        ldr pc,=20
++        ldr pc,=24
++        ldr pc,=28
++
++out_of_vector:
++        mov r0,#0x80000000      @ Put in SVC mode, disable FIQ, IRQ.
++        orr r0,r0,#0x100
++        orr r0,r0,#0xf0
++        orr r0,r0,#0x3
++        msr CPSR,r0
++
++        mov r0,#0x0         /* disable */
++        mov r1,#0x04300000  /* GICC_CTLR */
++        orr r1,#0x00002000
++        str r0,[r1]
++
++        mov r0,#0xf0        /* Allow low-priority interrupts */
++        mov r1,#0x04300000  /* GICC_PMR */
++        orr r1,#0x00002000
++        orr r1,#0x00000004
++        str r0,[r1]
++
++        mov r0,#0x1         /* enable */
++        mov r1,#0x04300000  /* GICC_CTLR */
++        orr r1,#0x00002000
++        str r0,[r1]
++
++        /* Need to change L2 data and tag latency to 3-cycles. */
++        mrc p15,#1,r0,c9,c0,#2 /* Read L2CTLR */
++
++        mov r1,   #0xff000000
++        orr r1,r1,#0x00ff0000
++        orr r1,r1,#0x0000fe00
++        orr r1,r1,#0x00000038
++        and r0,r0,r1           /* Clear 08-06, and 02-00 bits. */
++
++        orr r0,r0,#0x00000002  /* Set data RAM latency to 3-cycles. */
++        orr r0,r0,#0x00000080  /* Set data tag latency to 3-cycles. */
++        orr r0,r0,#0x00200000  /* Turn on ecc and parity. */
++
++        mcr p15,#1,r0,c9,c0,#2 /* Write L2CLTR */
++
++        // TODO: remove this for B0 when WFE works.
++        mrc     p15, 0, r0, c1, c0, 1   @ get ACTLR
++        orr     r0, r0, #(1 << 7)       @ make WFE a nop
++        mcr     p15, 0, r0, c1, c0, 1   @ set ACTLR
++
++        bl      v7_invalidate_l1
++#if 0 /* FX */
++	wfi
++#endif
++
++        ldr     r1, 1f
++        bx      r1
++ENDPROC(lm2_secondary_startup)
++
++        .align 2
++        .globl lm2_smp_entrypoint
++lm2_smp_entrypoint:
++1:      .space 4
++#else
++ENTRY(lm2_secondary_startup)
+ 	mrc	p15, 0, r0, c0, c0, 5
+ 	bfc	r0, #24, #8
+ 	adr	r4, 1f
+@@ -38,4 +115,5 @@ pen:	ldr	r7, [r6]
+ 	.align
+ 1:	.long	.
+ 	.long	pen_release
+-ENDPROC(versatile_secondary_startup)
++ENDPROC(lm2_secondary_startup)
++#endif
+diff --git a/arch/arm/plat-waikiki/platsmp.c b/arch/arm/plat-waikiki/platsmp.c
+index 3e0241d..1487499 100644
+--- a/arch/arm/plat-waikiki/platsmp.c
++++ b/arch/arm/plat-waikiki/platsmp.c
+@@ -8,6 +8,8 @@
+  * it under the terms of the GNU General Public License version 2 as
+  * published by the Free Software Foundation.
+  */
++#include <linux/memory.h>
++#include <linux/io.h>
+ #include <linux/init.h>
+ #include <linux/errno.h>
+ #include <linux/delay.h>
+@@ -17,7 +19,7 @@
+ 
+ #include <asm/cacheflush.h>
+ #include <asm/smp_plat.h>
+-#include <asm/hardware/gic.h>
++//#include <asm/hardware/gic.h>
+ 
+ /*
+  * control for which core is the next to come out of the secondary
+@@ -34,14 +36,21 @@ static void __cpuinit write_pen_release(int val)
+ {
+ 	pen_release = val;
+ 	smp_wmb();
++#if 1
++	sync_cache_w(&pen_release);
++#else
+ 	__cpuc_flush_dcache_area((void *)&pen_release, sizeof(pen_release));
+ 	outer_clean_range(__pa(&pen_release), __pa(&pen_release + 1));
++#endif
+ }
+ 
+ static DEFINE_SPINLOCK(boot_lock);
+ 
+ void __cpuinit waikiki_secondary_init(unsigned int cpu)
+ {
++#if 1	/* debug */
++	printk("#### %s\n", __func__); //FX
++#endif
+ 	/*
+ 	 * if any interrupts are already enabled for the primary
+ 	 * core (e.g. timer irq), then they will not have been enabled
+@@ -64,6 +73,11 @@ void __cpuinit waikiki_secondary_init(unsigned int cpu)
+ int __cpuinit waikiki_boot_secondary(unsigned int cpu, struct task_struct *idle)
+ {
+ 	unsigned long timeout;
++#if 1	// FX
++	unsigned char *cpu1_addr;
++	volatile int a = 1;
++	printk("#### %s(cpu=%x)\n", __func__, cpu); // FX
++#endif
+ 
+ 	/*
+ 	 * Set synchronisation state between this boot processor
+@@ -84,9 +98,20 @@ int __cpuinit waikiki_boot_secondary(unsigned int cpu, struct task_struct *idle)
+ 	 * the boot monitor to read the system wide flags register,
+ 	 * and branch to the address found there.
+ 	 */
++#if 1
++	write_pen_release(cpu);
++// FX
++#if 1
++	cpu1_addr = ioremap(0x043B0000,0x32);
++	writel(0x3ff, cpu1_addr + 0x24);
++	iounmap(cpu1_addr);
++//	while (a);
++#endif
++#else
+ 	gic_raise_softirq(cpumask_of(cpu), 1);
++#endif
+ 
+-	timeout = jiffies + (1 * HZ);
++	timeout = jiffies + (6 * HZ);
+ 	while (time_before(jiffies, timeout)) {
+ 		smp_rmb();
+ 		if (pen_release == -1)
+diff --git a/init/main.c b/init/main.c
+index b6b2fb0..81a2584 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -518,6 +518,10 @@ asmlinkage void __init start_kernel(void)
+ 	asm volatile("mcr p15,0,r0,c8,c6,0");
+ #endif
+ 	PHYS_OFFSET = 0x0000000890000000ULL;	/* yamano debug */
++#if 1   /* ohkuma */
++sprintf(buf, "__pv_phys_offset=0x%llx(%llx)\n", __pv_phys_offset, PHYS_OFFSET);
++lm2_printk(UART_BASE,buf);
++#endif
+ 	lockdep_init();
+ 	smp_setup_processor_id();
+ 	debug_objects_early_init();
+diff --git a/init/main.c.orig b/init/main.c.orig
+index e617623..a93067f 100644
+--- a/init/main.c.orig
++++ b/init/main.c.orig
+@@ -164,7 +164,7 @@ extern const struct obs_kernel_param __setup_start[], __setup_end[];
+ 
+ #if 1 /* yamano */
+ #define	UART_BASE	0xfc160000
+-#define	UART_BASE2	0xfc000000
++#define	UART_BASE2	0xffc10000
+ #define	UART_DATA(base)	(*(volatile unsigned char *)((base) + 0x10))
+ #define	UART_STAT(base)	(*(volatile unsigned char *)((base) + 0x15))
+ 
+@@ -514,6 +514,9 @@ asmlinkage void __init start_kernel(void)
+ 	 * Need to run as early as possible, to initialize the
+ 	 * lockdep hash:
+ 	 */
++#if 1	/* ohkuma to TLB Flush */
++	asm volatile("mcr p15,0,r0,c8,c6,0");
++#endif
+ 	PHYS_OFFSET = 0x0000000890000000ULL;	/* yamano debug */
+ 	lockdep_init();
+ 	smp_setup_processor_id();
+-- 
+1.7.1
+

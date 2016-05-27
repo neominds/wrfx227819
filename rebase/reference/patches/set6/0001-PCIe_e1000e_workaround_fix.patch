@@ -1,0 +1,590 @@
+From 4c9a273f81de23a08ae1d9d377ba955937995217 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Tue, 20 Oct 2015 12:27:37 +0900
+Subject: [PATCH 1/1] PCIe_e1000e_workaround_fix
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ arch/arm/include/asm/mach/pci.h                   |   31 -----
+ arch/arm/kernel/bios32.c                          |   76 -----------
+ arch/arm/mach-lm2/lm2.c                           |    2 +-
+ drivers/net/ethernet/intel/e1000e/e1000.h         |    3 -
+ drivers/net/ethernet/intel/e1000e/netdev.c        |  148 ---------------------
+ drivers/net/ethernet/stmicro/stmmac/stmmac_main.c |   23 ++-
+ 6 files changed, 16 insertions(+), 267 deletions(-)
+
+diff --git a/arch/arm/include/asm/mach/pci.h b/arch/arm/include/asm/mach/pci.h
+index 91b8865..e6ea335 100644
+--- a/arch/arm/include/asm/mach/pci.h
++++ b/arch/arm/include/asm/mach/pci.h
+@@ -13,15 +13,9 @@
+ 
+ #include <linux/ioport.h>
+ 
+-#if 0   /* ohkuma debug */
+-#define YAMANO_CHANGE
+-#endif
+ struct pci_sys_data;
+ struct pci_ops;
+ struct pci_bus;
+-#ifdef YAMANO_CHANGE
+-struct device;
+-#endif
+ 
+ struct hw_pci {
+ #ifdef CONFIG_PCI_DOMAINS
+@@ -41,10 +35,6 @@ struct hw_pci {
+ 					  resource_size_t start,
+ 					  resource_size_t size,
+ 					  resource_size_t align);
+-#ifdef YAMANO_CHANGE
+-	void		(*add_bus)(struct pci_bus *bus);
+-	void		(*remove_bus)(struct pci_bus *bus);
+-#endif
+ };
+ 
+ /*
+@@ -57,11 +47,7 @@ struct pci_sys_data {
+ 	struct list_head node;
+ 	int		busnr;		/* primary bus number			*/
+ 	u64		mem_offset;	/* bus->cpu memory mapping offset	*/
+-//#ifdef YAMANO_CHANGE
+ 	phys_addr_t	io_offset;	/* bus->cpu IO mapping offset		*/
+-//#else
+-//	unsigned long	io_offset;      /* bus->cpu IO mapping offset           */
+-//#endif
+ 	struct pci_bus	*bus;		/* PCI bus				*/
+ 	struct list_head resources;	/* root bus resources (apertures)       */
+ 	struct resource io_res;
+@@ -76,30 +62,13 @@ struct pci_sys_data {
+ 					  resource_size_t start,
+ 					  resource_size_t size,
+ 					  resource_size_t align);
+-#ifdef YAMANO_CHANGE
+-	void		(*add_bus)(struct pci_bus *bus);
+-	void		(*remove_bus)(struct pci_bus *bus);
+-#endif
+ 	void		*private_data;	/* platform controller private data	*/
+ };
+ 
+ /*
+  * Call this with your hw_pci struct to initialise the PCI system.
+  */
+-#ifdef YAMANO_CHANGE
+-void pci_common_init_dev(struct device *, struct hw_pci *);
+-
+-/*
+- * Compatibility wrapper for older platforms that do not care about
+- * passing the parent device.
+- */
+-static inline void pci_common_init(struct hw_pci *hw)
+-{
+-	pci_common_init_dev(NULL, hw);
+-}
+-#else
+ void pci_common_init(struct hw_pci *);
+-#endif
+ 
+ /*
+  * Setup early fixed I/O mapping.
+diff --git a/arch/arm/kernel/bios32.c b/arch/arm/kernel/bios32.c
+index bb04f08..a14cc93 100644
+--- a/arch/arm/kernel/bios32.c
++++ b/arch/arm/kernel/bios32.c
+@@ -137,35 +137,6 @@ static void pci_fixup_unassign(struct pci_dev *dev)
+ }
+ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_WINBOND2, PCI_DEVICE_ID_WINBOND2_89C940F, pci_fixup_unassign);
+ 
+-#ifdef YAMANO_CHANGE
+-/* yamano debug */
+-#if 0
+-#define PCI_VENDOR_ID_FXCL	0x1135
+-#define	PCI_DEVICE_ID_QUATRO	0x5500
+-#endif
+-static void pci_fixup_quatro(struct pci_dev *dev)
+-{
+-	int i;
+-//printk(KERN_ERR "pci fixup function for quatro\n");
+-	if (dev->devfn == 0) {
+-//		dev->resource[0].flags = IORESOURCE_MEM;
+-//		dev->resource[1].flags = IORESOURCE_IO;
+-//		dev->class &= 0x060000;
+-//		dev->class = 0x060000;
+-//		dev->class |= PCI_CLASS_BRIDGE_HOST << 8;
+-		for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+-//printk(KERN_ERR " dev->resource[%d].start = %llx\n",i,dev->resource[i].start);
+-//printk(KERN_ERR " dev->resource[%d].end = %llx\n",i,dev->resource[i].end);
+-//printk(KERN_ERR " dev->resource[%d].flags = %x\n",i,dev->resource[i].flags);
+-			dev->resource[i].start = 0;
+-			dev->resource[i].end   = 0;
+-			dev->resource[i].flags = 0;
+-		}
+-	}
+-}
+-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_FXCL, PCI_DEVICE_ID_QUATRO, pci_fixup_quatro);
+-#endif	/* YAMANO_CHANGE */
+-
+ /*
+  * Prevent the PCI layer from seeing the resources allocated to this device
+  * if it is the host bridge by marking it as such.  These resources are of
+@@ -392,22 +363,6 @@ void pcibios_fixup_bus(struct pci_bus *bus)
+ }
+ EXPORT_SYMBOL(pcibios_fixup_bus);
+ 
+-#ifdef YAMANO_CHANGE
+-void pcibios_add_bus(struct pci_bus *bus)
+-{
+-	struct pci_sys_data *sys = bus->sysdata;
+-	if (sys->add_bus)
+-		sys->add_bus(bus);
+-}
+-
+-void pcibios_remove_bus(struct pci_bus *bus)
+-{
+-	struct pci_sys_data *sys = bus->sysdata;
+-	if (sys->remove_bus)
+-		sys->remove_bus(bus);
+-}
+-#endif	/* YAMANO_CHANGE */
+-
+ /*
+  * Swizzle the device pin each time we cross a bridge.  If a platform does
+  * not provide a swizzle function, we perform the standard PCI swizzling.
+@@ -490,12 +445,7 @@ static int pcibios_init_resources(int busnr, struct pci_sys_data *sys)
+ 	return 0;
+ }
+ 
+-#ifdef YAMANO_CHANGE
+-static void pcibios_init_hw(struct device *parent, struct hw_pci *hw,
+-			    struct list_head *head)
+-#else	/* YAMANO_CHANGE */
+ static void pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
+-#endif	/* YAMANO_CHANGE */
+ {
+ 	struct pci_sys_data *sys = NULL;
+ 	int ret;
+@@ -513,10 +463,6 @@ static void pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
+ 		sys->swizzle = hw->swizzle;
+ 		sys->map_irq = hw->map_irq;
+ 		sys->align_resource = hw->align_resource;
+-#ifdef YAMANO_CHANGE
+-		sys->add_bus = hw->add_bus;
+-		sys->remove_bus = hw->remove_bus;
+-#endif	/* YAMANO_CHANGE */
+ 		INIT_LIST_HEAD(&sys->resources);
+ 
+ 		if (hw->private_data)
+@@ -534,13 +480,8 @@ static void pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
+ 			if (hw->scan)
+ 				sys->bus = hw->scan(nr, sys);
+ 			else
+-#ifdef	YAMANO_CHANGE
+-				sys->bus = pci_scan_root_bus(parent, sys->busnr,
+-						hw->ops, sys, &sys->resources);
+-#else	 /* YAMANO_CHANGE */
+ 				sys->bus = pci_scan_root_bus(NULL, sys->busnr,
+ 						hw->ops, sys, &sys->resources);
+-#endif	/* YAMANO_CHANGE */
+ 
+ 			if (!sys->bus)
+ 				panic("PCI: unable to scan bus!");
+@@ -556,11 +497,7 @@ static void pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
+ 	}
+ }
+ 
+-#ifdef	YAMANO_CHANGE
+-void pci_common_init_dev(struct device *parent, struct hw_pci *hw)
+-#else
+ void pci_common_init(struct hw_pci *hw)
+-#endif
+ {
+ 	struct pci_sys_data *sys;
+ 	LIST_HEAD(head);
+@@ -568,11 +505,7 @@ void pci_common_init(struct hw_pci *hw)
+ 	pci_add_flags(PCI_REASSIGN_ALL_RSRC);
+ 	if (hw->preinit)
+ 		hw->preinit();
+-#ifdef YAMANO_CHANGE
+-	pcibios_init_hw(parent, hw, &head);
+-#else
+ 	pcibios_init_hw(hw, &head);
+-#endif
+ 	if (hw->postinit)
+ 		hw->postinit();
+ 
+@@ -591,13 +524,10 @@ void pci_common_init(struct hw_pci *hw)
+ 			 * Assign resources.
+ 			 */
+ 			pci_bus_assign_resources(bus);
+-#ifdef	YAMANO_CHANGE
+-#else
+ 			/*
+ 			 * Enable bridges
+ 			 */
+ 			pci_enable_bridges(bus);
+-#endif
+ 		}
+ 
+ 		/*
+@@ -607,10 +537,7 @@ void pci_common_init(struct hw_pci *hw)
+ 	}
+ }
+ 
+-#ifdef	YAMANO_CHANGE
+-#else
+ EXPORT_SYMBOL_GPL(pci_common_init);
+-#endif
+ #ifndef CONFIG_PCI_HOST_ITE8152
+ void pcibios_set_master(struct pci_dev *dev)
+ {
+@@ -698,9 +625,6 @@ int pcibios_enable_device(struct pci_dev *dev, int mask)
+ 	 */
+ 	if ((dev->class >> 16) == PCI_BASE_CLASS_BRIDGE)
+ 		cmd |= PCI_COMMAND_IO | PCI_COMMAND_MEMORY;
+-#ifdef	YAMANO_CHANGE
+-	cmd |= PCI_COMMAND_IO;	/* yamano for intel cardfor intel card */
+-#endif	/* YAMANO_CHANGE */
+ 	if (cmd != old_cmd) {
+ 		printk("PCI: enabling device %s (%04x -> %04x)\n",
+ 		       pci_name(dev), old_cmd, cmd);
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 7a1a331..7b07eaa 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -171,7 +171,7 @@ static	struct	plat_stmmacenet_data	lm2_eth_config = {
+ 	.has_gmac	= 1,
+ 	.clk_csr	= 0,
+ 	.enh_desc       = 1,	/* add */
+-	.interface	= PHY_INTERFACE_MODE_MII,
++	.interface	= PHY_INTERFACE_MODE_GMII,
+ };
+ 
+ static struct platform_device lm2_eth_device = {
+diff --git a/drivers/net/ethernet/intel/e1000e/e1000.h b/drivers/net/ethernet/intel/e1000e/e1000.h
+index f93d777..ec8de69 100644
+--- a/drivers/net/ethernet/intel/e1000e/e1000.h
++++ b/drivers/net/ethernet/intel/e1000e/e1000.h
+@@ -149,11 +149,8 @@ struct e1000_ps_page {
+ 	u64 dma; /* must be u64 - written to hw */
+ };
+ 
+-#if 1	/* ohkuma debug */
+ #define	WR_E1000E_WORKAROUND
+ #define	WR_E1000E_WORKAROUND2
+-//#define WR_DEBUG
+-#endif
+ /* wrappers around a pointer to a socket buffer,
+  * so a DMA handle can be stored along with the buffer
+  */
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index 776e4d9..25ab83d 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -67,115 +67,6 @@ MODULE_PARM_DESC(debug, "Debug level (0=none,...,16=all)");
+ 
+ static void e1000e_disable_aspm(struct pci_dev *pdev, u16 state);
+ 
+-#ifdef	WR_DEBUG
+-#define PRINT_OFFSET		656
+-#define PRINT_OFFSET_END	800
+-static void print_pkt(unsigned char *buf, int len)
+-{
+-        int j;
+-        unsigned char   tmp[64];
+-        int             tmp_len=0;
+-        int             moni_len;
+-	memset(&tmp, 0, sizeof(tmp));
+-        if ( len > 0 && len > PRINT_OFFSET ) {
+-		if ( PRINT_OFFSET_END != 0 ) {
+-			moni_len = PRINT_OFFSET_END;
+-		} else {
+-			moni_len = len;
+-		}
+-                printk(KERN_ERR "frm_len=%d byte, bufaddr=0x%p\n", len, buf);
+-                for (j = PRINT_OFFSET; j < moni_len; j++) {
+-                        if ((j % 16) == 0) {
+-                                if ( j != PRINT_OFFSET )
+-                                        printk(KERN_ERR "%s\n",tmp);
+-
+-                                memset(&tmp, 0, sizeof(tmp));
+-                                sprintf(tmp, "%04d: %02x",j,buf[j]);
+-                        } else {
+-                                sprintf(&tmp[tmp_len], " %02x",buf[j]);
+-                        }
+-                        tmp_len=strlen(tmp);
+-                }
+-                printk(KERN_ERR "%s\n",tmp);
+-        }
+-}
+-static void print_reg(void)
+-{
+-	void    __iomem *virt_address;
+-	unsigned long long	adr;
+-	unsigned int		remap_size;
+-	int	i;
+-	unsigned char		tmp[128];
+-	
+-	/* PCIE1 PCIE Controller 1 registers */
+-	adr=0x4A40000;
+-	remap_size=0xf90;
+-	virt_address = ioremap(adr, remap_size);
+-	printk(KERN_ERR "== PCIE1 PCIE Controller 1 registers dump\n");
+-	for(i=0;i<remap_size;i+=16) {
+-		if ( (i >= 0x200 && i < 0x400 ) || (i >= 0x700 && i < 0x800 ) )
+-			continue;
+-		memset(&tmp, 0, sizeof(tmp));
+-		sprintf(tmp, "%09llx: %08x %08x %08x %08x",(adr+i),
+-			readl(virt_address+i), readl(virt_address+i+4), readl(virt_address+i+8), readl(virt_address+i+0xc));
+-		printk(KERN_ERR "%s\n",tmp);
+-	}
+-	iounmap(virt_address);
+-
+-	/* PCIEWRAP: PCIe General Function registers */
+-	adr=0x4A70000;
+-	remap_size=0x140;
+-	virt_address = ioremap(adr, remap_size);
+-	printk(KERN_ERR "== PCIEWRAP: PCIe General Function registers dump\n");
+-	for(i=0;i<remap_size;i+=16) {
+-		if ( (i >= 0x80 && i < 0x100 )  )
+-			continue;
+-		memset(&tmp, 0, sizeof(tmp));
+-		if ( i == 0 )
+-			sprintf(tmp, "%09llx:                            %08x",(adr+i), readl(virt_address+12));
+-		else if ( i == 0x20  || i == 0x70 )
+-		sprintf(tmp, "%09llx: %08x %08x %08x",(adr+i),
+-			readl(virt_address+i), readl(virt_address+i+4), readl(virt_address+i+8));
+-		else if ( i == 0x40 )
+-		sprintf(tmp, "%09llx: %08x                   %08x",(adr+i),
+-			readl(virt_address+i), readl(virt_address+i+12));
+-		else if ( i == 0x130 )
+-		sprintf(tmp, "%09llx: %08x",(adr+i),
+-			readl(virt_address+i));
+-		else
+-		sprintf(tmp, "%09llx: %08x %08x %08x %08x",(adr+i),
+-			readl(virt_address+i), readl(virt_address+i+4), readl(virt_address+i+8), readl(virt_address+i+0xc));
+-		printk(KERN_ERR "%s\n",tmp);
+-	}
+-	iounmap(virt_address);
+-
+-	/* Reset Control registers */
+-	adr=0x4010000;
+-	remap_size=0x170;
+-	virt_address = ioremap(adr, remap_size);
+-	printk(KERN_ERR "== Reset Control registers dump\n");
+-	for(i=0;i<remap_size;i+=16) {
+-		if ( (i >= 0x50 && i < 0x80 ) || (i >= 0xa0 && i < 0x100 ) || (i >= 0x110 && i < 0x160 ) )
+-			continue;
+-		memset(&tmp, 0, sizeof(tmp));
+-		if ( i == 0 )
+-			sprintf(tmp, "%09llx: %08x",(adr+i), readl(virt_address+0));
+-		else if ( i == 0x20  || i == 0x40)
+-			sprintf(tmp, "%09llx: %08x %08x",(adr+i), readl(virt_address+i+0), readl(virt_address+i+4));
+-		else if ( i == 0x30 )
+-			sprintf(tmp, "%09llx: %08x          %08x %08x",(adr+i), readl(virt_address+i+0), readl(virt_address+i+8), readl(virt_address+i+12));
+-		else if ( i == 0x100 || i == 0x140 || i == 0x160)
+-			sprintf(tmp, "%09llx: %08x %08x %08x",(adr+i), readl(virt_address+i+0), readl(virt_address+i+4), readl(virt_address+i+8));
+-		else
+-		sprintf(tmp, "%09llx: %08x %08x %08x %08x",(adr+i),
+-			readl(virt_address+i), readl(virt_address+i+4), readl(virt_address+i+8), readl(virt_address+i+0xc));
+-		printk(KERN_ERR "%s\n",tmp);
+-	}
+-	iounmap(virt_address);
+-
+-}
+-#endif
+-
+ static const struct e1000_info *e1000_info_tbl[] = {
+ 	[board_82571]		= &e1000_82571_info,
+ 	[board_82572]		= &e1000_82572_info,
+@@ -1323,9 +1214,6 @@ static bool e1000_clean_tx_irq(struct e1000_ring *tx_ring)
+ 
+ 			e1000_put_txbuf(tx_ring, buffer_info);
+ 			tx_desc->upper.data = 0;
+-#ifdef WR_DEBUG
+-printk(KERN_ERR "%s: Tx %02x Clean\n",__func__,i);
+-#endif
+ 
+ 			i++;
+ 			if (i == tx_ring->count)
+@@ -1845,9 +1733,6 @@ static irqreturn_t e1000_intr_msi(int __always_unused irq, void *data)
+ 	struct e1000_adapter *adapter = netdev_priv(netdev);
+ 	struct e1000_hw *hw = &adapter->hw;
+ 	u32 icr = er32(ICR);
+-#ifdef  WR_DEBUG
+-printk(KERN_ERR "%s int Call\n",__func__);
+-#endif
+ 
+ 	/* read ICR disables interrupts using IAM */
+ 	if (icr & E1000_ICR_LSC) {
+@@ -1914,9 +1799,6 @@ static irqreturn_t e1000_intr(int __always_unused irq, void *data)
+ 	struct e1000_adapter *adapter = netdev_priv(netdev);
+ 	struct e1000_hw *hw = &adapter->hw;
+ 	u32 rctl, icr = er32(ICR);
+-#ifdef  WR_DEBUG
+-printk(KERN_ERR "%s int Call\n",__func__);
+-#endif
+ 
+ 	if (!icr || test_bit(__E1000_DOWN, &adapter->state))
+ 		return IRQ_NONE;  /* Not our interrupt */
+@@ -1992,9 +1874,6 @@ static irqreturn_t e1000_msix_other(int __always_unused irq, void *data)
+ 	struct e1000_adapter *adapter = netdev_priv(netdev);
+ 	struct e1000_hw *hw = &adapter->hw;
+ 	u32 icr = er32(ICR);
+-#ifdef  WR_DEBUG
+-printk(KERN_ERR "%s int Call\n",__func__);
+-#endif
+ 
+ 	if (!(icr & E1000_ICR_INT_ASSERTED)) {
+ 		if (!test_bit(__E1000_DOWN, &adapter->state))
+@@ -2028,9 +1907,6 @@ static irqreturn_t e1000_intr_msix_tx(int __always_unused irq, void *data)
+ 	struct e1000_hw *hw = &adapter->hw;
+ 	struct e1000_ring *tx_ring = adapter->tx_ring;
+ 
+-#ifdef	WR_DEBUG
+-printk(KERN_ERR "%s int Call\n",__func__);
+-#endif
+ 	adapter->total_tx_bytes = 0;
+ 	adapter->total_tx_packets = 0;
+ 
+@@ -2047,9 +1923,6 @@ static irqreturn_t e1000_intr_msix_rx(int __always_unused irq, void *data)
+ 	struct e1000_adapter *adapter = netdev_priv(netdev);
+ 	struct e1000_ring *rx_ring = adapter->rx_ring;
+ 
+-#ifdef	WR_DEBUG
+-printk(KERN_ERR "%s int Call\n",__func__);
+-#endif
+ 	/* Write the ITR value calculated at the end of the
+ 	 * previous interrupt.
+ 	 */
+@@ -4256,9 +4129,6 @@ static irqreturn_t e1000_intr_msi_test(int __always_unused irq, void *data)
+ 	struct e1000_adapter *adapter = netdev_priv(netdev);
+ 	struct e1000_hw *hw = &adapter->hw;
+ 	u32 icr = er32(ICR);
+-#ifdef  WR_DEBUG
+-printk(KERN_ERR "%s int Call\n",__func__);
+-#endif
+ 
+ 	e_dbg("icr is %08X\n", icr);
+ 	if (icr & E1000_ICR_RXSEQ) {
+@@ -5356,9 +5226,6 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
+ 		if (dma_mapping_error(&pdev->dev, buffer_info->dma))
+ 			goto dma_error;
+ 
+-#ifdef	WR_DEBUG
+-printk(KERN_ERR "%s: %02x length=%d time_stamp=%x\n",__func__, i, buffer_info->length, buffer_info->time_stamp);
+-#endif
+ 		len -= size;
+ 		offset += size;
+ 		count++;
+@@ -5478,9 +5345,6 @@ static void e1000_tx_queue(struct e1000_ring *tx_ring, int tx_flags, int count)
+ 		if ( buffer_info->end == 0 ) 
+ 			tx_desc->lower.data &= ~(cpu_to_le32(E1000_TXD_CMD_IFCS));
+ #endif	/* Workaround */
+-#ifdef	WR_DEBUG
+-printk(KERN_ERR "%s: %02x upper=0x%08x lower=0x%08x\n",__func__, i, tx_desc->upper.data, tx_desc->lower.data);
+-#endif
+ 		i++;
+ 		if (i == tx_ring->count)
+ 			i = 0;
+@@ -5492,11 +5356,6 @@ printk(KERN_ERR "%s: %02x upper=0x%08x lower=0x%08x\n",__func__, i, tx_desc->upp
+ 	if (unlikely(tx_flags & E1000_TX_FLAGS_NO_FCS))
+ 		tx_desc->lower.data &= ~(cpu_to_le32(E1000_TXD_CMD_IFCS));
+ 
+-#ifdef	WR_DEBUG
+-printk(KERN_ERR "%s:                     lower=0x%08x\n",__func__, tx_desc->lower.data);
+-if ( (tx_desc->lower.data & 0xfff) > 700 )
+-	print_reg();
+-#endif
+ 	/* Force memory writes to complete before letting h/w
+ 	 * know there are new descriptors to fetch.  (Only
+ 	 * applicable for weak-ordered memory model archs,
+@@ -5667,10 +5526,6 @@ static netdev_tx_t e1000_xmit_frame(struct sk_buff *skb,
+ 	if (e1000_maybe_stop_tx(tx_ring, count + 2))
+ 		return NETDEV_TX_BUSY;
+ 
+-#ifdef	WR_DEBUG
+-printk(KERN_ERR "*** skb->len=%d ***\n", skb->len);
+-print_pkt(skb->data,skb->len);
+-#endif
+ 	if (vlan_tx_tag_present(skb)) {
+ 		tx_flags |= E1000_TX_FLAGS_VLAN;
+ 		tx_flags |= (vlan_tx_tag_get(skb) << E1000_TX_FLAGS_VLAN_SHIFT);
+@@ -6375,9 +6230,6 @@ static irqreturn_t e1000_intr_msix(int __always_unused irq, void *data)
+ 	struct net_device *netdev = data;
+ 	struct e1000_adapter *adapter = netdev_priv(netdev);
+ 
+-#ifdef  WR_DEBUG
+-printk(KERN_ERR "%s int Call\n",__func__);
+-#endif
+ 	if (adapter->msix_entries) {
+ 		int vector, msix_irq;
+ 
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index 4a17ac6..4e3f5e9 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -2050,10 +2050,11 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 			packet_len = ((skb->data[ETH_HLEN + 2] *256) + skb->data[ETH_HLEN + 2 +1]);	
+ 			/* IPv4 */
+ 			Iptype = skb->data[23];
+-			if ( Iptype == 0x06 ) {
++			if ( ((skb->data[14]>>4)==4) && (Iptype == 0x06 || Iptype == 0x11) ) {
+ 				/* tcp */
+ 				int i;
+ 				unsigned int	checksum=0;
++				unsigned int	checksum_ichi;
+ 				unsigned short	tmp;
+ 				unsigned char	pseudo_header[32];
+ 				unsigned int	tcp_header_start = ETH_HLEN + (skb->data[ETH_HLEN] & 0x0f)*4 ;
+@@ -2064,7 +2065,7 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 				memcpy(&pseudo_header[0], &skb->data[ETH_HLEN + 12], 4);
+ 				memcpy(&pseudo_header[4], &skb->data[ETH_HLEN + 16], 4);
+ 				pseudo_header[8]=0;
+-				pseudo_header[9]=0x6;
++				pseudo_header[9]=Iptype;
+ 				pseudo_header[10]= ((packet_len-20)&0xff00) >> 8;
+ 				pseudo_header[11]= ((packet_len-20)&0x00ff) ;
+ 				for(i=0;i<12;i+=2) {
+@@ -2073,8 +2074,12 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 						checksum += tmp;
+ 					}
+ 				}
++				if(Iptype==0x06)
++					checksum_ichi=16;
++				else
++					checksum_ichi=6;
+ 				for(i=tcp_header_start;i<tcp_header_end;i+=2) {
+-					if( i%2 == 0 && (i != tcp_header_start+16)){
++					if( i%2 == 0 && (i != tcp_header_start+checksum_ichi)){
+ 						if ( (i+1)  == tcp_header_end ) {
+ 							tmp =  (skb->data[i] *256);
+ 						} else {
+@@ -2082,17 +2087,19 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
+ 						}
+ 						checksum += tmp;
+ 					}
+-					if(i==tcp_header_start+16) {
++					if(i==tcp_header_start+checksum_ichi) {
+ 						tcp_checksum_cpu = ((skb->data[i] *256) + skb->data[i +1]);
+ 					}
+ 				}
+-				tcp_checksum_calc  = checksum & 0x0000ffff;
+-				tcp_checksum_calc += (checksum & 0xffff0000)>>16;
++				tcp_checksum_calc  = (checksum & 0x0000ffff) + ((checksum & 0xffff0000)>>16);
++				if ( tcp_checksum_calc > 0xffff )
++					tcp_checksum_calc =(tcp_checksum_calc & 0x0000ffff) + ((tcp_checksum_calc & 0xffff0000)>>16);
++
+ 				tcp_checksum_calc ^= 0xffff;
+ 				//printk(KERN_ERR "TCP: Checksum=0x%04x(calc:%04x)\n",tcp_crc, tcp_checksum_calc);
+ 				/* Checksum update */
+-				skb->data[tcp_header_start+16] = (tcp_checksum_calc&0xff00)>>8;
+-				skb->data[tcp_header_start+17] = (tcp_checksum_calc&0x00ff)>>0;
++				skb->data[tcp_header_start+checksum_ichi+0] = (tcp_checksum_calc&0xff00)>>8;
++				skb->data[tcp_header_start+checksum_ichi+1] = (tcp_checksum_calc&0x00ff)>>0;
+ 			}
+ 		}
+ 	}
+-- 
+1.7.1
+

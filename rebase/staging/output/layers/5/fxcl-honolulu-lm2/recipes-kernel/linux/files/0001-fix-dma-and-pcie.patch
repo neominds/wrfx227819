@@ -1,0 +1,135 @@
+From ca1251c977e40d4839a8868abcc88399858f058d Mon Sep 17 00:00:00 2001
+From: Jayesh <jayesh.babu@windriver.com>
+Date: Fri, 27 May 2016 15:33:11 +0900
+Subject: [PATCH 083/171] 0001-fix-dma-and-pcie
+
+
+diff --git a/arch/arm/mach-lm2/lm2.c b/arch/arm/mach-lm2/lm2.c
+index 0267e38..84f889f 100644
+--- a/arch/arm/mach-lm2/lm2.c
++++ b/arch/arm/mach-lm2/lm2.c
+@@ -53,6 +53,10 @@ extern	void	lm2_clockevent_init(int irq, void __iomem *gpt);
+ #define UART_DATA(base) (*(volatile unsigned char *)((base) + 0x10))
+ #define UART_STAT(base) (*(volatile unsigned char *)((base) + 0x15))
+ 
++#ifdef	CONFIG_LM2_GPDMA
++extern	lm2_dma_register(void);
++#endif	/* CONFIG_LM2_GPDMA */
++
+ static	void	lm2_putchar(unsigned long base, char c)
+ {
+ #if 0
+@@ -300,6 +304,21 @@ static	struct platform_device lm2_i2c_device = {
+ 	.num_resources	= ARRAY_SIZE(lm2_i2c_resource),
+ };
+ 
++static struct resource lm2_pcie_resource[]={
++       {
++               .start  = 0x04a40000,
++               .end    = 0x04a80000,
++               .flags  = IORESOURCE_MEM,
++       },
++};
++
++static	struct platform_device lm2_pcie_device = {
++	.name		= "synopsys-pcie",
++	.id		=-1,
++	.resource	= lm2_pcie_resource,
++	.num_resources	= ARRAY_SIZE(lm2_pcie_resource),
++};
++
+ static void __init lm2_init_early(void)
+ {
+ //	lm2_printk(0xfc000000,"lm2_init_early\n");
+@@ -375,6 +394,9 @@ static void __init lm2_init(void)
+ #ifdef	CONFIG_MMC_SDHCI_PLTFM
+         lm2_sdhci_init();
+ #endif
++#ifdef	CONFIG_LM2_GPDMA
++	lm2_dma_register();
++#endif	/* CONFIG_LM2_GPDMA */
+ 
+ 	platform_device_register(&lm2_gpio_device);
+ 	platform_device_register(&lm2_rtc_device);
+@@ -383,7 +405,7 @@ static void __init lm2_init(void)
+ #ifdef	CONFIG_SPI_XSPI
+ 	lm2_xspi_register();
+ #endif	/* CONFIG_SPI_XSPI */
+-
++	platform_device_register(&lm2_pcie_device);
+ }
+ 
+ MACHINE_START(LM2, "FujiXerox Waikiki")
+@@ -495,6 +517,9 @@ static void __init lm2_dt_init(void)
+ #ifdef	CONFIG_MMC_SDHCI_PLTFM
+         lm2_sdhci_init();
+ #endif
++#ifdef	CONFIG_LM2_GPDMA
++	lm2_dma_register();
++#endif	/* CONFIG_LM2_GPDMA */
+ 	platform_device_register(&lm2_gpio_device);
+ 	platform_device_register(&lm2_rtc_device);
+ 	platform_device_register(&lm2_i2c_device);
+@@ -502,6 +527,7 @@ static void __init lm2_dt_init(void)
+ #ifdef	CONFIG_SPI_XSPI
+ 	lm2_xspi_register();
+ #endif	/* CONFIG_SPI_XSPI */
++	platform_device_register(&lm2_pcie_device);
+ 
+ //	l2x0_of_init(0x00400000, 0xfe0fffff);
+ 	of_platform_populate(NULL, lm2_dt_bus_match, NULL, NULL);
+diff --git a/drivers/pci/pcie/synopsys_pcie.c b/drivers/pci/pcie/synopsys_pcie.c
+index a36b5d6..29b4845 100644
+--- a/drivers/pci/pcie/synopsys_pcie.c
++++ b/drivers/pci/pcie/synopsys_pcie.c
+@@ -1204,6 +1204,7 @@ static int __init synopsys_pcie_probe(struct platform_device *pdev)
+ {
+ 	struct pcie_port *pp;
+ #if 1
++	dev_info(&pdev->dev, "synopsys_pcie_probe :Start\n");
+ #else
+ 	struct device_node *np = pdev->dev.of_node;
+ 	struct of_pci_range range;
+@@ -1348,17 +1349,26 @@ static int __exit synopsys_pcie_remove(struct platform_device *pdev)
+ }
+ 
+ static const struct of_device_id synopsys_pcie_of_match[] = {
+-	{ .compatible = "synopsys,exynos5440-pcie", },
++	{ .compatible = "synopsys-pcie", },
+ 	{},
+ };
+-MODULE_DEVICE_TABLE(of, synopsys_pcie_of_match);
++//MODULE_DEVICE_TABLE(of, synopsys_pcie_of_match);
++
++static	const struct platform_device_id pcie_id_table[]={
++	{	"synopsys-pcie",	},
++	{},
++};
++
++MODULE_DEVICE_TABLE( platform, pcie_id_table);
+ 
+ static struct platform_driver synopsys_pcie_driver = {
+ 	.remove		= __exit_p(synopsys_pcie_remove),
++	.probe		= synopsys_pcie_probe,
++	.id_table	= pcie_id_table,
+ 	.driver = {
+ 		.name	= "synopsys-pcie",
+ 		.owner	= THIS_MODULE,
+-		.of_match_table = of_match_ptr(synopsys_pcie_of_match),
++//		.of_match_table = of_match_ptr(synopsys_pcie_of_match),
+ 	},
+ };
+ 
+@@ -1413,7 +1423,8 @@ static int __init pcie_init(void)
+ #endif
+ 	hook_fault_code(16 + 6, synopsys_pcie_abort, SIGBUS, 0, "imprecise external abort");
+ 
+-	platform_driver_probe(&synopsys_pcie_driver, synopsys_pcie_probe);
++//	platform_driver_probe(&synopsys_pcie_driver, synopsys_pcie_probe);
++	platform_driver_register(&synopsys_pcie_driver);
+ #ifdef	DEBUG_TRACE
+ 	printk(KERN_ERR "pcie_init: End\n");
+ #endif
+-- 
+1.7.1
+

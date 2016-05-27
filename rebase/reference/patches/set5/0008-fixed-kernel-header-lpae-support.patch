@@ -1,0 +1,92 @@
+From f97f3922c29f5f5b2822661a7beaabd0b61a0bf1 Mon Sep 17 00:00:00 2001
+From: Auto Configured <auto.configured>
+Date: Fri, 5 Dec 2014 20:30:25 +0900
+Subject: [PATCH 08/18] fixed kernel header lpae support
+
+
+Signed-off-by: Auto Configured <auto.configured>
+---
+ include/linux/bootmem.h |   30 +++++++++++++++---------------
+ 1 files changed, 15 insertions(+), 15 deletions(-)
+
+diff --git a/include/linux/bootmem.h b/include/linux/bootmem.h
+index 5f0b0e1..e6b7ca3 100644
+--- a/include/linux/bootmem.h
++++ b/include/linux/bootmem.h
+@@ -48,10 +48,10 @@ extern unsigned long free_all_bootmem_node(pg_data_t *pgdat);
+ extern unsigned long free_all_bootmem(void);
+ 
+ extern void free_bootmem_node(pg_data_t *pgdat,
+-			      unsigned long addr,
++			      phys_addr_t addr,
+ 			      unsigned long size);
+-extern void free_bootmem(unsigned long physaddr, unsigned long size);
+-extern void free_bootmem_late(unsigned long physaddr, unsigned long size);
++extern void free_bootmem(phys_addr_t physaddr, unsigned long size);
++extern void free_bootmem_late(phys_addr_t physaddr, unsigned long size);
+ extern void __free_pages_bootmem(struct page *page, unsigned int order);
+ 
+ /*
+@@ -65,47 +65,47 @@ extern void __free_pages_bootmem(struct page *page, unsigned int order);
+ #define BOOTMEM_DEFAULT		0
+ #define BOOTMEM_EXCLUSIVE	(1<<0)
+ 
+-extern int reserve_bootmem(unsigned long addr,
++extern int reserve_bootmem(phys_addr_t addr,
+ 			   unsigned long size,
+ 			   int flags);
+ extern int reserve_bootmem_node(pg_data_t *pgdat,
+-				unsigned long physaddr,
++				phys_addr_t physaddr,
+ 				unsigned long size,
+ 				int flags);
+ 
+ extern void *__alloc_bootmem(unsigned long size,
+ 			     unsigned long align,
+-			     unsigned long goal);
++			     phys_addr_t goal);
+ extern void *__alloc_bootmem_nopanic(unsigned long size,
+ 				     unsigned long align,
+-				     unsigned long goal);
++				     phys_addr_t goal);
+ extern void *__alloc_bootmem_node(pg_data_t *pgdat,
+ 				  unsigned long size,
+ 				  unsigned long align,
+-				  unsigned long goal);
++				  phys_addr_t goal);
+ void *__alloc_bootmem_node_high(pg_data_t *pgdat,
+ 				  unsigned long size,
+ 				  unsigned long align,
+-				  unsigned long goal);
++				  phys_addr_t goal);
+ extern void *__alloc_bootmem_node_nopanic(pg_data_t *pgdat,
+ 				  unsigned long size,
+ 				  unsigned long align,
+-				  unsigned long goal);
++				  phys_addr_t goal);
+ void *___alloc_bootmem_node_nopanic(pg_data_t *pgdat,
+ 				  unsigned long size,
+ 				  unsigned long align,
+-				  unsigned long goal,
+-				  unsigned long limit);
++				  phys_addr_t goal,
++				  phys_addr_t limit);
+ extern void *__alloc_bootmem_low(unsigned long size,
+ 				 unsigned long align,
+-				 unsigned long goal);
++				 phys_addr_t goal);
+ void *__alloc_bootmem_low_nopanic(unsigned long size,
+ 				 unsigned long align,
+-				 unsigned long goal);
++				 phys_addr_t goal);
+ extern void *__alloc_bootmem_low_node(pg_data_t *pgdat,
+ 				      unsigned long size,
+ 				      unsigned long align,
+-				      unsigned long goal);
++				      phys_addr_t goal);
+ 
+ #ifdef CONFIG_NO_BOOTMEM
+ /* We are using top down, so it is safe to use 0 here */
+-- 
+1.7.1
+
